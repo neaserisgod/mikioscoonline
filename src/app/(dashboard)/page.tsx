@@ -691,25 +691,25 @@ export default function HomePage() {
               </span>
             </div>
             <EquilibrioBar pctAvance={mes.pctAvance} cubierto={mes.cubierto} />
-            <div className="grid grid-cols-3 gap-x-3 pt-1 text-sm">
-              <div>
-                <p className="text-xs text-muted-foreground">Gastos fijos</p>
-                <p className="font-semibold tabular-nums text-[13px]">
+            <div className="grid grid-cols-3 gap-x-2 pt-1 text-sm">
+              <div className="min-w-0">
+                <p className="text-xs text-muted-foreground truncate">Gastos fijos</p>
+                <p className="font-semibold tabular-nums text-[13px] truncate">
                   {formatearARS(mes.gastosFijosCentavos)}
                 </p>
               </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Bruta del mes</p>
-                <p className="font-semibold tabular-nums text-[13px] text-k-gain">
+              <div className="min-w-0">
+                <p className="text-xs text-muted-foreground truncate">Bruta del mes</p>
+                <p className="font-semibold tabular-nums text-[13px] text-k-gain truncate">
                   {formatearARS(mes.gananciaBrutaCentavos)}
                 </p>
               </div>
-              <div>
-                <p className="text-xs text-muted-foreground">
+              <div className="min-w-0">
+                <p className="text-xs text-muted-foreground truncate">
                   {mes.cubierto ? "Neta del mes" : "Faltante"}
                 </p>
                 <p className={cn(
-                  "font-semibold tabular-nums text-[13px]",
+                  "font-semibold tabular-nums text-[13px] truncate",
                   mes.cubierto ? "text-k-gain" : "text-k-loss"
                 )}>
                   {mes.cubierto

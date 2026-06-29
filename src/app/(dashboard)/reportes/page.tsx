@@ -179,7 +179,7 @@ export default function ReportesPage() {
               <Input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} className="w-40" />
             </div>
           </div>
-          <div className="flex gap-3">
+          <div className="flex flex-wrap gap-3">
             <a href={`/api/reportes/exportar/ventas?${exportParams}`}>
               <Button variant="outline">
                 <Download className="mr-2 size-4" />
