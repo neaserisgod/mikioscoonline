@@ -302,6 +302,20 @@ export const organizacionService = {
   ) {
     return prisma.organization.update({ where: { id: organizationId }, data })
   },
+
+  async completarOnboarding(organizationId: string) {
+    return prisma.organization.update({
+      where: { id: organizationId },
+      data: { onboardingCompletadoAt: new Date() },
+    })
+  },
+
+  async resetearOnboarding(organizationId: string) {
+    return prisma.organization.update({
+      where: { id: organizationId },
+      data: { onboardingCompletadoAt: null },
+    })
+  },
 }
 
 // ─── Usuarios ────────────────────────────────────────────────────────────────

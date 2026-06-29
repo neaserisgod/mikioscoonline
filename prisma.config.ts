@@ -1,12 +1,14 @@
 import { config } from "dotenv"
 import { defineConfig } from "prisma/config"
 
-// Load .env first, then .env.local overrides (Next.js convention)
 config()
-config({ path: ".env.local", override: true })
+// LOCAL_DEV=1 skips .env.local so the SQLite URL in .env is used instead of Neon
+if (!process.env.LOCAL_DEV) {
+  config({ path: ".env.local", override: true })
+}
 
 export default defineConfig({
-  schema: "prisma/schema.prisma",
+  schema: process.env.LOCAL_DEV ? "prisma/schema.dev.prisma" : "prisma/schema.prisma",
   migrations: {
     path: "prisma/migrations",
   },

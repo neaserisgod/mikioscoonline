@@ -1,5 +1,6 @@
 import { auth } from "@/auth"
 import { redirect } from "next/navigation"
+import { organizacionService } from "@/services/config.service"
 import { TopBar } from "@/components/layout/top-bar"
 import { TabsBar } from "@/components/layout/tabs-bar"
 import { BottomNav } from "@/components/layout/bottom-nav"
@@ -9,6 +10,9 @@ import { GlobalScannerMount } from "@/components/scanner/global-scanner-mount"
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const session = await auth()
   if (!session) redirect("/login")
+
+  const org = await organizacionService.obtener(session.user.organizationId)
+  if (!org.onboardingCompletadoAt) redirect("/onboarding")
 
   return (
     <div className="flex flex-col h-dvh overflow-hidden">

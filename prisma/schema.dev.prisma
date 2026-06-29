@@ -7,7 +7,7 @@ generator client {
 // Montos siempre en centavos (Int). $ 10,00 ARS = 1000 centavos.
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
 }
 
 enum Role {

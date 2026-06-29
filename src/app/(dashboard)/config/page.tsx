@@ -41,6 +41,7 @@ import {
   crearCajaAction, editarCajaAction,
   desactivarCajaAction, reactivarCajaAction, asignarCategoriasCajaAction,
 } from "@/app/actions/caja.actions"
+import { resetearOnboardingAction } from "@/app/actions/onboarding.actions"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1090,9 +1091,41 @@ function OperacionSection() {
     { value: "abrir-producto", label: "Abrir producto", desc: "Navega al detalle del producto escaneado" },
   ]
 
+  const [redisparandoOnboarding, setRedisparandoOnboarding] = useState(false)
+
+  async function handleRedispararOnboarding() {
+    setRedisparandoOnboarding(true)
+    try {
+      await resetearOnboardingAction()
+    } catch {
+      setRedisparandoOnboarding(false)
+      toast.error("No se pudo re-disparar el onboarding")
+    }
+  }
+
   return (
     <SectionShell title="Operación">
       <div className="space-y-4">
+        <div>
+          <p className="text-sm font-medium mb-2">Asistente de configuración inicial</p>
+          <ListCard>
+            <div className="px-4 py-3 flex items-center justify-between gap-4">
+              <div>
+                <p className="text-sm font-medium">Re-ejecutar onboarding</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Volvé al wizard de configuración sin borrar ningún dato ya cargado.
+                </p>
+              </div>
+              <Button
+                variant="outline" size="sm"
+                onClick={handleRedispararOnboarding}
+                disabled={redisparandoOnboarding}
+              >
+                {redisparandoOnboarding ? "..." : "Iniciar"}
+              </Button>
+            </div>
+          </ListCard>
+        </div>
         <div>
           <p className="text-sm font-medium mb-2">Escáner — al leer un código en Productos</p>
           <ListCard>
