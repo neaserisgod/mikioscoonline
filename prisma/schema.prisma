@@ -1,0 +1,317 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+// Porcentajes almacenados como basis points (bp) — enteros, sin float
+// 7000 bp = 70.00%  |  500 bp = 5.00%  |  399 bp = 3.99%
+// Montos siempre en centavos (Int). $ 10,00 ARS = 1000 centavos.
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  ADMIN
+  VENDEDOR
+}
+
+enum TipoMovimientoStock {
+  ENTRADA
+  SALIDA
+  AJUSTE
+}
+
+// ─── Tenant ─────────────────────────────────────────────────────────────────
+
+model Organization {
+  id                 String   @id @default(cuid())
+  nombre             String
+  cuit               String?
+  puntoDeVenta       Int?
+  condicionIva       String?  // validado vía Zod: RESPONSABLE_INSCRIPTO | MONOTRIBUTO | EXENTO | CONSUMIDOR_FINAL
+  stockMinimoDefault Int      @default(0)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  users           User[]
+  categories      Category[]
+  providers       Provider[]
+  locations       Location[]
+  products        Product[]
+  sales           Sale[]
+  paymentMethods  PaymentMethod[]
+  fixedExpenses   FixedExpense[]
+  cajas           Caja[]
+  cajaSesiones    CajaSesion[]
+  movimientosCaja MovimientoCaja[]
+}
+
+// ─── Usuarios ────────────────────────────────────────────────────────────────
+
+model User {
+  id             String       @id @default(cuid())
+  email          String       @unique
+  passwordHash   String
+  nombre         String
+  role           Role         @default(VENDEDOR)
+  activo         Boolean      @default(true)
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  sales            Sale[]
+  stockMovements   StockMovement[]
+  sesionesAbiertas CajaSesion[] @relation("SesionAbiertaPor")
+  sesionesCerradas CajaSesion[] @relation("SesionCerradaPor")
+}
+
+// ─── Configuración ──────────────────────────────────────────────────────────
+
+model Category {
+  id              String       @id @default(cuid())
+  nombre          String
+  markupDefaultBp Int          // 7000 = 70.00%, 500 = 5.00% — usado cuando markupDefaultTipo = "PORCENTUAL"
+  markupDefaultTipo          String @default("PORCENTUAL") // "PORCENTUAL" | "FIJO" — validado Zod
+  markupDefaultFijoCentavos  Int    @default(0)            // ganancia fija default (centavos) — usado cuando markupDefaultTipo = "FIJO"
+  activo          Boolean      @default(true)
+  cajaId          String?      // null = usa la caja principal de la org
+  caja            Caja?        @relation(fields: [cajaId], references: [id])
+  organizationId  String
+  organization    Organization @relation(fields: [organizationId], references: [id])
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  products Product[]
+
+  @@unique([nombre, organizationId])
+}
+
+model Provider {
+  id             String       @id @default(cuid())
+  nombre         String
+  activo         Boolean      @default(true)
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  products Product[]
+
+  @@unique([nombre, organizationId])
+}
+
+model Location {
+  id             String       @id @default(cuid())
+  nombre         String
+  activo         Boolean      @default(true)
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  products Product[]
+
+  @@unique([nombre, organizationId])
+}
+
+model PaymentMethod {
+  id             String       @id @default(cuid())
+  nombre         String
+  comisionBp     Int          @default(0) // 399 = 3.99%
+  esMercadoPago  Boolean      @default(false)
+  esEfectivo     Boolean      @default(false) // true = efectivo de caja; false = virtual (no suma al arqueo)
+  activo         Boolean      @default(true)
+  esDefault      Boolean      @default(false) // único por org — POS lo preselecciona
+  orden          Int          @default(0)     // define orden en el POS
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  payments        Payment[]
+  movimientosCaja MovimientoCaja[]
+
+  @@unique([nombre, organizationId])
+}
+
+model FixedExpense {
+  id             String       @id @default(cuid())
+  nombre         String
+  activo         Boolean      @default(true)
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  montos FixedExpenseMonto[]
+
+  @@unique([nombre, organizationId])
+}
+
+model FixedExpenseMonto {
+  id             String       @id @default(cuid())
+  fixedExpenseId String
+  fixedExpense   FixedExpense @relation(fields: [fixedExpenseId], references: [id], onDelete: Cascade)
+  mesAnio        String       // "YYYY-MM", ej. "2026-06"
+  montoCentavos  Int
+  createdAt      DateTime     @default(now())
+
+  @@unique([fixedExpenseId, mesAnio])
+}
+
+// ─── Cajas ───────────────────────────────────────────────────────────────────
+
+model Caja {
+  id                       String       @id @default(cuid())
+  nombre                   String
+  esPrincipal              Boolean      @default(false) // "Caja general" — una por org, no borrable
+  orden                    Int          @default(0)
+  activo                   Boolean      @default(true)
+  recargoTipo              String       @default("PORCENTUAL") // "PORCENTUAL" | "FIJO" — validado Zod
+  recargoVirtualBp         Int          @default(0)            // Fase 5: recargo % si pago virtual (0 = sin recargo)
+  recargoVirtualFijoCentavos Int        @default(0)            // Fase 5: recargo $ fijo si pago virtual
+  organizationId           String
+  organization             Organization @relation(fields: [organizationId], references: [id])
+  createdAt                DateTime     @default(now())
+  updatedAt                DateTime     @updatedAt
+
+  categories  Category[]
+  sesiones    CajaSesion[]
+  movimientos MovimientoCaja[]
+
+  @@unique([nombre, organizationId])
+}
+
+model CajaSesion {
+  id                       String    @id @default(cuid())
+  cajaId                   String
+  caja                     Caja      @relation(fields: [cajaId], references: [id])
+  abiertaPorUserId         String
+  abiertaPor               User      @relation("SesionAbiertaPor", fields: [abiertaPorUserId], references: [id])
+  cerradaPorUserId         String?
+  cerradaPor               User?     @relation("SesionCerradaPor", fields: [cerradaPorUserId], references: [id])
+  fondoInicialCentavos     Int
+  fechaApertura            DateTime  @default(now())
+  fechaCierre              DateTime?
+  efectivoEsperadoCentavos Int?      // calculado al cerrar
+  efectivoContadoCentavos  Int?      // ingresado por el usuario al cerrar
+  diferenciaCentavos       Int?      // = contado − esperado
+  estado                   String    // "ABIERTA" | "CERRADA" — validado Zod
+  organizationId           String
+  organization             Organization @relation(fields: [organizationId], references: [id])
+
+  movimientos MovimientoCaja[]
+}
+
+model MovimientoCaja {
+  id              String         @id @default(cuid())
+  cajaSesionId    String
+  cajaSesion      CajaSesion     @relation(fields: [cajaSesionId], references: [id])
+  cajaId          String
+  caja            Caja           @relation(fields: [cajaId], references: [id])
+  saleId          String?
+  sale            Sale?          @relation(fields: [saleId], references: [id])
+  tipo            String         // "VENTA" | "INGRESO" | "EGRESO" | "AJUSTE" — validado Zod
+  montoCentavos   Int            // porción de esta caja (sin recargo)
+  recargoCentavos Int            @default(0) // recargo virtual atribuido a esta caja (Fase 5)
+  medioPagoId     String?
+  medioPago       PaymentMethod? @relation(fields: [medioPagoId], references: [id])
+  nota            String?
+  organizationId  String
+  organization    Organization   @relation(fields: [organizationId], references: [id])
+  fecha           DateTime       @default(now())
+}
+
+// ─── Productos y stock ───────────────────────────────────────────────────────
+
+model Product {
+  id                 String    @id @default(cuid())
+  sku                String
+  barcode            String?
+  nombre             String
+  costoCentavos      Int
+  precioCentavos     Int
+  costoEsProvisional Boolean   @default(false)
+  categoryId         String
+  category           Category  @relation(fields: [categoryId], references: [id])
+  providerId         String?
+  provider           Provider? @relation(fields: [providerId], references: [id])
+  locationId         String?
+  location           Location? @relation(fields: [locationId], references: [id])
+  stock              Int       @default(0)
+  stockMinimo        Int       @default(0)
+  activo             Boolean   @default(true)
+  organizationId     String
+  organization       Organization @relation(fields: [organizationId], references: [id])
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  saleLines      SaleLine[]
+  stockMovements StockMovement[]
+
+  @@unique([sku, organizationId])
+  // NULL barcode no conflicta con otro NULL en PostgreSQL (NULLs != NULLs en unique)
+  @@unique([barcode, organizationId])
+}
+
+model StockMovement {
+  id             String              @id @default(cuid())
+  productId      String
+  product        Product             @relation(fields: [productId], references: [id])
+  userId         String
+  user           User                @relation(fields: [userId], references: [id])
+  tipo           TipoMovimientoStock
+  cantidad       Int
+  stockAnterior  Int
+  stockPosterior Int
+  motivo         String?
+  saleId         String?
+  sale           Sale?               @relation(fields: [saleId], references: [id])
+  creadoEn       DateTime            @default(now())
+}
+
+// ─── Ventas ──────────────────────────────────────────────────────────────────
+
+model Sale {
+  id                 String       @id @default(cuid())
+  fecha              DateTime     @default(now())
+  userId             String
+  user               User         @relation(fields: [userId], references: [id])
+  totalCentavos      Int
+  costoTotalCentavos Int
+  recargoCentavos    Int          @default(0) // Fase 5: recargo total por pago virtual
+  organizationId     String
+  organization       Organization @relation(fields: [organizationId], references: [id])
+  createdAt          DateTime     @default(now())
+
+  lines           SaleLine[]
+  payments        Payment[]
+  stockMovements  StockMovement[]
+  movimientosCaja MovimientoCaja[]
+}
+
+model SaleLine {
+  id                     String  @id @default(cuid())
+  saleId                 String
+  sale                   Sale    @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  productId              String
+  product                Product @relation(fields: [productId], references: [id])
+  cantidad               Int
+  precioUnitarioCentavos Int     // foto al momento de la venta — inmutable
+  costoUnitarioCentavos  Int     // foto al momento de la venta — inmutable
+}
+
+model Payment {
+  id                   String        @id @default(cuid())
+  saleId               String
+  sale                 Sale          @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  paymentMethodId      String
+  paymentMethod        PaymentMethod @relation(fields: [paymentMethodId], references: [id])
+  montoCentavos        Int
+  comisionCentavos     Int           // estimada = monto × comisionBp / 10_000
+  montoNetoCentavos    Int           // monto − comision
+  comisionRealCentavos Int?          // TODO: completar al integrar MercadoPago
+  referencia           String?       // mp payment id, transferencia ref, etc.
+  createdAt            DateTime      @default(now())
+}

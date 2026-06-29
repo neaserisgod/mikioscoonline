@@ -1,0 +1,50 @@
+import { NextRequest, NextResponse } from "next/server"
+import { auth } from "@/auth"
+import { stockService } from "@/services/stock.service"
+import { z } from "zod"
+
+export async function GET(req: NextRequest) {
+  const session = await auth()
+  if (!session?.user?.organizationId) {
+    return NextResponse.json({ error: "No autorizado" }, { status: 401 })
+  }
+  const limit = req.nextUrl.searchParams.get("limit")
+  const data = await stockService.listarTodos(session.user.organizationId, {
+    limit: limit ? parseInt(limit) : undefined,
+  })
+  return NextResponse.json(data)
+}
+
+const MovimientoSchema = z.object({
+  productId: z.string(),
+  tipo: z.enum(["ENTRADA", "AJUSTE"]),
+  cantidad: z.number().int().positive(),
+  motivo: z.string().optional(),
+})
+
+export async function POST(req: NextRequest) {
+  const session = await auth()
+  if (!session?.user?.id || !session.user.organizationId) {
+    return NextResponse.json({ error: "No autorizado" }, { status: 401 })
+  }
+
+  const body = await req.json()
+  const parsed = MovimientoSchema.safeParse(body)
+  if (!parsed.success) {
+    return NextResponse.json({ error: "Datos inválidos", details: parsed.error.flatten() }, { status: 400 })
+  }
+
+  try {
+    const result = await stockService.registrarMovimiento({
+      ...parsed.data,
+      userId: session.user.id,
+      organizationId: session.user.organizationId,
+    })
+    return NextResponse.json(result)
+  } catch (e) {
+    return NextResponse.json(
+      { error: e instanceof Error ? e.message : "Error" },
+      { status: 400 }
+    )
+  }
+}

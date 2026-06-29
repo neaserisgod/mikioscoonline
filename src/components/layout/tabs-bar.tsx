@@ -1,0 +1,166 @@
+"use client"
+
+import { useEffect, useState } from "react"
+import Link from "next/link"
+import { usePathname } from "next/navigation"
+import { motion, Reorder } from "framer-motion"
+import { X, Pencil, Check } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { NAV_ITEMS } from "./nav-drawer"
+import { cn } from "@/lib/utils"
+
+const STORAGE_KEY = "pyme_tabs_v1"
+const DEFAULT_TABS = ["/", "/vender", "/rentabilidad"]
+
+// ── Store liviano solo de tabs (sin Zustand — solo localStorage + useState) ───
+
+function loadTabs(): string[] {
+  if (typeof window === "undefined") return DEFAULT_TABS
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (!raw) return DEFAULT_TABS
+    const parsed = JSON.parse(raw) as string[]
+    return Array.isArray(parsed) && parsed.length > 0 ? parsed : DEFAULT_TABS
+  } catch {
+    return DEFAULT_TABS
+  }
+}
+
+function saveTabs(tabs: string[]) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(tabs))
+  } catch {}
+}
+
+// Singleton de tabs compartido entre NavDrawer y TabsBar via custom hook
+let _tabs: string[] = DEFAULT_TABS
+const _listeners = new Set<() => void>()
+
+function notifyListeners() {
+  _listeners.forEach((fn) => fn())
+}
+
+export function useTabsStore() {
+  const [, rerender] = useState(0)
+
+  useEffect(() => {
+    _tabs = loadTabs()
+    rerender((n) => n + 1)
+  }, [])
+
+  useEffect(() => {
+    const fn = () => rerender((n) => n + 1)
+    _listeners.add(fn)
+    return () => { _listeners.delete(fn) }
+  }, [])
+
+  function addTab(href: string) {
+    if (_tabs.includes(href)) return
+    _tabs = [..._tabs, href]
+    saveTabs(_tabs)
+    notifyListeners()
+  }
+
+  function removeTab(href: string) {
+    if (_tabs.length <= 1) return // mínimo 1
+    _tabs = _tabs.filter((t) => t !== href)
+    saveTabs(_tabs)
+    notifyListeners()
+  }
+
+  function reorderTabs(newOrder: string[]) {
+    _tabs = newOrder
+    saveTabs(_tabs)
+    notifyListeners()
+  }
+
+  return { tabs: _tabs, addTab, removeTab, reorderTabs }
+}
+
+// ── Componente ────────────────────────────────────────────────────────────────
+
+export function TabsBar() {
+  const pathname = usePathname()
+  const { tabs, removeTab, reorderTabs } = useTabsStore()
+  const [editMode, setEditMode] = useState(false)
+
+  const navMap = Object.fromEntries(NAV_ITEMS.map((i) => [i.href, i]))
+
+  // Hidrata desde localStorage en cliente
+  const [hydrated, setHydrated] = useState(false)
+  useEffect(() => setHydrated(true), [])
+  if (!hydrated || tabs.length === 0) return null
+
+  return (
+    <div className="flex items-center gap-1 px-3 h-9 border-b border-border/60 bg-background overflow-x-auto scrollbar-none shrink-0">
+      {editMode ? (
+        <Reorder.Group
+          axis="x"
+          values={tabs}
+          onReorder={reorderTabs}
+          className="flex items-center gap-1"
+          as="div"
+        >
+          {tabs.map((href) => {
+            const item = navMap[href]
+            if (!item) return null
+            return (
+              <Reorder.Item key={href} value={href} as="div" className="cursor-grab active:cursor-grabbing">
+                <div className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-muted text-xs font-medium text-muted-foreground select-none">
+                  <item.icon className="size-3 shrink-0" />
+                  <span>{item.label}</span>
+                  <button
+                    type="button"
+                    aria-label={`Quitar ${item.label}`}
+                    className="ml-0.5 hover:text-k-loss transition-colors"
+                    onClick={() => removeTab(href)}
+                  >
+                    <X className="size-3" />
+                  </button>
+                </div>
+              </Reorder.Item>
+            )
+          })}
+        </Reorder.Group>
+      ) : (
+        <div className="flex items-center gap-0.5">
+          {tabs.map((href) => {
+            const item = navMap[href]
+            if (!item) return null
+            const active = href === "/" ? pathname === "/" : pathname.startsWith(href)
+            return (
+              <Link key={href} href={href} className="relative shrink-0">
+                <div
+                  className={cn(
+                    "flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-colors",
+                    active ? "text-foreground" : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  {active && (
+                    <motion.span
+                      layoutId="tabs-bar-active"
+                      className="absolute inset-0 bg-foreground/6 rounded-md"
+                      transition={{ type: "spring", stiffness: 380, damping: 38 }}
+                    />
+                  )}
+                  <item.icon className="size-3 shrink-0 relative z-10" />
+                  <span className="relative z-10">{item.label}</span>
+                </div>
+              </Link>
+            )
+          })}
+        </div>
+      )}
+
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        aria-label={editMode ? "Guardar orden" : "Editar pestañas"}
+        className="ml-auto shrink-0 size-6 text-muted-foreground hover:text-foreground"
+        onClick={() => setEditMode((v) => !v)}
+      >
+        {editMode ? <Check className="size-3" /> : <Pencil className="size-3" />}
+      </Button>
+    </div>
+  )
+}
