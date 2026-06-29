@@ -22,9 +22,17 @@ DATABASE_URL="postgresql://user:pass@host/dbname?sslmode=require"
 
 AUTH_SECRET="$(openssl rand -base64 32)"
 
+# Password del usuario admin que crea el seed. Obligatorio, sin default.
+SEED_ADMIN_PASSWORD="algo-fuerte-de-12-o-mas-caracteres"
+
 # Dejar "mock" en desarrollo. Cambiar a "mercadopago" en producción.
 PAGOS_PROVIDER="mock"
+
+# Dejar "mock" en desarrollo. Cambiar a "afip" en producción (todavía sin SDK real conectado).
+FACTURACION_PROVIDER="mock"
 ```
+
+Ver `.env.example` para la lista completa de variables (incluye `SEED_ADMIN_EMAIL`, `MP_*`, `AFIP_*`).
 
 ### 2. Instalar dependencias
 
@@ -32,8 +40,7 @@ PAGOS_PROVIDER="mock"
 npm install
 ```
 
-> **Paquetes SQLite ya no usados** (pueden desinstalarse):  
-> `npm uninstall @prisma/adapter-better-sqlite3 better-sqlite3 @types/better-sqlite3`
+> **Modo dev local con SQLite** (sin depender de Neon): seteando `LOCAL_DEV=1`, Prisma usa `prisma/schema.dev.prisma` (SQLite) en vez de `prisma/schema.prisma` (PostgreSQL) — ver `prisma.config.ts` y `src/lib/prisma.ts`. Por eso `better-sqlite3` y `@prisma/adapter-better-sqlite3` siguen como dependencias activas, no son código muerto.
 
 ### 3. Migraciones (primera vez o DB nueva)
 
@@ -45,17 +52,19 @@ npm run db:migrate
 npx prisma migrate deploy
 ```
 
-### 4. Seed (datos de ejemplo)
+### 4. Seed (datos mínimos)
 
 ```bash
 npm run db:seed
 ```
 
-Crea: organización "Kiosco El Barrio", 2 usuarios, 6 categorías, 4 proveedores, 2 ubicaciones, 3 medios de pago, 4 gastos fijos y 20 productos con ventas de ejemplo.
+Crea únicamente: 1 organización ("Mi negocio", sin onboarding completado) y 1 usuario ADMIN. No carga categorías, proveedores, productos ni ventas de ejemplo — el alta inicial se hace con el wizard de onboarding (`/onboarding`) o a mano desde Configuración.
+
+El script falla si no está seteado `SEED_ADMIN_PASSWORD` (no hay password default por seguridad).
 
 **Credenciales seed:**
-- `admin@kiosco.ar` / `admin123` (ADMIN)
-- `vendedor@kiosco.ar` / `vendedor123` (VENDEDOR)
+- Email: `SEED_ADMIN_EMAIL` si está seteado, sino `admin@kiosco.ar` (rol ADMIN)
+- Password: el valor de `SEED_ADMIN_PASSWORD`
 
 ### 5. Reset completo
 
@@ -96,26 +105,59 @@ src/
 │   ├── stock.service.ts
 │   ├── rentabilidad.service.ts
 │   ├── resumen.service.ts
-│   └── config.service.ts
+│   ├── config.service.ts
+│   ├── caja.service.ts        # Alta/edición de cajas (admin)
+│   └── cajaSesion.service.ts  # Apertura/cierre de turno, arqueo
 │
 ├── lib/
-│   ├── prisma.ts          # Singleton PrismaClient
-│   └── pagos/
-│       ├── pagos.interface.ts  # Interface PagosProvider
-│       └── mp.mock.ts          # Mock MercadoPago (dev)
+│   ├── prisma.ts              # Singleton PrismaClient (Postgres o SQLite según DATABASE_URL)
+│   └── providers/
+│       ├── pagos/              # PAGOS_PROVIDER: "mock" (dev) | "mercadopago" (stub, falta SDK)
+│       │   ├── types.ts
+│       │   ├── mock.ts
+│       │   ├── mercadopago.ts
+│       │   └── index.ts        # getPagosProvider()
+│       └── facturacion/        # FACTURACION_PROVIDER: "mock" (dev) | "afip" (stub, falta SDK)
+│           ├── types.ts
+│           ├── mock.ts
+│           ├── afip.ts
+│           └── index.ts        # getFacturacionProvider()
+│
+├── components/
+│   ├── ui/            # Primitivas (shadcn-style)
+│   ├── pos/           # Carrito, overlay y switcher de venta activa
+│   ├── productos/     # Formulario de alta/edición
+│   ├── clientes/      # Formulario de cliente
+│   ├── dashboard/     # KPI cards, gráfico de ventas
+│   ├── layout/        # Nav drawer, tabs-bar, bottom-nav, top-bar, theme-toggle
+│   ├── scanner/       # Montaje del escáner global (cámara)
+│   └── providers/     # Query (react-query), session (NextAuth), theme, service worker
+│
+├── stores/          # Estado cliente (zustand) — ventas en paralelo, etc.
 │
 └── app/
-    ├── api/               # Route Handlers — solo lectura (GET)
-    │   ├── productos/
+    ├── (auth)/login/
+    ├── (onboarding)/onboarding/   # Wizard post-signup; gateado por organization.onboardingCompletadoAt
+    ├── (dashboard)/               # Home (termómetro), vender, productos, rentabilidad, reportes, config
+    ├── api/                       # Route Handlers — solo lectura (GET)
+    │   ├── productos/             # incluye /[id], /codigo/[barcode], /importar (POST)
     │   ├── ventas/
     │   ├── rentabilidad/
     │   ├── resumen/
-    │   └── config/
-    └── actions/           # Server Actions — mutaciones
+    │   ├── reportes/              # /dashboard, /exportar/ventas, /exportar/stock
+    │   ├── cajas/                 # incluye /[cajaId]/sesion
+    │   ├── stock/movimientos/
+    │   ├── config/                # categorias, proveedores, ubicaciones, medios-pago,
+    │   │                          # gastos-fijos, cajas, negocio, usuarios, backup
+    │   └── auth/[...nextauth]/
+    └── actions/                   # Server Actions — mutaciones
         ├── productos.actions.ts
         ├── ventas.actions.ts
         ├── stock.actions.ts
-        └── config.actions.ts
+        ├── config.actions.ts
+        ├── caja.actions.ts        # Alta/edición/baja de cajas (ADMIN)
+        ├── cajaSesion.actions.ts  # Abrir/cerrar turno, movimientos de ingreso/egreso
+        └── onboarding.actions.ts  # Pasos del wizard (negocio, fiscal, categorías, etc.)
 ```
 
 ---
@@ -139,16 +181,27 @@ src/
 |----------|-------------|
 | `GET /api/productos` | Lista productos. `?q=texto` busca por nombre/sku/barcode. `?stockBajo=1` filtra alertas. |
 | `GET /api/productos/:id` | Producto con categoría, proveedor y ubicación. |
+| `GET /api/productos/codigo/:barcode` | Busca un producto por código de barras (escáner). |
 | `GET /api/productos/importar` | — (POST para importar CSV) |
 | `GET /api/ventas` | Lista ventas. `?desde=&hasta=&limit=` |
 | `GET /api/ventas/:id` | Venta con líneas y pagos. |
 | `GET /api/rentabilidad` | Agrega rentabilidad. `?por=categoria|proveedor|heladera&desde=&hasta=` |
 | `GET /api/resumen` | Termómetro hoy + equilibrio del mes. `?mes=YYYY-MM` para mes anterior. |
+| `GET /api/reportes/dashboard` | KPIs y gráfico de ventas para el dashboard de reportes. |
+| `GET /api/reportes/exportar/ventas` | Exporta ventas (CSV). |
+| `GET /api/reportes/exportar/stock` | Exporta stock (CSV). |
+| `GET /api/cajas` | Lista cajas de la organización. |
+| `GET /api/cajas/:cajaId/sesion` | Sesión de caja abierta (si existe) para esa caja. |
+| `GET /api/stock/movimientos` | Historial de movimientos de stock. `?productId=` filtra por producto. |
 | `GET /api/config/categorias` | — |
 | `GET /api/config/proveedores` | — |
 | `GET /api/config/ubicaciones` | — |
 | `GET /api/config/medios-pago` | — |
 | `GET /api/config/gastos-fijos` | — |
+| `GET /api/config/cajas` | — |
+| `GET /api/config/negocio` | Datos fiscales/de negocio de la organización. |
+| `GET /api/config/usuarios` | Usuarios de la organización (solo ADMIN). |
+| `GET /api/config/backup` | Exporta un backup de los datos de la organización. |
 
 ### Mutaciones (Server Actions)
 
@@ -168,6 +221,19 @@ crearVentaAction({ lineas: [{productId, cantidad}], pagos: [{paymentMethodId, mo
 // Stock
 entradaStockAction({ productId, cantidad, motivo? })
 ajusteStockAction({ productId, stockNuevo, motivo? })
+
+// Cajas (alta/edición solo ADMIN)
+crearCajaAction({ nombre, recargoTipo?, recargoVirtualBp?, recargoVirtualFijoCentavos? })
+editarCajaAction(id, input)
+desactivarCajaAction(id)
+
+// Sesión de caja (cualquier usuario autenticado)
+abrirCajaAction(cajaId, { fondoInicialCentavos })
+cerrarCajaAction(cajaSesionId, { efectivoContadoCentavos, nota? })
+// + movimientos de INGRESO/EGRESO sobre la sesión abierta
+
+// Onboarding (wizard post-signup, multi-paso, con skip individual o total)
+// pasos: negocio, datos fiscales, categorías, proveedores, ubicaciones, medios de pago, gastos fijos, caja
 
 // Config (solo ADMIN)
 crearCategoriaAction({ nombre, markupDefaultBp })
@@ -202,12 +268,20 @@ GAS-001,Coca-Cola 500ml,800,1120,Gaseosas y Aguas,Coca-Cola FEMSA,Heladera,77905
 
 ## Integración MercadoPago (TODO)
 
-1. Completar `MP_ACCESS_TOKEN`, `MP_PUBLIC_KEY`, `MP_WEBHOOK_SECRET` en `.env`.
-2. Cambiar `PAGOS_PROVIDER="mercadopago"` en `.env`.
-3. Crear `src/lib/pagos/mp.adapter.ts` implementando `PagosProvider`.
-4. Al recibir webhook de pago, completar `Payment.comisionRealCentavos`.
+El switch por entorno ya existe en `src/lib/providers/pagos/` (`getPagosProvider()`), pero `MercadoPagoProvider` (`mercadopago.ts`) es un **stub que tira error** — falta conectar el SDK real.
+
+1. `npm install mercadopago`.
+2. Completar `MP_ACCESS_TOKEN`, `MP_PUBLIC_KEY`, `MP_WEBHOOK_SECRET` en `.env.local`.
+3. Cambiar `PAGOS_PROVIDER="mercadopago"`.
+4. Implementar `MercadoPagoProvider.crearLinkPago()` en `mercadopago.ts` con el SDK oficial.
+5. Crear el endpoint de webhook (ej. `/api/cobros/mp-webhook`) y, al confirmar el pago, completar `Payment.comisionRealCentavos`.
 
 ## Integración AFIP/ARCA (TODO)
 
-Variables documentadas en `.env.example`.  
-Requiere certificado digital de AFIP y la implementación de la capa fiscal.
+Mismo patrón en `src/lib/providers/facturacion/` (`getFacturacionProvider()`), con `AfipFacturacionProvider` (`afip.ts`) como stub.
+
+1. Elegir un SDK (ej. `@afipsdk/afip.js` o la API de tusFacturas) e instalarlo.
+2. Completar `AFIP_CUIT`, `AFIP_CERT`, `AFIP_PRIVATE_KEY`, `AFIP_ENVIRONMENT` en `.env.local`.
+3. Cambiar `FACTURACION_PROVIDER="afip"`.
+4. Implementar `AfipFacturacionProvider.emitir()` mapeando `DatosFactura` → formato del SDK y la respuesta → `ResultadoFacturacion`.
+5. Requiere certificado digital de AFIP (https://auth.afip.gob.ar/).

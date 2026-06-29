@@ -4,7 +4,7 @@
 
 ## Estado actual (junio 2026) — está bien encaminado
 
-- `organizationId` presente en las 22 tablas tenant (las únicas sin él son `Organization`, que es el tenant, y `FixedExpenseMonto`, que se alcanza por su padre).
+- `organizationId` presente en 11 de las 15 tablas tenant (`User`, `Category`, `Provider`, `Location`, `PaymentMethod`, `FixedExpense`, `Caja`, `CajaSesion`, `MovimientoCaja`, `Product`, `Sale`). Sin él: `Organization` (es el tenant), y `FixedExpenseMonto`, `StockMovement`, `SaleLine`, `Payment` — todas se alcanzan filtrando por su padre directo, que sí está scopeado (`FixedExpense`, `Product`/`Sale`, `Sale`, `Sale` respectivamente).
 - La organización viaja **firmada en el JWT** y se lee de `session.user.organizationId` — no de input del cliente. No se puede falsear.
 - Los servicios filtran por `organizationId` en el `where`, y antes de update/delete hacen `findFirstOrThrow({ where: { id, organizationId } })` para verificar pertenencia. Patrón correcto de SaaS B2B.
 
@@ -16,8 +16,8 @@ El aislamiento hoy es **por convención**: depende de que cada query se acuerde 
 
 1. **Prisma Client Extension / middleware**: inyectar `organizationId` automáticamente en toda operación desde un solo lugar, para que sea imposible olvidarlo. Enforcement por construcción, no por convención.
 2. **`updateMany` / `deleteMany` scope-eados**: reemplazar el patrón `findFirstOrThrow(id, org)` + `update(id)` por `updateMany({ where: { id, organizationId } })`, que scope-ea de forma atómica (sin ventana TOCTOU).
-3. **`FixedExpenseMonto`**: agregar `organizationId` o garantizar que siempre se consulte vía el padre scope-eado.
-4. **Migrar a PostgreSQL + Row-Level Security (RLS)**: el aislamiento lo impone la base de datos, sin importar cómo esté escrita la query. Estándar de oro. El cambio en código es sobre todo el `provider` + connection string (ya usamos Prisma).
+3. **`FixedExpenseMonto`, `StockMovement`, `SaleLine`, `Payment`**: agregar `organizationId` directo o garantizar que siempre se consulten vía el padre scope-eado.
+4. **Row-Level Security (RLS) en PostgreSQL**: el aislamiento lo impone la base de datos, sin importar cómo esté escrita la query. Estándar de oro. Ya estamos en PostgreSQL (Neon) vía Prisma; falta activar las policies de RLS.
 
 ## Decisión de diseño a tomar antes de escalar
 
