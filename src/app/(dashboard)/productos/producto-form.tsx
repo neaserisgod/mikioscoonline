@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { toast } from "sonner"
 import { crearProductoAction, editarProductoAction } from "@/app/actions/productos.actions"
 import { resolverTriangulo } from "@/domain/markup"
 import { formatearARS } from "@/domain/dinero"
@@ -142,32 +143,30 @@ export default function ProductoForm({ producto, barcodePreset, onSuccess }: Pro
   })()
 
   async function onSubmit(data: FormData) {
-    const centavos = (v?: number) => (v !== undefined ? Math.round(v * 100) : undefined)
+    const centavos = (v?: number) =>
+      v !== undefined && !Number.isNaN(v) ? Math.round(v * 100) : undefined
 
-    if (isEditing) {
-      await editarProductoAction(producto.id, {
-        sku: data.sku,
-        nombre: data.nombre,
-        categoryId: data.categoryId,
-        barcode: data.barcode || undefined,
-        precioCentavos: centavos(data.precioCentavos),
-        costoCentavos: centavos(data.costoCentavos),
-        stock: data.stock,
-        stockMinimo: data.stockMinimo,
-      })
-    } else {
-      await crearProductoAction({
-        sku: data.sku,
-        nombre: data.nombre,
-        categoryId: data.categoryId,
-        barcode: data.barcode || undefined,
-        precioCentavos: centavos(data.precioCentavos),
-        costoCentavos: centavos(data.costoCentavos),
-        stock: data.stock,
-        stockMinimo: data.stockMinimo,
-      })
+    const payload = {
+      sku: data.sku,
+      nombre: data.nombre,
+      categoryId: data.categoryId,
+      barcode: data.barcode || undefined,
+      precioCentavos: centavos(data.precioCentavos),
+      costoCentavos: centavos(data.costoCentavos),
+      stock: data.stock,
+      stockMinimo: data.stockMinimo,
     }
-    onSuccess()
+
+    try {
+      if (isEditing) {
+        await editarProductoAction(producto.id, payload)
+      } else {
+        await crearProductoAction(payload)
+      }
+      onSuccess()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "No se pudo guardar el producto")
+    }
   }
 
   const markupPct = triangulo ? (triangulo.markupBp / 100).toFixed(1) : null
@@ -247,7 +246,7 @@ export default function ProductoForm({ producto, barcodePreset, onSuccess }: Pro
                 type="number"
                 step="0.01"
                 min="0"
-                {...register("precioCentavos", { valueAsNumber: true })}
+                {...register("precioCentavos", { setValueAs: (v) => (v === "" || v == null ? undefined : Number(v)) })}
                 className="rounded-xl tabular-nums"
               />
               {errors.precioCentavos && (
@@ -262,7 +261,7 @@ export default function ProductoForm({ producto, barcodePreset, onSuccess }: Pro
                 step="0.01"
                 min="0"
                 placeholder="Opcional"
-                {...register("costoCentavos", { valueAsNumber: true })}
+                {...register("costoCentavos", { setValueAs: (v) => (v === "" || v == null ? undefined : Number(v)) })}
                 className="rounded-xl tabular-nums"
               />
             </div>
@@ -279,7 +278,7 @@ export default function ProductoForm({ producto, barcodePreset, onSuccess }: Pro
                   step="0.01"
                   min="0"
                   placeholder="Opcional"
-                  {...register("costoCentavos", { valueAsNumber: true })}
+                  {...register("costoCentavos", { setValueAs: (v) => (v === "" || v == null ? undefined : Number(v)) })}
                   className="rounded-xl tabular-nums"
                 />
               </div>
@@ -351,7 +350,7 @@ export default function ProductoForm({ producto, barcodePreset, onSuccess }: Pro
             id="stock"
             type="number"
             min="0"
-            {...register("stock", { valueAsNumber: true })}
+            {...register("stock", { setValueAs: (v) => (v === "" || v == null ? 0 : Number(v)) })}
             className="rounded-xl tabular-nums"
           />
         </div>
@@ -361,7 +360,7 @@ export default function ProductoForm({ producto, barcodePreset, onSuccess }: Pro
             id="stockMinimo"
             type="number"
             min="0"
-            {...register("stockMinimo", { valueAsNumber: true })}
+            {...register("stockMinimo", { setValueAs: (v) => (v === "" || v == null ? 0 : Number(v)) })}
             className="rounded-xl tabular-nums"
           />
         </div>
