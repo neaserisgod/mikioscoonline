@@ -54,11 +54,11 @@ function mensajeError(e: unknown): string {
 // ─── Actions ──────────────────────────────────────────────────────────────────
 
 export async function crearProductoAction(input: unknown): Promise<GuardarProductoResult> {
-  const session = await auth()
-  if (!session?.user?.organizationId) return { ok: false, error: "No autorizado" }
-  if (session.user.role !== "ADMIN") return { ok: false, error: "Solo ADMIN puede crear productos" }
-
   try {
+    const session = await auth()
+    if (!session?.user?.organizationId) return { ok: false, error: "No autorizado" }
+    if (session.user.role !== "ADMIN") return { ok: false, error: "Solo ADMIN puede crear productos" }
+
     const parsed = CrearProductoSchema.parse(input)
     await productoService.crear({ ...parsed, organizationId: session.user.organizationId })
     return { ok: true }
@@ -68,11 +68,11 @@ export async function crearProductoAction(input: unknown): Promise<GuardarProduc
 }
 
 export async function editarProductoAction(id: string, input: unknown): Promise<GuardarProductoResult> {
-  const session = await auth()
-  if (!session?.user?.organizationId) return { ok: false, error: "No autorizado" }
-  if (session.user.role !== "ADMIN") return { ok: false, error: "Solo ADMIN puede editar productos" }
-
   try {
+    const session = await auth()
+    if (!session?.user?.organizationId) return { ok: false, error: "No autorizado" }
+    if (session.user.role !== "ADMIN") return { ok: false, error: "Solo ADMIN puede editar productos" }
+
     const parsed = EditarProductoSchema.parse(input)
     await productoService.editar({ id, organizationId: session.user.organizationId, ...parsed })
     return { ok: true }
