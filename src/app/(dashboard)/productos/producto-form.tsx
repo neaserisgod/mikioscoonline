@@ -158,13 +158,17 @@ export default function ProductoForm({ producto, barcodePreset, onSuccess }: Pro
     }
 
     try {
-      if (isEditing) {
-        await editarProductoAction(producto.id, payload)
+      const res = isEditing
+        ? await editarProductoAction(producto.id, payload)
+        : await crearProductoAction(payload)
+
+      if (res.ok) {
+        onSuccess()
       } else {
-        await crearProductoAction(payload)
+        toast.error(res.error)
       }
-      onSuccess()
     } catch (e) {
+      // Red/servidor caído u otro fallo inesperado fuera de la acción
       toast.error(e instanceof Error ? e.message : "No se pudo guardar el producto")
     }
   }
