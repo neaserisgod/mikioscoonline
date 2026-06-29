@@ -6,27 +6,30 @@ import { z, ZodError } from "zod"
 
 // ─── Schemas Zod ─────────────────────────────────────────────────────────────
 
-const CrearProductoSchema = z
-  .object({
-    sku: z.string().min(1),
-    barcode: z.string().optional(),
-    nombre: z.string().min(1),
-    categoryId: z.string().min(1, "Elegí una categoría"),
-    providerId: z.string().min(1).optional(),
-    locationId: z.string().min(1).optional(),
-    stock: z.number().int().min(0).optional(),
-    stockMinimo: z.number().int().min(0).optional(),
-    // Triángulo: al menos 1 de los 3
-    costoCentavos: z.number().int().positive().optional(),
-    precioCentavos: z.number().int().positive().optional(),
-    markupBp: z.number().int().optional(),
-  })
-  .refine(
-    (d) => d.precioCentavos !== undefined || d.costoCentavos !== undefined,
-    { message: "Se requiere al menos precio o costo" }
-  )
+// Base SIN refinement. Zod 4 lanza al evaluar el módulo si se hace .partial()
+// sobre un schema que ya tiene .refine(), así que el refinement se aplica recién
+// al derivar CrearProductoSchema, y Editar parte de esta base limpia.
+const ProductoBaseSchema = z.object({
+  sku: z.string().min(1),
+  barcode: z.string().optional(),
+  nombre: z.string().min(1),
+  categoryId: z.string().min(1, "Elegí una categoría"),
+  providerId: z.string().min(1).optional(),
+  locationId: z.string().min(1).optional(),
+  stock: z.number().int().min(0).optional(),
+  stockMinimo: z.number().int().min(0).optional(),
+  // Triángulo: al menos 1 de los 3
+  costoCentavos: z.number().int().positive().optional(),
+  precioCentavos: z.number().int().positive().optional(),
+  markupBp: z.number().int().optional(),
+})
 
-const EditarProductoSchema = CrearProductoSchema.partial().omit({ sku: true })
+const CrearProductoSchema = ProductoBaseSchema.refine(
+  (d) => d.precioCentavos !== undefined || d.costoCentavos !== undefined,
+  { message: "Se requiere al menos precio o costo" }
+)
+
+const EditarProductoSchema = ProductoBaseSchema.omit({ sku: true }).partial()
 
 const ActualizarCostoSchema = z.object({
   id: z.string().min(1),
