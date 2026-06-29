@@ -11,7 +11,12 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const session = await auth()
   if (!session) redirect("/login")
 
-  const org = await organizacionService.obtener(session.user.organizationId)
+  let org
+  try {
+    org = await organizacionService.obtener(session.user.organizationId)
+  } catch {
+    redirect("/login")
+  }
   if (!org.onboardingCompletadoAt) redirect("/onboarding")
 
   return (

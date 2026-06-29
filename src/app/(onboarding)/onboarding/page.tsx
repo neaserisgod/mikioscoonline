@@ -9,7 +9,12 @@ export default async function OnboardingPage() {
   const session = await auth()
   if (!session?.user?.organizationId) redirect("/login")
 
-  const org = await organizacionService.obtener(session.user.organizationId)
+  let org
+  try {
+    org = await organizacionService.obtener(session.user.organizationId)
+  } catch {
+    redirect("/login")
+  }
 
   if (org.onboardingCompletadoAt) redirect("/")
 
