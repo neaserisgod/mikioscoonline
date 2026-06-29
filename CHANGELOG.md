@@ -3,7 +3,17 @@
 Todas las versiones notables de este proyecto se documentan acá.
 Formato basado en [Keep a Changelog](https://keepachangelog.com/), versionado [SemVer](https://semver.org/) (MAYOR.MENOR.PARCHE).
 
-## [1.0.0] — 2026-06-29
+## [Unreleased]
+
+### Agregado
+- **Onboarding wizard**: alta guiada post-login en `/onboarding` (negocio, datos fiscales, categorías, proveedores, ubicaciones, medios de pago, gastos fijos, caja), con skip individual o total. Gateado por `Organization.onboardingCompletadoAt`; re-ejecutable desde Configuración.
+- Seed mínimo: ahora crea solo 1 organización + 1 usuario ADMIN (sin datos de demo). Email configurable vía `SEED_ADMIN_EMAIL` (default `admin@kiosco.ar`); password obligatorio vía `SEED_ADMIN_PASSWORD`, sin default.
+
+### Corregido
+- Si el `organizationId` de la sesión no existe en la DB (ej. después de un reset), ya no crashea: redirige a `/login`.
+- Overflow responsive en la tarjeta de Equilibrio (home) y en los botones de exportar de Reportes en pantallas chicas (375px).
+
+## [1.0.0] — 2026-06-28
 
 Primera versión funcional del sistema de gestión para kiosco/almacén. App rentabilidad-first.
 
@@ -14,7 +24,8 @@ Primera versión funcional del sistema de gestión para kiosco/almacén. App ren
 - **Rentabilidad**: markup y ganancia por proveedor, categoría y heladera. Costo-foto (el costo al momento de la venta).
 - **Termómetro (home)**: ganancia neta del día, ventas, y punto de equilibrio del mes.
 - **Productos**: alta/edición con triángulo costo–precio–markup, costo provisional, import CSV, código de barras.
-- **Configuración**: categorías (con markup default), proveedores, heladeras, medios de pago, gastos fijos, escáner.
+- **Cajas múltiples**: apertura/cierre de turno con arqueo, recargo por pago virtual (porcentual o fijo).
+- **Configuración**: categorías (con markup default), proveedores, heladeras, medios de pago, gastos fijos, cajas, escáner.
 - **Navegación**: menú hamburguesa + pestañas fijas personalizables, PWA instalable, dark mode.
 - **Multi-tenant** por organización (base para escalar a SaaS).
 
@@ -22,10 +33,10 @@ Primera versión funcional del sistema de gestión para kiosco/almacén. App ren
 - Next.js 16, React 19, TypeScript, Tailwind v4, Prisma 7, NextAuth v5.
 - Lógica de dominio testeada (markup, comisiones, equilibrio, flujo de venta).
 - Montos en centavos (sin floats).
+- Migrado a PostgreSQL (Neon) para producción; SQLite disponible para dev local vía `LOCAL_DEV=1`.
 
 ### Pendiente (próximas versiones)
-- Migración a PostgreSQL + deploy en la nube (ver `Guia_Deploy`).
-- Cajas múltiples con apertura/cierre y arqueo; recargo por pago virtual; montos fijos en markup/recargo.
 - CRUD completo + usuarios/roles en Configuración.
-- Facturación AFIP/ARCA, MercadoPago real, offline (v2).
+- Facturación AFIP/ARCA y MercadoPago real: ya existe el scaffold de providers (`src/lib/providers/`) con stubs que tiran error; falta conectar los SDKs.
+- Modo offline (v2).
 - Hardening multi-tenant (ver `NOTAS-ESCALADO-SAAS.md`).
