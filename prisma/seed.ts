@@ -19,6 +19,7 @@ if (!adminPassword) {
   process.exit(1)
 }
 const adminPwd = adminPassword as string
+const adminEmail = process.env.SEED_ADMIN_EMAIL ?? "admin@kiosco.ar"
 
 const url = process.env.DATABASE_URL!
 if (!url) { console.error("❌ Falta DATABASE_URL"); process.exit(1) }
@@ -40,9 +41,9 @@ async function main() {
   })
 
   await prisma.user.upsert({
-    where: { email: "admin@menegocio.ar" },
+    where: { email: adminEmail },
     create: {
-      email: "admin@menegocio.ar",
+      email: adminEmail,
       passwordHash: await bcrypt.hash(adminPwd, 12),
       nombre: "Admin",
       role: "ADMIN",
@@ -75,7 +76,7 @@ async function main() {
   console.log(`   FixedExpense:   ${gf}`)
   console.log(`   Product:        ${prods}`)
   console.log(`   Sale:           ${sales}`)
-  console.log(`   👤 admin@menegocio.ar / (SEED_ADMIN_PASSWORD)`)
+  console.log(`   👤 ${adminEmail} / (SEED_ADMIN_PASSWORD)`)
 }
 
 main()
