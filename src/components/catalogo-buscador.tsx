@@ -23,11 +23,19 @@ export function CatalogoBuscador({ onSelect, className }: Props) {
   const [query, setQuery] = useState("")
   const [open, setOpen] = useState(false)
 
-  const q = query.trim().toLowerCase()
+  const q = query.trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
+  const words = q.split(/\s+/).filter(Boolean)
+
   const filtered =
-    q.length >= 2
+    words.length > 0
       ? catalogo
-          .filter((item) => item.nombre.toLowerCase().includes(q) || item.sku.includes(q))
+          .filter((item) => {
+            const nombre = item.nombre.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
+            return (
+              words.every((w) => nombre.includes(w)) ||
+              item.sku.includes(q)
+            )
+          })
           .slice(0, 8)
       : []
 
