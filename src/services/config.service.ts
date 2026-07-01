@@ -297,6 +297,14 @@ export const organizacionService = {
     return prisma.organization.findUniqueOrThrow({ where: { id: organizationId } })
   },
 
+  /** Chequeo liviano para el gate del layout — evita traer la fila completa en cada carga. */
+  async obtenerOnboardingStatus(organizationId: string) {
+    return prisma.organization.findUniqueOrThrow({
+      where: { id: organizationId },
+      select: { onboardingCompletadoAt: true },
+    })
+  },
+
   async actualizar(
     organizationId: string,
     data: {

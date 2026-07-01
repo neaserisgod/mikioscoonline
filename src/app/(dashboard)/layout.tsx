@@ -13,7 +13,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   let org
   try {
-    org = await organizacionService.obtener(session.user.organizationId)
+    org = await organizacionService.obtenerOnboardingStatus(session.user.organizationId)
   } catch {
     redirect("/login")
   }

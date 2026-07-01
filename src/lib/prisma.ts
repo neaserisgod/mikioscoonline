@@ -4,11 +4,8 @@ function createPrismaClient() {
   const url = process.env.DATABASE_URL!
   if (url?.startsWith("file:")) {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const Database = require("better-sqlite3")
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { PrismaBetterSqlite3 } = require("@prisma/adapter-better-sqlite3")
-    const db = new Database(url.replace("file:", ""))
-    const adapter = new PrismaBetterSqlite3(db)
+    const adapter = new PrismaBetterSqlite3({ url })
     return new PrismaClient({ adapter } as never)
   }
   // eslint-disable-next-line @typescript-eslint/no-require-imports
