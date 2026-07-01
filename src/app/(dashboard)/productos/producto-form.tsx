@@ -88,6 +88,8 @@ export default function ProductoForm({ producto, barcodePreset, onSuccess }: Pro
   const costoPesos = watch("costoCentavos")
 
   const catActual = categorias?.find((c) => c.id === categoryId)
+  // Fallback to the prop name so SelectValue shows the label even while categorias load
+  const categoryDisplayName = catActual?.nombre ?? (isEditing ? producto?.category?.nombre : undefined)
 
   // Markup mode: defaults to category's tipo when category is selected/changes
   const [markupTipo, setMarkupTipo] = useState<"PORCENTUAL" | "FIJO">("PORCENTUAL")
@@ -205,7 +207,7 @@ export default function ProductoForm({ producto, barcodePreset, onSuccess }: Pro
           onValueChange={(v) => setValue("categoryId", v ?? "")}
         >
           <SelectTrigger className="rounded-xl">
-            <SelectValue placeholder="Seleccionar..." />
+            <SelectValue placeholder="Seleccionar...">{categoryDisplayName}</SelectValue>
           </SelectTrigger>
           <SelectContent>
             {categorias?.map((c) => (
