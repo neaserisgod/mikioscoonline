@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useEffect, useState } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { motion, AnimatePresence } from "framer-motion"
 import { Minus, Plus, Trash2, Loader2, CheckCircle2, AlertTriangle } from "lucide-react"
@@ -72,7 +72,7 @@ export function CarritoPanel({ onSuccess, expandAction, compact = false }: Carri
       const def = mediosPago.find((m) => m.esEfectivo) ?? mediosPago[0]
       setMedioPago(def.id)
     }
-  }, [mediosPago, venta?.medioPagoId])
+  }, [mediosPago, venta?.id, venta?.medioPagoId, setMedioPago])
 
   if (!venta) return null
 

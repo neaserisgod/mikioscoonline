@@ -99,6 +99,7 @@ export const cajaSesionService = {
           efectivoEsperadoCentavos,
           efectivoContadoCentavos,
           diferenciaCentavos,
+          nota: nota ?? null,
           estado: "CERRADA",
         },
         include: SESION_INCLUDE,

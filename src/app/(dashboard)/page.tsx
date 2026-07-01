@@ -65,6 +65,7 @@ interface SesionZResult {
   efectivoEsperadoCentavos: number | null
   efectivoContadoCentavos: number | null
   diferenciaCentavos: number | null
+  nota: string | null
   abiertaPor: { nombre: string }
   cerradaPor: { nombre: string } | null
   movimientos: CajaMovimiento[]
@@ -371,6 +372,12 @@ function CerrarCajaSheet({ cajaNombre, sesionId, efectivoEsperado, onSuccess }: 
               </span>
             </div>
           </div>
+          {zResult.nota && (
+            <div className="rounded-xl border border-border/60 bg-muted/10 px-4 py-2.5">
+              <p className="text-xs text-muted-foreground mb-0.5">Nota</p>
+              <p className="text-sm">{zResult.nota}</p>
+            </div>
+          )}
           <Button className="w-full" onClick={onSuccess}>Listo</Button>
         </div>
       </>

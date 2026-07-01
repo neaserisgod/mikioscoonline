@@ -2,6 +2,7 @@
 
 import { auth } from "@/auth"
 import { productoService } from "@/services/producto.service"
+import { Prisma } from "@prisma/client"
 import { z, ZodError } from "zod"
 
 // ─── Schemas Zod ─────────────────────────────────────────────────────────────
@@ -47,7 +48,7 @@ function mensajeError(e: unknown): string {
   if (e instanceof ZodError) {
     return e.issues.map((i) => i.message).join(" · ")
   }
-  if (typeof e === "object" && e !== null && "code" in e && (e as { code?: string }).code === "P2002") {
+  if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
     return "Ya existe un producto con ese SKU o código de barras"
   }
   if (e instanceof Error) return e.message

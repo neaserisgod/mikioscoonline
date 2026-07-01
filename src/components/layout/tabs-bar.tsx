@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useCallback } from "react"
+import { useState, useCallback, useSyncExternalStore } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { motion, Reorder } from "framer-motion"
@@ -34,26 +34,28 @@ function saveTabs(tabs: string[]) {
 }
 
 // Singleton de tabs compartido entre NavDrawer y TabsBar via custom hook
-let _tabs: string[] = DEFAULT_TABS
+let _tabs: string[] = loadTabs()
 const _listeners = new Set<() => void>()
 
 function notifyListeners() {
   _listeners.forEach((fn) => fn())
 }
 
+function subscribe(fn: () => void) {
+  _listeners.add(fn)
+  return () => { _listeners.delete(fn) }
+}
+
+function getSnapshot(): string[] {
+  return _tabs
+}
+
+function getServerSnapshot(): string[] {
+  return DEFAULT_TABS
+}
+
 export function useTabsStore() {
-  const [, rerender] = useState(0)
-
-  useEffect(() => {
-    _tabs = loadTabs()
-    rerender((n) => n + 1)
-  }, [])
-
-  useEffect(() => {
-    const fn = () => rerender((n) => n + 1)
-    _listeners.add(fn)
-    return () => { _listeners.delete(fn) }
-  }, [])
+  const tabs = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot)
 
   function addTab(href: string) {
     if (_tabs.includes(href)) return
@@ -75,7 +77,7 @@ export function useTabsStore() {
     notifyListeners()
   }
 
-  return { tabs: _tabs, addTab, removeTab, reorderTabs }
+  return { tabs, addTab, removeTab, reorderTabs }
 }
 
 // ── Componente ────────────────────────────────────────────────────────────────
@@ -116,10 +118,7 @@ export function TabsBar() {
 
   const navMap = Object.fromEntries(NAV_ITEMS.map((i) => [i.href, i]))
 
-  // Hidrata desde localStorage en cliente
-  const [hydrated, setHydrated] = useState(false)
-  useEffect(() => setHydrated(true), [])
-  if (!hydrated || tabs.length === 0) return null
+  if (tabs.length === 0) return null
 
   return (
     <div className="flex items-center gap-1 px-3 h-9 border-b border-border/60 bg-background overflow-x-auto scrollbar-none shrink-0">

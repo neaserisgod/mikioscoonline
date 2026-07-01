@@ -198,6 +198,7 @@ model CajaSesion {
   efectivoEsperadoCentavos Int?      // calculado al cerrar
   efectivoContadoCentavos  Int?      // ingresado por el usuario al cerrar
   diferenciaCentavos       Int?      // = contado − esperado
+  nota                     String?   // observación opcional al cerrar (ej. explicar diferencia)
   estado                   String    // "ABIERTA" | "CERRADA" — validado Zod
   organizationId           String
   organization             Organization @relation(fields: [organizationId], references: [id])
