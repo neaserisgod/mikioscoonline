@@ -15,9 +15,6 @@ async function requireAdmin() {
 
 const CajaSchema = z.object({
   nombre: z.string().min(1, "Requerido"),
-  recargoTipo: z.enum(["PORCENTUAL", "FIJO"]).optional(),
-  recargoVirtualBp: z.number().int().min(0).optional(),
-  recargoVirtualFijoCentavos: z.number().int().min(0).optional(),
 })
 
 // ─── Actions ─────────────────────────────────────────────────────────────────

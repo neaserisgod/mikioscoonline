@@ -9,16 +9,3 @@ export function resolverCajaId(
 ): string {
   return categoryCajaId ?? cajaPrincipalId
 }
-
-export interface CajaRecargoConfig {
-  recargoTipo: string
-  recargoVirtualBp: number
-  recargoVirtualFijoCentavos: number
-}
-
-/** Recargo virtual que una caja aplica sobre un monto pagado con medio no-efectivo. */
-export function calcularRecargoCaja(caja: CajaRecargoConfig, montoCentavos: number): number {
-  return caja.recargoTipo === "PORCENTUAL"
-    ? Math.round((montoCentavos * caja.recargoVirtualBp) / 10_000)
-    : caja.recargoVirtualFijoCentavos
-}

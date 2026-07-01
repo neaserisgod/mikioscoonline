@@ -122,6 +122,10 @@ const MedioPagoSchema = z.object({
   esMercadoPago: z.boolean().optional(),
   // Si se setea, las ventas con este medio se atribuyen enteras a esta caja (override del split por categoría)
   cajaId: z.string().min(1).nullable().optional(),
+  // Recargo por pago virtual — se configura acá, una vez por medio de pago
+  recargoTipo: z.enum(["PORCENTUAL", "FIJO"]).optional(),
+  recargoVirtualBp: z.number().int().min(0).optional(),
+  recargoVirtualFijoCentavos: z.number().int().min(0).optional(),
 })
 
 export async function crearMedioPagoAction(input: unknown) {

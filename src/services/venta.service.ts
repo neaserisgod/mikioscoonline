@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma"
-import { calcularComision } from "@/domain/comisiones"
-import { resolverCajaId, calcularRecargoCaja } from "@/domain/cajas"
+import { calcularComision, calcularRecargo } from "@/domain/comisiones"
+import { resolverCajaId } from "@/domain/cajas"
 import { precioUnitarioEfectivo, costoUnitarioEfectivo, subtotalLinea } from "@/domain/pesables"
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
@@ -131,13 +131,14 @@ export const ventaService = {
 
       const cajasDetalle = await tx.caja.findMany({
         where: { id: { in: cajasCandidatas }, organizationId: input.organizationId },
-        select: { id: true, nombre: true, recargoTipo: true, recargoVirtualBp: true, recargoVirtualFijoCentavos: true },
+        select: { id: true, nombre: true },
       })
       const cajaPorId = new Map(cajasDetalle.map((c) => [c.id, c]))
 
       // 7. Atribución final por caja: si el medio de pago tiene caja propia, esa porción va
       // entera ahí (override); si no, se reparte proporcional al split por categoría. El recargo
-      // virtual se calcula por caja a partir de la porción que efectivamente le toca.
+      // se calcula por medio de pago (no por caja — ver PaymentMethod) y se prorratea junto con
+      // el ingreso que le corresponde a cada caja.
       const totalPagado = input.pagos.reduce((sum, p) => sum + p.montoCentavos, 0)
       const montoPorCaja = new Map<string, number>()
       const recargoPorCaja = new Map<string, number>()
@@ -145,21 +146,22 @@ export const ventaService = {
       for (const pago of input.pagos) {
         const medio = medios.find((m) => m.id === pago.paymentMethodId)!
         const fraccion = totalPagado > 0 ? pago.montoCentavos / totalPagado : 0
-        const aplicarRecargo = (cajaId: string, monto: number) => {
-          if (medio.esEfectivo || monto === 0) return
-          const caja = cajaPorId.get(cajaId)!
-          recargoPorCaja.set(cajaId, (recargoPorCaja.get(cajaId) ?? 0) + calcularRecargoCaja(caja, monto))
-        }
+        const ingresoPago = Math.round(totalCentavos * fraccion)
+        const recargoPago = medio.esEfectivo ? 0 : calcularRecargo(medio, ingresoPago)
 
         if (medio.cajaId) {
-          const ingreso = Math.round(totalCentavos * fraccion)
-          montoPorCaja.set(medio.cajaId, (montoPorCaja.get(medio.cajaId) ?? 0) + ingreso)
-          aplicarRecargo(medio.cajaId, ingreso)
+          montoPorCaja.set(medio.cajaId, (montoPorCaja.get(medio.cajaId) ?? 0) + ingresoPago)
+          if (recargoPago > 0) {
+            recargoPorCaja.set(medio.cajaId, (recargoPorCaja.get(medio.cajaId) ?? 0) + recargoPago)
+          }
         } else {
           for (const [cajaId, montoCategoria] of montoPorCajaCategoria) {
             const porcion = Math.round(montoCategoria * fraccion)
             montoPorCaja.set(cajaId, (montoPorCaja.get(cajaId) ?? 0) + porcion)
-            aplicarRecargo(cajaId, porcion)
+            if (recargoPago > 0 && totalCentavos > 0) {
+              const recargoPorcion = Math.round((recargoPago * montoCategoria) / totalCentavos)
+              recargoPorCaja.set(cajaId, (recargoPorCaja.get(cajaId) ?? 0) + recargoPorcion)
+            }
           }
         }
       }

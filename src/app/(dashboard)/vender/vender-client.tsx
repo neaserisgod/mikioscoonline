@@ -20,7 +20,6 @@ interface Producto {
   precioCentavos: number
   costoCentavos: number
   stock: number
-  category: { cajaId: string | null }
   esPesable: boolean
   precioPorKgCentavos: number | null
   stockGramos: number | null
@@ -54,7 +53,6 @@ export default function VenderClient() {
           stock: 0,
           stockGramos: p.stockGramos,
           esPesable: true,
-          cajaId: p.category.cajaId,
         })
         toast.info(`Cargá el peso de "${p.nombre}" en el carrito`)
       } else {
@@ -67,7 +65,6 @@ export default function VenderClient() {
           stock: p.stock,
           stockGramos: null,
           esPesable: false,
-          cajaId: p.category.cajaId,
         })
       }
       setQuery("")

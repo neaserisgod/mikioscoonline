@@ -70,6 +70,7 @@ interface MedioPago {
   esEfectivo: boolean; esMercadoPago: boolean
   activo: boolean; esDefault: boolean; orden: number
   cajaId: string | null
+  recargoTipo: string; recargoVirtualBp: number; recargoVirtualFijoCentavos: number
 }
 
 type TipoPago = "efectivo" | "mercadopago" | "digital"
@@ -94,7 +95,7 @@ const TIPO_LABELS: Record<TipoPago, string> = {
 }
 interface CajaItem {
   id: string; nombre: string; esPrincipal: boolean; activo: boolean
-  orden: number; recargoTipo: string; recargoVirtualBp: number; recargoVirtualFijoCentavos: number
+  orden: number
   _count: { categories: number }
   sesiones: { id: string; fondoInicialCentavos: number; fechaApertura: string; abiertaPor: { nombre: string } }[]
   categories: { id: string; nombre: string }[]
@@ -712,8 +713,17 @@ const medioPagoSchema = z.object({
   comisionPct: z.number().min(0, "Mínimo 0"),
   tipo: z.enum(["efectivo", "mercadopago", "digital"]),
   cajaId: z.string().nullable(),
+  // Recargo por pago virtual — se configura acá, una sola vez por medio (no por caja)
+  recargoTipo: z.enum(["PORCENTUAL", "FIJO"]),
+  recargoVirtualPct: z.number().min(0),
+  recargoVirtualFijoPesos: z.number().min(0),
 })
 type MedioPagoForm = z.infer<typeof medioPagoSchema>
+
+const MEDIO_PAGO_DEFAULTS: MedioPagoForm = {
+  nombre: "", comisionPct: 0, tipo: "digital", cajaId: null,
+  recargoTipo: "PORCENTUAL", recargoVirtualPct: 0, recargoVirtualFijoPesos: 0,
+}
 
 function MediosPagoSection({ onMutate }: { onMutate: () => void }) {
   const { data, isLoading } = useConfig<MedioPago[]>("medios-pago")
@@ -724,25 +734,43 @@ function MediosPagoSection({ onMutate }: { onMutate: () => void }) {
 
   const { register, handleSubmit, reset, watch, setValue, formState: { errors, isSubmitting } } = useForm<MedioPagoForm>({
     resolver: zodResolver(medioPagoSchema),
-    defaultValues: { tipo: "digital", cajaId: null },
+    defaultValues: MEDIO_PAGO_DEFAULTS,
   })
+  const tipo = watch("tipo")
+  const recargoTipo = watch("recargoTipo") ?? "PORCENTUAL"
 
-  function abrirCrear() { setEditing(null); reset({ nombre: "", comisionPct: 0, tipo: "digital", cajaId: null }); setSheetOpen(true) }
+  function abrirCrear() { setEditing(null); reset(MEDIO_PAGO_DEFAULTS); setSheetOpen(true) }
   function abrirEditar(m: MedioPago) {
     setEditing(m)
-    reset({ nombre: m.nombre, comisionPct: m.comisionBp / 100, tipo: tipoFromMedio(m), cajaId: m.cajaId })
+    reset({
+      nombre: m.nombre,
+      comisionPct: m.comisionBp / 100,
+      tipo: tipoFromMedio(m),
+      cajaId: m.cajaId,
+      recargoTipo: (m.recargoTipo as "PORCENTUAL" | "FIJO") ?? "PORCENTUAL",
+      recargoVirtualPct: m.recargoVirtualBp / 100,
+      recargoVirtualFijoPesos: m.recargoVirtualFijoCentavos / 100,
+    })
     setSheetOpen(true)
   }
 
   async function onSubmit(data: MedioPagoForm) {
-    const bp = Math.round(data.comisionPct * 100)
     const flags = flagsFromTipo(data.tipo)
+    const payload = {
+      nombre: data.nombre,
+      comisionBp: Math.round(data.comisionPct * 100),
+      ...flags,
+      cajaId: data.cajaId,
+      recargoTipo: data.recargoTipo,
+      recargoVirtualBp: Math.round(data.recargoVirtualPct * 100),
+      recargoVirtualFijoCentavos: Math.round(data.recargoVirtualFijoPesos * 100),
+    }
     try {
       if (editing) {
-        await editarMedioPagoAction(editing.id, { nombre: data.nombre, comisionBp: bp, ...flags, cajaId: data.cajaId })
+        await editarMedioPagoAction(editing.id, payload)
         toast.success("Medio de pago actualizado")
       } else {
-        await crearMedioPagoAction({ nombre: data.nombre, comisionBp: bp, ...flags, cajaId: data.cajaId })
+        await crearMedioPagoAction(payload)
         toast.success("Medio de pago creado")
       }
       setSheetOpen(false); onMutate()
@@ -809,6 +837,9 @@ function MediosPagoSection({ onMutate }: { onMutate: () => void }) {
                 <p className="text-xs text-muted-foreground">
                   {TIPO_LABELS[tipoFromMedio(m)]}
                   {m.comisionBp > 0 && ` · Comisión: ${(m.comisionBp / 100).toFixed(2)}%`}
+                  {(m.recargoVirtualBp > 0 || m.recargoVirtualFijoCentavos > 0) && (
+                    ` · Recargo: ${m.recargoTipo === "PORCENTUAL" ? `${(m.recargoVirtualBp / 100).toFixed(1)}%` : `$${(m.recargoVirtualFijoCentavos / 100).toFixed(2)}`}`
+                  )}
                   {m.cajaId && ` · Caja: ${cajas?.find((c) => c.id === m.cajaId)?.nombre ?? "—"}`}
                 </p>
               </div>
@@ -891,6 +922,40 @@ function MediosPagoSection({ onMutate }: { onMutate: () => void }) {
                 (por ejemplo, una caja de MercadoPago separada del efectivo).
               </p>
             </div>
+
+            {tipo !== "efectivo" && (
+              <div className="space-y-2 rounded-xl border border-border/60 p-3">
+                <div className="flex items-center justify-between">
+                  <Label>Recargo por pago con este medio</Label>
+                  <Select value={recargoTipo} onValueChange={(v) => v && setValue("recargoTipo", v as "PORCENTUAL" | "FIJO")}>
+                    <SelectTrigger className="w-32 h-8 text-xs"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="PORCENTUAL">%</SelectItem>
+                      <SelectItem value="FIJO">$ fijo</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                {recargoTipo === "PORCENTUAL" ? (
+                  <Field
+                    label="Recargo (%)"
+                    type="number" step="0.1" min="0"
+                    {...register("recargoVirtualPct", { valueAsNumber: true })}
+                    placeholder="0"
+                  />
+                ) : (
+                  <Field
+                    label="Recargo fijo ($)"
+                    type="number" step="0.01" min="0"
+                    {...register("recargoVirtualFijoPesos", { valueAsNumber: true })}
+                    placeholder="0"
+                  />
+                )}
+                <p className="text-xs text-muted-foreground">
+                  Se suma automáticamente al total cuando se elige este medio en el POS. 0 = sin recargo.
+                </p>
+              </div>
+            )}
+
             <Button type="submit" className="w-full" disabled={isSubmitting}>
               {isSubmitting ? <Loader2 className="size-4 animate-spin" /> : editing ? "Guardar cambios" : "Crear"}
             </Button>
@@ -1216,9 +1281,6 @@ function OperacionSection() {
 
 const cajaSchema = z.object({
   nombre: z.string().min(1, "Requerido"),
-  recargoTipo: z.enum(["PORCENTUAL", "FIJO"]).optional(),
-  recargoVirtualBp: z.number().int().min(0).optional(),
-  recargoVirtualFijoCentavos: z.number().int().min(0).optional(),
 })
 type CajaFormData = z.infer<typeof cajaSchema>
 
@@ -1268,7 +1330,6 @@ function CajasSection({ onMutate }: { onMutate: () => void }) {
           {data?.length === 0 && <EmptyRow label="Sin cajas" />}
           {data?.map((c) => {
             const sesionAbierta = c.sesiones[0]
-            const tieneRecargo = c.recargoVirtualBp > 0 || c.recargoVirtualFijoCentavos > 0
             return (
               <div key={c.id} className={cn("px-4 py-3 flex items-center gap-3", !c.activo && "opacity-60")}>
                 <div className="flex-1 min-w-0">
@@ -1288,14 +1349,6 @@ function CajasSection({ onMutate }: { onMutate: () => void }) {
                   </div>
                   <p className="text-xs text-muted-foreground">
                     {c._count.categories} categoría(s)
-                    {tieneRecargo && (
-                      <span className="ml-2">
-                        · Recargo virtual:{" "}
-                        {c.recargoTipo === "PORCENTUAL"
-                          ? `${(c.recargoVirtualBp / 100).toFixed(1)}%`
-                          : `$${(c.recargoVirtualFijoCentavos / 100).toFixed(2)}`}
-                      </span>
-                    )}
                   </p>
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
@@ -1349,16 +1402,12 @@ function CajasSection({ onMutate }: { onMutate: () => void }) {
 }
 
 function CajaForm({ caja, onSuccess }: { caja?: CajaItem; onSuccess: () => void }) {
-  const { register, handleSubmit, watch, setValue, formState: { errors, isSubmitting } } = useForm<CajaFormData>({
+  const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<CajaFormData>({
     resolver: zodResolver(cajaSchema),
     defaultValues: {
       nombre: caja?.nombre ?? "",
-      recargoTipo: (caja?.recargoTipo as "PORCENTUAL" | "FIJO") ?? "PORCENTUAL",
-      recargoVirtualBp: caja?.recargoVirtualBp ?? 0,
-      recargoVirtualFijoCentavos: caja?.recargoVirtualFijoCentavos ?? 0,
     },
   })
-  const recargoTipo = watch("recargoTipo") ?? "PORCENTUAL"
 
   async function onSubmit(data: CajaFormData) {
     try {
@@ -1379,35 +1428,8 @@ function CajaForm({ caja, onSuccess }: { caja?: CajaItem; onSuccess: () => void 
       <form onSubmit={handleSubmit(onSubmit)} className="mt-6 space-y-4">
         <Field label="Nombre" {...register("nombre")} error={errors.nombre?.message} />
 
-        <div className="space-y-1.5">
-          <Label>Recargo por pago virtual</Label>
-          <Select defaultValue={recargoTipo} onValueChange={(v) => setValue("recargoTipo", v as "PORCENTUAL" | "FIJO")}>
-            <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="PORCENTUAL">Porcentual (%)</SelectItem>
-              <SelectItem value="FIJO">Monto fijo ($)</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        {recargoTipo === "PORCENTUAL" ? (
-          <Field
-            label="Recargo virtual (%)"
-            type="number" step="0.1" min="0"
-            {...register("recargoVirtualBp", { valueAsNumber: true })}
-            placeholder="0"
-          />
-        ) : (
-          <Field
-            label="Recargo virtual fijo ($)"
-            type="number" step="0.01" min="0"
-            {...register("recargoVirtualFijoCentavos", { valueAsNumber: true })}
-            placeholder="0"
-          />
-        )}
-
         <p className="text-xs text-muted-foreground">
-          El recargo se aplica en el POS cuando el pago es con un medio no-efectivo. 0 = sin recargo.
+          El recargo por pago virtual se configura en Medios de pago, no acá.
         </p>
 
         <Button type="submit" className="w-full" disabled={isSubmitting}>

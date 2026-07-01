@@ -30,3 +30,19 @@ export function totalComisiones(
 ): number {
   return pagos.reduce((sum, p) => sum + p.comisionCentavos, 0)
 }
+
+export interface RecargoConfig {
+  recargoTipo: string
+  recargoVirtualBp: number
+  recargoVirtualFijoCentavos: number
+}
+
+/**
+ * Recargo virtual que un medio de pago no-efectivo aplica sobre un monto.
+ * Se configura una vez por medio de pago (no por caja) — ver PaymentMethod.
+ */
+export function calcularRecargo(medio: RecargoConfig, montoCentavos: number): number {
+  return medio.recargoTipo === "PORCENTUAL"
+    ? Math.round((montoCentavos * medio.recargoVirtualBp) / 10_000)
+    : medio.recargoVirtualFijoCentavos
+}

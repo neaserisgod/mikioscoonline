@@ -14,7 +14,6 @@ export interface LineaCarrito {
   stock: number
   /** Solo pesables: gramos disponibles. null en productos por unidad. */
   stockGramos: number | null
-  cajaId: string | null
 }
 
 export interface VentaAbierta {
@@ -26,7 +25,7 @@ export interface VentaAbierta {
 
 export type ProductoParaCarrito = Pick<
   LineaCarrito,
-  "productId" | "nombre" | "sku" | "precioUnitarioCentavos" | "stock" | "cajaId" | "esPesable" | "stockGramos"
+  "productId" | "nombre" | "sku" | "precioUnitarioCentavos" | "stock" | "esPesable" | "stockGramos"
 >
 
 interface VentasState {

@@ -23,7 +23,6 @@ interface Producto {
   precioCentavos: number
   costoCentavos: number
   stock: number
-  category: { cajaId: string | null }
   esPesable: boolean
   precioPorKgCentavos: number | null
   stockGramos: number | null
@@ -95,7 +94,6 @@ export function useGlobalScanner() {
           stock: 0,
           stockGramos: producto.stockGramos,
           esPesable: true,
-          cajaId: producto.category.cajaId,
         })
         setOverlay(true)
         toast.success(`${producto.nombre} agregado`, { description: "Cargá el peso en el carrito", duration: 2000 })
@@ -110,7 +108,6 @@ export function useGlobalScanner() {
         stock: producto.stock,
         stockGramos: null,
         esPesable: false,
-        cajaId: producto.category.cajaId,
       })
       setOverlay(true)
       toast.success(`${producto.nombre} agregado`, { duration: 1500 })

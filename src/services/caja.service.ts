@@ -4,16 +4,10 @@ import { prisma } from "@/lib/prisma"
 
 export interface CrearCajaInput {
   nombre: string
-  recargoTipo?: "PORCENTUAL" | "FIJO"
-  recargoVirtualBp?: number
-  recargoVirtualFijoCentavos?: number
 }
 
 export interface EditarCajaInput {
   nombre?: string
-  recargoTipo?: "PORCENTUAL" | "FIJO"
-  recargoVirtualBp?: number
-  recargoVirtualFijoCentavos?: number
 }
 
 // ─── Helper interno ────────────────────────────────────────────────────────────
@@ -57,9 +51,6 @@ export const cajaService = {
         nombre: data.nombre,
         esPrincipal: false,
         orden: (maxOrden._max.orden ?? 0) + 1,
-        recargoTipo: data.recargoTipo ?? "PORCENTUAL",
-        recargoVirtualBp: data.recargoVirtualBp ?? 0,
-        recargoVirtualFijoCentavos: data.recargoVirtualFijoCentavos ?? 0,
         organizationId,
       },
     })

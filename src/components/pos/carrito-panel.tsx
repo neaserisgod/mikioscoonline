@@ -8,7 +8,7 @@ import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { formatearARS } from "@/domain/dinero"
-import { calcularRecargoCaja } from "@/domain/cajas"
+import { calcularRecargo } from "@/domain/comisiones"
 import { subtotalLinea } from "@/domain/pesables"
 import { crearVentaAction } from "@/app/actions/ventas.actions"
 import { useVentasStore, useVentaActiva } from "@/stores/ventas.store"
@@ -20,11 +20,6 @@ interface MedioPago {
   comisionBp: number
   esMercadoPago: boolean
   esEfectivo: boolean
-}
-
-interface CajaRecargo {
-  id: string
-  esPrincipal: boolean
   recargoTipo: string
   recargoVirtualBp: number
   recargoVirtualFijoCentavos: number
@@ -56,12 +51,6 @@ export function CarritoPanel({ onSuccess, expandAction, compact = false }: Carri
     staleTime: 5 * 60_000,
   })
 
-  const { data: cajas } = useQuery<CajaRecargo[]>({
-    queryKey: ["cajas-panel"],
-    queryFn: () => fetch("/api/cajas").then((r) => r.json()),
-    staleTime: 5 * 60_000,
-  })
-
   // Auto-select the default payment method when options load and none is selected
   useEffect(() => {
     if (mediosPago?.length && venta && !venta.medioPagoId) {
@@ -82,20 +71,11 @@ export function CarritoPanel({ onSuccess, expandAction, compact = false }: Carri
     : 0
   const faltaPeso = carrito.some((l) => l.esPesable && (l.gramos ?? 0) <= 0)
 
-  // Recargo virtual por pago no-efectivo
-  const cajaPrincipal = cajas?.find((c) => c.esPrincipal)
-  let recargoTotalCentavos = 0
-  if (medioPagoSeleccionado && !medioPagoSeleccionado.esEfectivo && cajaPrincipal) {
-    const montoPorCaja = new Map<string, number>()
-    for (const item of carrito) {
-      const cajaId = item.cajaId ?? cajaPrincipal.id
-      montoPorCaja.set(cajaId, (montoPorCaja.get(cajaId) ?? 0) + subtotal(item))
-    }
-    for (const [cajaId, monto] of montoPorCaja) {
-      const caja = cajas?.find((c) => c.id === cajaId) ?? cajaPrincipal
-      recargoTotalCentavos += calcularRecargoCaja(caja, monto)
-    }
-  }
+  // Recargo virtual por pago no-efectivo — se configura por medio de pago (Config > Medios de pago)
+  const recargoTotalCentavos =
+    medioPagoSeleccionado && !medioPagoSeleccionado.esEfectivo
+      ? calcularRecargo(medioPagoSeleccionado, totalCentavos)
+      : 0
   const totalACobrarCentavos = totalCentavos + recargoTotalCentavos
 
   async function confirmar() {

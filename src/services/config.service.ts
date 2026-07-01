@@ -138,7 +138,10 @@ export const medioPagoService = {
 
   async crear(
     organizationId: string,
-    data: { nombre: string; comisionBp: number; esEfectivo?: boolean; esMercadoPago?: boolean; cajaId?: string | null }
+    data: {
+      nombre: string; comisionBp: number; esEfectivo?: boolean; esMercadoPago?: boolean; cajaId?: string | null
+      recargoTipo?: "PORCENTUAL" | "FIJO"; recargoVirtualBp?: number; recargoVirtualFijoCentavos?: number
+    }
   ) {
     const maxOrden = await prisma.paymentMethod.aggregate({
       where: { organizationId },
@@ -152,6 +155,9 @@ export const medioPagoService = {
         ...data,
         esEfectivo: data.esEfectivo ?? false,
         esMercadoPago: data.esMercadoPago ?? false,
+        recargoTipo: data.recargoTipo ?? "PORCENTUAL",
+        recargoVirtualBp: data.recargoVirtualBp ?? 0,
+        recargoVirtualFijoCentavos: data.recargoVirtualFijoCentavos ?? 0,
         esDefault: false,
         orden: (maxOrden._max.orden ?? -1) + 1,
         organizationId,
@@ -162,7 +168,10 @@ export const medioPagoService = {
   async editar(
     id: string,
     organizationId: string,
-    data: { nombre?: string; comisionBp?: number; esEfectivo?: boolean; esMercadoPago?: boolean; activo?: boolean; cajaId?: string | null }
+    data: {
+      nombre?: string; comisionBp?: number; esEfectivo?: boolean; esMercadoPago?: boolean; activo?: boolean; cajaId?: string | null
+      recargoTipo?: "PORCENTUAL" | "FIJO"; recargoVirtualBp?: number; recargoVirtualFijoCentavos?: number
+    }
   ) {
     await prisma.paymentMethod.findFirstOrThrow({ where: { id, organizationId } })
     if (data.cajaId) {
