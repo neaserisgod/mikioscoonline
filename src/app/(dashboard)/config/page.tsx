@@ -851,7 +851,7 @@ function MediosPagoSection({ onMutate }: { onMutate: () => void }) {
             <Field label="Nombre" {...register("nombre")} error={errors.nombre?.message} />
             <div className="space-y-1.5">
               <Label>Tipo</Label>
-              <Select value={watch("tipo")} onValueChange={(v) => setValue("tipo", v as TipoPago)}>
+              <Select value={watch("tipo")} onValueChange={(v) => v && setValue("tipo", v as TipoPago)}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>

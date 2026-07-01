@@ -264,7 +264,7 @@ export default function ProductoForm({ producto, barcodePreset, onSuccess }: Pro
           <Label>Proveedor</Label>
           <Select
             value={watch("providerId") ?? ""}
-            onValueChange={(v) => setValue("providerId", v === "__none__" ? undefined : v)}
+            onValueChange={(v) => setValue("providerId", v === "__none__" ? undefined : v ?? undefined)}
           >
             <SelectTrigger className="rounded-xl">
               <SelectValue placeholder="Sin proveedor">
@@ -283,7 +283,7 @@ export default function ProductoForm({ producto, barcodePreset, onSuccess }: Pro
           <Label>Heladera</Label>
           <Select
             value={watch("locationId") ?? ""}
-            onValueChange={(v) => setValue("locationId", v === "__none__" ? undefined : v)}
+            onValueChange={(v) => setValue("locationId", v === "__none__" ? undefined : v ?? undefined)}
           >
             <SelectTrigger className="rounded-xl">
               <SelectValue placeholder="Sin heladera">
