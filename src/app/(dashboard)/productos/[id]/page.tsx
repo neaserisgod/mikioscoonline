@@ -12,9 +12,13 @@ export default function EditarProductoPage({ params }: { params: Promise<{ id: s
   const router = useRouter()
   const qc = useQueryClient()
 
-  const { data: producto, isLoading } = useQuery({
+  const { data: producto, isLoading, isError } = useQuery({
     queryKey: ["producto", id],
-    queryFn: () => fetch(`/api/productos/${id}`).then((r) => r.json()),
+    queryFn: async () => {
+      const r = await fetch(`/api/productos/${id}`)
+      if (!r.ok) throw new Error(r.status === 404 ? "Producto no encontrado" : "Error al cargar el producto")
+      return r.json()
+    },
   })
 
   function onSuccess() {
@@ -25,6 +29,7 @@ export default function EditarProductoPage({ params }: { params: Promise<{ id: s
   }
 
   if (isLoading) return <Skeleton className="h-96 w-full max-w-2xl" />
+  if (isError) return <p className="text-sm text-destructive">No se encontró el producto.</p>
 
   return (
     <div className="max-w-2xl space-y-4">

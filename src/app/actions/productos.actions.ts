@@ -84,21 +84,31 @@ export async function editarProductoAction(id: string, input: unknown): Promise<
   }
 }
 
-export async function actualizarCostoAction(input: unknown) {
-  const session = await auth()
-  if (!session?.user?.organizationId) throw new Error("No autorizado")
-  if (session.user.role !== "ADMIN") throw new Error("Solo ADMIN puede actualizar costos")
+export async function actualizarCostoAction(input: unknown): Promise<GuardarProductoResult> {
+  try {
+    const session = await auth()
+    if (!session?.user?.organizationId) return { ok: false, error: "No autorizado" }
+    if (session.user.role !== "ADMIN") return { ok: false, error: "Solo ADMIN puede actualizar costos" }
 
-  const { id, costoCentavos } = ActualizarCostoSchema.parse(input)
-  return productoService.actualizarCosto(id, session.user.organizationId, costoCentavos)
+    const { id, costoCentavos } = ActualizarCostoSchema.parse(input)
+    await productoService.actualizarCosto(id, session.user.organizationId, costoCentavos)
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: mensajeError(e) }
+  }
 }
 
-export async function desactivarProductoAction(id: string) {
-  const session = await auth()
-  if (!session?.user?.organizationId) throw new Error("No autorizado")
-  if (session.user.role !== "ADMIN") throw new Error("Solo ADMIN puede desactivar productos")
+export async function desactivarProductoAction(id: string): Promise<GuardarProductoResult> {
+  try {
+    const session = await auth()
+    if (!session?.user?.organizationId) return { ok: false, error: "No autorizado" }
+    if (session.user.role !== "ADMIN") return { ok: false, error: "Solo ADMIN puede desactivar productos" }
 
-  return productoService.desactivar(id, session.user.organizationId)
+    await productoService.desactivar(id, session.user.organizationId)
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: mensajeError(e) }
+  }
 }
 
 export async function importarProductosCSVAction(csv: string) {

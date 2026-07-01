@@ -33,6 +33,10 @@ export const rentabilidadService = {
           })
         : null
 
+    if (agrupador === "caja" && !cajaPrincipal) {
+      throw new Error("No se encontró la caja principal. Verificá la configuración de cajas.")
+    }
+
     // Traer todas las líneas de venta del período con sus relaciones
     const lineas = await prisma.saleLine.findMany({
       where: {

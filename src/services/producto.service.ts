@@ -56,8 +56,8 @@ const incluirRelaciones = {
 
 export const productoService = {
   async crear(input: CrearProductoInput) {
-    const category = await prisma.category.findUniqueOrThrow({
-      where: { id: input.categoryId },
+    const category = await prisma.category.findFirstOrThrow({
+      where: { id: input.categoryId, organizationId: input.organizationId },
     })
 
     const triangulo = resolverTriangulo({
@@ -95,7 +95,7 @@ export const productoService = {
     })
 
     const cat = input.categoryId
-      ? await prisma.category.findUniqueOrThrow({ where: { id: input.categoryId } })
+      ? await prisma.category.findFirstOrThrow({ where: { id: input.categoryId, organizationId: input.organizationId } })
       : producto.category
 
     let triangulo: ReturnType<typeof resolverTriangulo> | null = null
