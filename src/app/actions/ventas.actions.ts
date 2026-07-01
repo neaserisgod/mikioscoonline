@@ -2,7 +2,7 @@
 
 import { auth } from "@/auth"
 import { ventaService } from "@/services/venta.service"
-import { z } from "zod"
+import { z, ZodError } from "zod"
 
 const LineaSchema = z.object({
   productId: z.string().cuid(),
@@ -21,16 +21,34 @@ const CrearVentaSchema = z.object({
   pagos: z.array(PagoSchema).min(1, "La venta debe tener al menos un pago"),
 })
 
-export async function crearVentaAction(input: unknown) {
-  const session = await auth()
-  if (!session?.user?.id || !session.user.organizationId) throw new Error("No autorizado")
+// Devolvemos el error como dato (no lo lanzamos) para que el mensaje real llegue al
+// cliente. Next.js enmascara los errores LANZADOS en producción ("digest"), pero los
+// valores devueltos pasan tal cual — mismo patrón que productos.actions.ts.
+type CrearVentaResult = { ok: true; id: string } | { ok: false; error: string }
 
-  const { lineas, pagos } = CrearVentaSchema.parse(input)
+function mensajeError(e: unknown): string {
+  if (e instanceof ZodError) {
+    return e.issues.map((i) => i.message).join(" · ")
+  }
+  if (e instanceof Error) return e.message
+  return "No se pudo registrar la venta"
+}
 
-  return ventaService.crear({
-    userId: session.user.id,
-    organizationId: session.user.organizationId,
-    lineas,
-    pagos,
-  })
+export async function crearVentaAction(input: unknown): Promise<CrearVentaResult> {
+  try {
+    const session = await auth()
+    if (!session?.user?.id || !session.user.organizationId) return { ok: false, error: "No autorizado" }
+
+    const { lineas, pagos } = CrearVentaSchema.parse(input)
+
+    const venta = await ventaService.crear({
+      userId: session.user.id,
+      organizationId: session.user.organizationId,
+      lineas,
+      pagos,
+    })
+    return { ok: true, id: venta.id }
+  } catch (e) {
+    return { ok: false, error: mensajeError(e) }
+  }
 }

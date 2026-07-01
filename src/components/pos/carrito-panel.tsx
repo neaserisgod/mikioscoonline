@@ -112,9 +112,19 @@ export function CarritoPanel({ onSuccess, expandAction, compact = false }: Carri
         })),
         pagos: [{ paymentMethodId: medioPagoId, montoCentavos: totalACobrarCentavos }],
       })
-      const ventaId = (result as { id: string }).id
+
+      if (!result.ok) {
+        // Mensaje específico para sobreventa entre carritos paralelos
+        if (result.error.toLowerCase().includes("stock")) {
+          toast.error("Stock insuficiente — otro carrito ya reservó esas unidades")
+        } else {
+          toast.error(result.error)
+        }
+        return
+      }
+
       setSuccessInfo({
-        ventaId,
+        ventaId: result.id,
         totalCentavos: totalACobrarCentavos,
         nombreMedioPago: medioPagoSeleccionado?.nombre ?? "",
       })
@@ -122,15 +132,9 @@ export function CarritoPanel({ onSuccess, expandAction, compact = false }: Carri
       qc.invalidateQueries({ queryKey: ["resumen"] })
       qc.invalidateQueries({ queryKey: ["productos"] })
       qc.invalidateQueries({ queryKey: ["cajas-panel"] })
-      onSuccess?.(ventaId)
+      onSuccess?.(result.id)
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Error al registrar la venta"
-      // Mensaje específico para sobreventa entre carritos paralelos
-      if (msg.toLowerCase().includes("stock")) {
-        toast.error("Stock insuficiente — otro carrito ya reservó esas unidades")
-      } else {
-        toast.error(msg)
-      }
+      toast.error(e instanceof Error ? e.message : "Error al registrar la venta")
     } finally {
       setLoading(false)
     }
