@@ -285,35 +285,63 @@ export function CarritoPanel({ onSuccess, expandAction, compact = false }: Carri
         </div>
       </div>
 
-      {/* Recargo virtual + comisión / neto */}
-      {(recargoTotalCentavos > 0 || comisionCentavos > 0) && (
-        <div className="space-y-1 text-sm">
+      {/* Resumen tipo ticket — último vistazo antes de confirmar, sin paso extra */}
+      {carrito.length > 0 && (
+        <div className="rounded-xl border border-border/60 bg-muted/10 p-3 space-y-1.5">
+          <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Resumen</p>
+          <div className="space-y-1">
+            {carrito.map((item) => (
+              <div key={item.productId} className="flex items-center justify-between gap-2 text-xs">
+                <span className="truncate text-muted-foreground">
+                  {item.esPesable ? `${((item.gramos ?? 0) / 1000).toFixed(3)}kg` : `${item.cantidad}x`} {item.nombre}
+                </span>
+                <span className="tabular-nums shrink-0">{formatearARS(subtotal(item))}</span>
+              </div>
+            ))}
+          </div>
+
+          <Separator className="bg-border/40" />
+
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-muted-foreground">Subtotal</span>
+            <span className="tabular-nums">{formatearARS(totalCentavos)}</span>
+          </div>
           {recargoTotalCentavos > 0 && (
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between text-sm">
               <span className="text-muted-foreground">Recargo virtual</span>
               <span className="tabular-nums">+{formatearARS(recargoTotalCentavos)}</span>
             </div>
           )}
+          <div className="flex items-center justify-between text-base font-semibold">
+            <span>Total</span>
+            <span className="tabular-nums">{formatearARS(totalACobrarCentavos)}</span>
+          </div>
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
+            <span>Medio de pago</span>
+            <span>{medioPagoSeleccionado?.nombre ?? "Sin elegir"}</span>
+          </div>
+
           {comisionCentavos > 0 && (
             <>
-              <div className="flex items-center justify-between">
+              <Separator className="bg-border/40" />
+              <div className="flex items-center justify-between text-sm">
                 <span className="text-muted-foreground">Comisión</span>
                 <span className="text-k-loss tabular-nums">−{formatearARS(comisionCentavos)}</span>
               </div>
-              <div className="flex items-center justify-between font-semibold">
+              <div className="flex items-center justify-between text-sm font-semibold">
                 <span>Neto recibido</span>
                 <span className={cn("tabular-nums", recargoTotalCentavos >= comisionCentavos ? "text-k-gain" : "text-k-loss")}>
                   {formatearARS(totalACobrarCentavos - comisionCentavos)}
                 </span>
               </div>
+              {/* Aviso cuando el recargo no cubre la comisión */}
+              {recargoTotalCentavos < comisionCentavos && (
+                <div className="flex items-center gap-1.5 rounded-lg bg-k-loss/8 border border-k-loss/20 px-2.5 py-1.5 text-xs text-k-loss">
+                  <AlertTriangle className="size-3 shrink-0" />
+                  El recargo no cubre la comisión del medio de pago
+                </div>
+              )}
             </>
-          )}
-          {/* Aviso cuando el recargo no cubre la comisión */}
-          {comisionCentavos > 0 && recargoTotalCentavos < comisionCentavos && (
-            <div className="flex items-center gap-1.5 rounded-lg bg-k-loss/8 border border-k-loss/20 px-2.5 py-1.5 text-xs text-k-loss">
-              <AlertTriangle className="size-3 shrink-0" />
-              El recargo no cubre la comisión del medio de pago
-            </div>
           )}
         </div>
       )}
