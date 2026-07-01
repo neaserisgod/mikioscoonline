@@ -29,6 +29,11 @@ interface Producto {
   category: { nombre: string; markupDefaultBp: number }
   provider?: { nombre: string } | null
   location?: { nombre: string } | null
+  esPesable: boolean
+  precioPorKgCentavos: number | null
+  costoPorKgCentavos: number | null
+  stockGramos: number | null
+  stockMinimoGramos: number | null
 }
 
 const stagger = {
@@ -156,11 +161,16 @@ export default function ProductosPage() {
             animate="show"
           >
             {productos.map((p) => {
+              const precioDisplay = p.esPesable ? (p.precioPorKgCentavos ?? 0) : p.precioCentavos
+              const costoDisplay = p.esPesable ? (p.costoPorKgCentavos ?? 0) : p.costoCentavos
+              const stockDisplay = p.esPesable ? (p.stockGramos ?? 0) / 1000 : p.stock
+              const stockMinimoDisplay = p.esPesable ? (p.stockMinimoGramos ?? 0) / 1000 : p.stockMinimo
+              const stockUnidad = p.esPesable ? "kg" : "u."
               const markupBp =
-                p.costoCentavos > 0
-                  ? Math.round(((p.precioCentavos - p.costoCentavos) / p.costoCentavos) * 10_000)
+                costoDisplay > 0
+                  ? Math.round(((precioDisplay - costoDisplay) / costoDisplay) * 10_000)
                   : 0
-              const esBajo = p.stock <= p.stockMinimo
+              const esBajo = stockDisplay <= stockMinimoDisplay
 
               return (
                 <motion.button
@@ -200,13 +210,13 @@ export default function ProductosPage() {
 
                   {/* Precio — solo desktop */}
                   <p className="hidden lg:block text-sm font-semibold tabular-nums text-right">
-                    {formatearARS(p.precioCentavos)}
+                    {formatearARS(precioDisplay)}{p.esPesable && "/kg"}
                   </p>
 
                   {/* Mobile: precio + markup + stock agrupados a la derecha */}
                   <div className="text-right shrink-0 space-y-0.5 lg:hidden">
                     <p className="text-sm font-semibold tabular-nums">
-                      {formatearARS(p.precioCentavos)}
+                      {formatearARS(precioDisplay)}{p.esPesable && "/kg"}
                     </p>
                     <div className="flex items-center justify-end gap-2">
                       <MarkupBadge markupBp={markupBp} />
@@ -214,7 +224,7 @@ export default function ProductosPage() {
                         "text-xs tabular-nums",
                         esBajo ? "text-k-loss" : "text-muted-foreground"
                       )}>
-                        {p.stock} u.
+                        {stockDisplay} {stockUnidad}
                       </span>
                     </div>
                   </div>
@@ -229,7 +239,7 @@ export default function ProductosPage() {
                     "hidden lg:block text-sm tabular-nums text-right",
                     esBajo ? "text-k-loss font-medium" : "text-muted-foreground"
                   )}>
-                    {p.stock} u.
+                    {stockDisplay} {stockUnidad}
                   </span>
                 </motion.button>
               )

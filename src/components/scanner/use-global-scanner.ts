@@ -24,6 +24,9 @@ interface Producto {
   costoCentavos: number
   stock: number
   category: { cajaId: string | null }
+  esPesable: boolean
+  precioPorKgCentavos: number | null
+  stockGramos: number | null
 }
 
 export function useGlobalScanner() {
@@ -67,7 +70,8 @@ export function useGlobalScanner() {
 
       // ── Caso: código ENCONTRADO en /productos o /stock ────────────────────────
       if (inProductos) {
-        if (pref === "abrir-producto") {
+        if (pref === "abrir-producto" || producto.esPesable) {
+          // Los pesables no se pueden sumar "+1" — se abre el producto para cargar el peso a mano
           router.push(`/productos?abrir=${producto.id}`)
         } else {
           // sumar-stock (default)
@@ -82,12 +86,30 @@ export function useGlobalScanner() {
       }
 
       // ── Caso: código ENCONTRADO, cualquier pantalla → overlay + agregar ───────
+      if (producto.esPesable) {
+        agregarProducto({
+          productId: producto.id,
+          nombre: producto.nombre,
+          sku: producto.sku,
+          precioUnitarioCentavos: producto.precioPorKgCentavos ?? 0,
+          stock: 0,
+          stockGramos: producto.stockGramos,
+          esPesable: true,
+          cajaId: producto.category.cajaId,
+        })
+        setOverlay(true)
+        toast.success(`${producto.nombre} agregado`, { description: "Cargá el peso en el carrito", duration: 2000 })
+        return
+      }
+
       agregarProducto({
         productId: producto.id,
         nombre: producto.nombre,
         sku: producto.sku,
         precioUnitarioCentavos: producto.precioCentavos,
         stock: producto.stock,
+        stockGramos: null,
+        esPesable: false,
         cajaId: producto.category.cajaId,
       })
       setOverlay(true)

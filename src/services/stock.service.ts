@@ -6,6 +6,7 @@ export interface MovimientoManualInput {
   userId: string
   organizationId: string
   tipo: Extract<TipoMovimientoStock, "ENTRADA" | "AJUSTE">
+  /** Unidades (o gramos si el producto es pesable — ver domain/pesables). */
   cantidad: number
   motivo?: string
 }
@@ -15,6 +16,38 @@ export const stockService = {
     const producto = await prisma.product.findFirstOrThrow({
       where: { id: input.productId, organizationId: input.organizationId },
     })
+
+    if (producto.esPesable) {
+      const gramosAnterior = producto.stockGramos ?? 0
+      const gramosPosterior =
+        input.tipo === "ENTRADA" ? gramosAnterior + input.cantidad : input.cantidad
+
+      if (gramosPosterior < 0) {
+        throw new Error(`Stock resultante no puede ser negativo: ${gramosPosterior}g`)
+      }
+
+      return prisma.$transaction(async (tx) => {
+        await tx.product.update({
+          where: { id: input.productId },
+          data: { stockGramos: gramosPosterior },
+        })
+
+        return tx.stockMovement.create({
+          data: {
+            productId: input.productId,
+            userId: input.userId,
+            tipo: input.tipo,
+            cantidad: 0,
+            stockAnterior: 0,
+            stockPosterior: 0,
+            gramos: input.tipo === "AJUSTE" ? gramosPosterior - gramosAnterior : input.cantidad,
+            gramosAnterior,
+            gramosPosterior,
+            motivo: input.motivo,
+          },
+        })
+      })
+    }
 
     const stockAnterior = producto.stock
     const stockPosterior =

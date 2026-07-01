@@ -23,11 +23,20 @@ const ProductoBaseSchema = z.object({
   costoCentavos: z.number().int().positive().optional(),
   precioCentavos: z.number().int().positive().optional(),
   markupBp: z.number().int().optional(),
+  // Pesables (vendidos por peso) — ver domain/pesables.ts
+  esPesable: z.boolean().optional(),
+  costoPorKgCentavos: z.number().int().positive().optional(),
+  precioPorKgCentavos: z.number().int().positive().optional(),
+  stockGramos: z.number().int().min(0).optional(),
+  stockMinimoGramos: z.number().int().min(0).optional(),
 })
 
 const CrearProductoSchema = ProductoBaseSchema.refine(
-  (d) => d.precioCentavos !== undefined || d.costoCentavos !== undefined,
-  { message: "Se requiere al menos precio o costo" }
+  (d) =>
+    d.esPesable
+      ? d.precioPorKgCentavos !== undefined || d.costoPorKgCentavos !== undefined
+      : d.precioCentavos !== undefined || d.costoCentavos !== undefined,
+  { message: "Se requiere al menos precio o costo (por kg si es pesable)" }
 )
 
 const EditarProductoSchema = ProductoBaseSchema.omit({ sku: true }).partial()

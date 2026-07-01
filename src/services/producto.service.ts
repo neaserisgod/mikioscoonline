@@ -17,6 +17,12 @@ export interface CrearProductoInput {
   costoCentavos?: number
   precioCentavos?: number
   markupBp?: number
+  // Pesables (vendidos por peso) — ver domain/pesables.ts
+  esPesable?: boolean
+  costoPorKgCentavos?: number
+  precioPorKgCentavos?: number
+  stockGramos?: number
+  stockMinimoGramos?: number
 }
 
 export interface EditarProductoInput {
@@ -33,6 +39,11 @@ export interface EditarProductoInput {
   costoCentavos?: number
   precioCentavos?: number
   markupBp?: number
+  esPesable?: boolean
+  costoPorKgCentavos?: number
+  precioPorKgCentavos?: number
+  stockGramos?: number
+  stockMinimoGramos?: number
 }
 
 export interface FilaCSV {
@@ -60,9 +71,10 @@ export const productoService = {
       where: { id: input.categoryId, organizationId: input.organizationId },
     })
 
+    const esPesable = input.esPesable ?? false
     const triangulo = resolverTriangulo({
-      costoCentavos: input.costoCentavos,
-      precioCentavos: input.precioCentavos,
+      costoCentavos: esPesable ? input.costoPorKgCentavos : input.costoCentavos,
+      precioCentavos: esPesable ? input.precioPorKgCentavos : input.precioCentavos,
       markupBp: input.markupBp,
       markupDefaultBp: category.markupDefaultBp,
       markupDefaultTipo: (category.markupDefaultTipo as "PORCENTUAL" | "FIJO"),
@@ -74,14 +86,21 @@ export const productoService = {
         sku: input.sku,
         barcode: input.barcode ?? null,
         nombre: input.nombre,
-        costoCentavos: triangulo.costoCentavos,
-        precioCentavos: triangulo.precioCentavos,
+        // No pesable: costoCentavos/precioCentavos son los reales. Pesable: quedan en 0
+        // (no se usan — ver domain/pesables.ts) y los valores viven en *PorKgCentavos.
+        costoCentavos: esPesable ? 0 : triangulo.costoCentavos,
+        precioCentavos: esPesable ? 0 : triangulo.precioCentavos,
         costoEsProvisional: triangulo.costoEsProvisional,
         categoryId: input.categoryId,
         providerId: input.providerId ?? null,
         locationId: input.locationId ?? null,
-        stock: input.stock ?? 0,
-        stockMinimo: input.stockMinimo ?? 0,
+        stock: esPesable ? 0 : (input.stock ?? 0),
+        stockMinimo: esPesable ? 0 : (input.stockMinimo ?? 0),
+        esPesable,
+        costoPorKgCentavos: esPesable ? triangulo.costoCentavos : null,
+        precioPorKgCentavos: esPesable ? triangulo.precioCentavos : null,
+        stockGramos: esPesable ? (input.stockGramos ?? 0) : null,
+        stockMinimoGramos: esPesable ? (input.stockMinimoGramos ?? 0) : null,
         organizationId: input.organizationId,
       },
       include: incluirRelaciones,
@@ -98,16 +117,34 @@ export const productoService = {
       ? await prisma.category.findFirstOrThrow({ where: { id: input.categoryId, organizationId: input.organizationId } })
       : producto.category
 
+    const esPesable = input.esPesable ?? producto.esPesable
+
     let triangulo: ReturnType<typeof resolverTriangulo> | null = null
-    if (input.costoCentavos !== undefined || input.precioCentavos !== undefined || input.markupBp !== undefined) {
-      triangulo = resolverTriangulo({
-        costoCentavos: input.costoCentavos ?? producto.costoCentavos,
-        precioCentavos: input.precioCentavos ?? producto.precioCentavos,
-        markupBp: input.markupBp,
-        markupDefaultBp: cat.markupDefaultBp,
-        markupDefaultTipo: (cat.markupDefaultTipo as "PORCENTUAL" | "FIJO"),
-        markupDefaultFijoCentavos: cat.markupDefaultFijoCentavos,
-      })
+    if (esPesable) {
+      if (input.costoPorKgCentavos !== undefined || input.precioPorKgCentavos !== undefined || input.markupBp !== undefined) {
+        triangulo = resolverTriangulo({
+          costoCentavos: input.costoPorKgCentavos ?? producto.costoPorKgCentavos ?? undefined,
+          precioCentavos: input.precioPorKgCentavos ?? producto.precioPorKgCentavos ?? undefined,
+          markupBp: input.markupBp,
+          markupDefaultBp: cat.markupDefaultBp,
+          markupDefaultTipo: (cat.markupDefaultTipo as "PORCENTUAL" | "FIJO"),
+          markupDefaultFijoCentavos: cat.markupDefaultFijoCentavos,
+        })
+      } else if (input.esPesable && !producto.esPesable) {
+        // Se está activando "pesable" recién ahora — necesita precio/costo por kg
+        throw new Error("Indicá precio o costo por kg para un producto pesable")
+      }
+    } else {
+      if (input.costoCentavos !== undefined || input.precioCentavos !== undefined || input.markupBp !== undefined) {
+        triangulo = resolverTriangulo({
+          costoCentavos: input.costoCentavos ?? producto.costoCentavos,
+          precioCentavos: input.precioCentavos ?? producto.precioCentavos,
+          markupBp: input.markupBp,
+          markupDefaultBp: cat.markupDefaultBp,
+          markupDefaultTipo: (cat.markupDefaultTipo as "PORCENTUAL" | "FIJO"),
+          markupDefaultFijoCentavos: cat.markupDefaultFijoCentavos,
+        })
+      }
     }
 
     return prisma.product.update({
@@ -119,13 +156,26 @@ export const productoService = {
         ...(input.categoryId !== undefined && { categoryId: input.categoryId }),
         ...(input.providerId !== undefined && { providerId: input.providerId }),
         ...(input.locationId !== undefined && { locationId: input.locationId }),
-        ...(input.stock !== undefined && { stock: input.stock }),
-        ...(input.stockMinimo !== undefined && { stockMinimo: input.stockMinimo }),
-        ...(triangulo && {
-          costoCentavos: triangulo.costoCentavos,
-          precioCentavos: triangulo.precioCentavos,
-          costoEsProvisional: triangulo.costoEsProvisional,
-        }),
+        ...(input.esPesable !== undefined && { esPesable: input.esPesable }),
+        ...(esPesable
+          ? {
+              ...(input.stockGramos !== undefined && { stockGramos: input.stockGramos }),
+              ...(input.stockMinimoGramos !== undefined && { stockMinimoGramos: input.stockMinimoGramos }),
+              ...(triangulo && {
+                costoPorKgCentavos: triangulo.costoCentavos,
+                precioPorKgCentavos: triangulo.precioCentavos,
+                costoEsProvisional: triangulo.costoEsProvisional,
+              }),
+            }
+          : {
+              ...(input.stock !== undefined && { stock: input.stock }),
+              ...(input.stockMinimo !== undefined && { stockMinimo: input.stockMinimo }),
+              ...(triangulo && {
+                costoCentavos: triangulo.costoCentavos,
+                precioCentavos: triangulo.precioCentavos,
+                costoEsProvisional: triangulo.costoEsProvisional,
+              }),
+            }),
       },
       include: incluirRelaciones,
     })

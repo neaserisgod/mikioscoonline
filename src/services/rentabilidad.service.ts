@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma"
 import { resolverCajaId } from "@/domain/cajas"
+import { subtotalLinea } from "@/domain/pesables"
 
 export type AgrupadorRentabilidad = "proveedor" | "heladera" | "categoria" | "caja"
 
@@ -89,8 +90,8 @@ export const rentabilidadService = {
         agrupadorNombre = producto.category.nombre
       }
 
-      const ventas = linea.precioUnitarioCentavos * linea.cantidad
-      const costo = linea.costoUnitarioCentavos * linea.cantidad
+      const ventas = subtotalLinea({ esPesable: producto.esPesable, precioUnitarioCentavos: linea.precioUnitarioCentavos, cantidad: linea.cantidad, gramos: linea.gramos })
+      const costo = subtotalLinea({ esPesable: producto.esPesable, precioUnitarioCentavos: linea.costoUnitarioCentavos, cantidad: linea.cantidad, gramos: linea.gramos })
       const ganancia = ventas - costo
 
       const fila = mapa.get(agrupadorId) ?? {

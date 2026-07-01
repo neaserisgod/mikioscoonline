@@ -125,6 +125,8 @@ model PaymentMethod {
   activo         Boolean      @default(true)
   esDefault      Boolean      @default(false) // único por org — POS lo preselecciona
   orden          Int          @default(0)     // define orden en el POS
+  cajaId         String?      // si está seteado, las ventas con este medio van enteras a esta caja (override del split por categoría)
+  caja           Caja?        @relation(fields: [cajaId], references: [id])
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id])
   createdAt      DateTime     @default(now())
@@ -177,9 +179,10 @@ model Caja {
   createdAt                DateTime     @default(now())
   updatedAt                DateTime     @updatedAt
 
-  categories  Category[]
-  sesiones    CajaSesion[]
-  movimientos MovimientoCaja[]
+  categories     Category[]
+  sesiones       CajaSesion[]
+  movimientos    MovimientoCaja[]
+  mediosDePago   PaymentMethod[]
 
   @@unique([nombre, organizationId])
 }
@@ -243,6 +246,15 @@ model Product {
   location           Location? @relation(fields: [locationId], references: [id])
   stock              Int       @default(0)
   stockMinimo        Int       @default(0)
+  // ── Pesables (vendidos por peso, ej. fiambre) ────────────────────────────
+  // Campos aislados de los de arriba: cuando esPesable=true, costoCentavos/precioCentavos/
+  // stock/stockMinimo se IGNORAN — se usan estos en su lugar. Evita mezclar "por unidad" con
+  // "por kg" en la misma columna (bug de plata si algún cálculo se olvida de chequear esPesable).
+  esPesable          Boolean   @default(false)
+  costoPorKgCentavos Int?
+  precioPorKgCentavos Int?
+  stockGramos        Int?
+  stockMinimoGramos  Int?
   activo             Boolean   @default(true)
   organizationId     String
   organization       Organization @relation(fields: [organizationId], references: [id])
@@ -258,19 +270,23 @@ model Product {
 }
 
 model StockMovement {
-  id             String              @id @default(cuid())
-  productId      String
-  product        Product             @relation(fields: [productId], references: [id])
-  userId         String
-  user           User                @relation(fields: [userId], references: [id])
-  tipo           TipoMovimientoStock
-  cantidad       Int
-  stockAnterior  Int
-  stockPosterior Int
-  motivo         String?
-  saleId         String?
-  sale           Sale?               @relation(fields: [saleId], references: [id])
-  creadoEn       DateTime            @default(now())
+  id              String              @id @default(cuid())
+  productId       String
+  product         Product             @relation(fields: [productId], references: [id])
+  userId          String
+  user            User                @relation(fields: [userId], references: [id])
+  tipo            TipoMovimientoStock
+  cantidad        Int
+  stockAnterior   Int
+  stockPosterior  Int
+  // Pesables: gramos en vez de unidades. Nulos cuando el producto no es pesable.
+  gramos          Int?
+  gramosAnterior  Int?
+  gramosPosterior Int?
+  motivo          String?
+  saleId          String?
+  sale            Sale?               @relation(fields: [saleId], references: [id])
+  creadoEn        DateTime            @default(now())
 }
 
 // ─── Ventas ──────────────────────────────────────────────────────────────────
@@ -300,6 +316,9 @@ model SaleLine {
   productId              String
   product                Product @relation(fields: [productId], references: [id])
   cantidad               Int
+  // Pesables: gramos vendidos. precioUnitarioCentavos/costoUnitarioCentavos son "por kg" en ese caso.
+  // cantidad queda en 1 (una línea = un lote pesado), no se usa para el cálculo de subtotal.
+  gramos                 Int?
   precioUnitarioCentavos Int     // foto al momento de la venta — inmutable
   costoUnitarioCentavos  Int     // foto al momento de la venta — inmutable
 }

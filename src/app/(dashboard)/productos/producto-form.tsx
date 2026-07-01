@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Checkbox } from "@/components/ui/checkbox"
 import { toast } from "sonner"
 import { crearProductoAction, editarProductoAction } from "@/app/actions/productos.actions"
 import { resolverTriangulo } from "@/domain/markup"
@@ -24,6 +25,8 @@ const schema = z.object({
   barcode: z.string().optional(),
   providerId: z.string().optional(),
   locationId: z.string().optional(),
+  esPesable: z.boolean(),
+  // Pesable: precioCentavos/costoCentavos son "por kg" y stock/stockMinimo son en KG (se convierten a gramos al enviar)
   precioCentavos: z.number().min(1, "Requerido"),
   costoCentavos: z.number().optional(),
   stock: z.number().min(0),
@@ -48,6 +51,11 @@ interface ProductoFormProps {
     category: { nombre: string }
     provider?: { nombre: string } | null
     location?: { nombre: string } | null
+    esPesable?: boolean
+    precioPorKgCentavos?: number | null
+    costoPorKgCentavos?: number | null
+    stockGramos?: number | null
+    stockMinimoGramos?: number | null
   }
   barcodePreset?: string
   onSuccess: () => void
@@ -100,14 +108,22 @@ export default function ProductoForm({ producto, barcodePreset, onSuccess }: Pro
       barcode: producto?.barcode ?? barcodePreset ?? "",
       providerId: producto?.providerId ?? undefined,
       locationId: producto?.locationId ?? undefined,
-      precioCentavos: producto ? producto.precioCentavos / 100 : undefined,
-      costoCentavos: producto ? producto.costoCentavos / 100 : undefined,
-      stock: producto?.stock ?? 0 as number,
-      stockMinimo: producto?.stockMinimo ?? 0 as number,
+      esPesable: producto?.esPesable ?? false,
+      precioCentavos: producto
+        ? (producto.esPesable ? (producto.precioPorKgCentavos ?? 0) : producto.precioCentavos) / 100
+        : undefined,
+      costoCentavos: producto
+        ? (producto.esPesable ? (producto.costoPorKgCentavos ?? 0) : producto.costoCentavos) / 100
+        : undefined,
+      stock: producto ? (producto.esPesable ? (producto.stockGramos ?? 0) / 1000 : producto.stock) : 0,
+      stockMinimo: producto
+        ? (producto.esPesable ? (producto.stockMinimoGramos ?? 0) / 1000 : producto.stockMinimo)
+        : 0,
     },
   })
 
   const categoryId = watch("categoryId")
+  const esPesable = watch("esPesable")
   const precioPesos = watch("precioCentavos") ?? 0
   const costoPesos = watch("costoCentavos")
 
@@ -172,18 +188,31 @@ export default function ProductoForm({ producto, barcodePreset, onSuccess }: Pro
     const centavos = (v?: number) =>
       v !== undefined && !Number.isNaN(v) ? Math.round(v * 100) : undefined
 
-    const payload = {
+    const base = {
       sku: data.sku,
       nombre: data.nombre,
       categoryId: data.categoryId,
       barcode: data.barcode || undefined,
       providerId: data.providerId || undefined,
       locationId: data.locationId || undefined,
-      precioCentavos: centavos(data.precioCentavos),
-      costoCentavos: centavos(data.costoCentavos),
-      stock: data.stock,
-      stockMinimo: data.stockMinimo,
+      esPesable: data.esPesable,
     }
+
+    const payload = data.esPesable
+      ? {
+          ...base,
+          precioPorKgCentavos: centavos(data.precioCentavos),
+          costoPorKgCentavos: centavos(data.costoCentavos),
+          stockGramos: Math.round(data.stock * 1000),
+          stockMinimoGramos: Math.round(data.stockMinimo * 1000),
+        }
+      : {
+          ...base,
+          precioCentavos: centavos(data.precioCentavos),
+          costoCentavos: centavos(data.costoCentavos),
+          stock: data.stock,
+          stockMinimo: data.stockMinimo,
+        }
 
     try {
       const res = isEditing
@@ -237,6 +266,16 @@ export default function ProductoForm({ producto, barcodePreset, onSuccess }: Pro
         <Input id="nombre" {...register("nombre")} className="rounded-xl" />
         {errors.nombre && <p className="text-xs text-k-loss">{errors.nombre.message}</p>}
       </div>
+
+      <label className="flex items-center gap-2.5 rounded-xl border border-border/60 px-3 py-2.5 cursor-pointer">
+        <Checkbox
+          checked={esPesable}
+          onCheckedChange={(checked) => setValue("esPesable", checked === true)}
+        />
+        <span className="text-sm">
+          Se vende por peso (kg) — ej. fiambre, queso
+        </span>
+      </label>
 
       <div className="space-y-1.5">
         <Label>Categoría</Label>
@@ -327,7 +366,9 @@ export default function ProductoForm({ producto, barcodePreset, onSuccess }: Pro
           /* Modo porcentual: precio + costo, markup se muestra como lectura */
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label htmlFor="precio" className="text-muted-foreground text-xs">Precio de venta ($)</Label>
+              <Label htmlFor="precio" className="text-muted-foreground text-xs">
+                {esPesable ? "Precio por kg ($/kg)" : "Precio de venta ($)"}
+              </Label>
               <Input
                 id="precio"
                 type="number"
@@ -341,7 +382,9 @@ export default function ProductoForm({ producto, barcodePreset, onSuccess }: Pro
               )}
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="costo" className="text-muted-foreground text-xs">Costo ($)</Label>
+              <Label htmlFor="costo" className="text-muted-foreground text-xs">
+                {esPesable ? "Costo por kg ($/kg)" : "Costo ($)"}
+              </Label>
               <Input
                 id="costo"
                 type="number"
@@ -358,7 +401,9 @@ export default function ProductoForm({ producto, barcodePreset, onSuccess }: Pro
           <div className="space-y-2">
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label htmlFor="costo-fijo" className="text-muted-foreground text-xs">Costo ($)</Label>
+                <Label htmlFor="costo-fijo" className="text-muted-foreground text-xs">
+                  {esPesable ? "Costo por kg ($/kg)" : "Costo ($)"}
+                </Label>
                 <Input
                   id="costo-fijo"
                   type="number"
@@ -370,7 +415,9 @@ export default function ProductoForm({ producto, barcodePreset, onSuccess }: Pro
                 />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="ganancia-fija" className="text-muted-foreground text-xs">Ganancia fija ($ por unidad)</Label>
+                <Label htmlFor="ganancia-fija" className="text-muted-foreground text-xs">
+                  {esPesable ? "Ganancia fija ($ por kg)" : "Ganancia fija ($ por unidad)"}
+                </Label>
                 <Input
                   id="ganancia-fija"
                   type="number"
@@ -432,20 +479,22 @@ export default function ProductoForm({ producto, barcodePreset, onSuccess }: Pro
 
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1.5">
-          <Label htmlFor="stock">Stock actual</Label>
+          <Label htmlFor="stock">{esPesable ? "Stock actual (kg)" : "Stock actual"}</Label>
           <Input
             id="stock"
             type="number"
+            step={esPesable ? "0.001" : "1"}
             min="0"
             {...register("stock", { setValueAs: (v) => (v === "" || v == null ? 0 : Number(v)) })}
             className="rounded-xl tabular-nums"
           />
         </div>
         <div className="space-y-1.5">
-          <Label htmlFor="stockMinimo">Stock mínimo</Label>
+          <Label htmlFor="stockMinimo">{esPesable ? "Stock mínimo (kg)" : "Stock mínimo"}</Label>
           <Input
             id="stockMinimo"
             type="number"
+            step={esPesable ? "0.001" : "1"}
             min="0"
             {...register("stockMinimo", { setValueAs: (v) => (v === "" || v == null ? 0 : Number(v)) })}
             className="rounded-xl tabular-nums"

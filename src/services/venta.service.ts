@@ -1,12 +1,15 @@
 import { prisma } from "@/lib/prisma"
 import { calcularComision } from "@/domain/comisiones"
-import { resolverCajaId } from "@/domain/cajas"
+import { resolverCajaId, calcularRecargoCaja } from "@/domain/cajas"
+import { precioUnitarioEfectivo, costoUnitarioEfectivo, subtotalLinea } from "@/domain/pesables"
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
 export interface LineaVentaInput {
   productId: string
   cantidad: number
+  /** Solo para productos pesables: gramos vendidos. */
+  gramos?: number
 }
 
 export interface PagoInput {
@@ -39,70 +42,66 @@ export const ventaService = {
         throw new Error(`Productos no encontrados: ${faltantes.join(", ")}`)
       }
 
-      // 2. Validar stock
+      // 2. Validar stock (gramos para pesables, unidades para el resto)
       for (const linea of input.lineas) {
         const producto = productos.find((p) => p.id === linea.productId)!
-        if (producto.stock < linea.cantidad) {
+        if (producto.esPesable) {
+          const gramos = linea.gramos ?? 0
+          if (gramos <= 0) {
+            throw new Error(`Falta indicar el peso de "${producto.nombre}"`)
+          }
+          const disponible = producto.stockGramos ?? 0
+          if (disponible < gramos) {
+            throw new Error(
+              `Stock insuficiente para "${producto.nombre}": disponible ${disponible}g, requerido ${gramos}g`
+            )
+          }
+        } else if (producto.stock < linea.cantidad) {
           throw new Error(
             `Stock insuficiente para "${producto.nombre}": disponible ${producto.stock}, requerido ${linea.cantidad}`
           )
         }
       }
 
-      // 2.5. Caja principal (siempre existe) + agrupar monto por caja
+      // 2.5. Caja principal (siempre existe)
       const cajaPrincipal = await tx.caja.findFirstOrThrow({
         where: { organizationId: input.organizationId, esPrincipal: true },
         select: { id: true },
       })
 
-      const montoPorCaja = new Map<string, number>()
-      for (const linea of input.lineas) {
-        const producto = productos.find((p) => p.id === linea.productId)!
-        const cajaId = resolverCajaId(producto.category.cajaId, cajaPrincipal.id)
-        montoPorCaja.set(cajaId, (montoPorCaja.get(cajaId) ?? 0) + producto.precioCentavos * linea.cantidad)
-      }
-
-      // 2.6. Cargar detalles de cajas (nombre para errores + config recargo)
-      const cajasInvolucradas = [...montoPorCaja.keys()]
-      const cajasDetalle = await tx.caja.findMany({
-        where: { id: { in: cajasInvolucradas }, organizationId: input.organizationId },
-        select: { id: true, nombre: true, recargoTipo: true, recargoVirtualBp: true, recargoVirtualFijoCentavos: true },
-      })
-      const cajaPorId = new Map(cajasDetalle.map((c) => [c.id, c]))
-
-      // 2.7. Validar sesión abierta para cada caja involucrada
-      const sesionesAbiertas = await tx.cajaSesion.findMany({
-        where: { cajaId: { in: cajasInvolucradas }, estado: "ABIERTA", organizationId: input.organizationId },
-        select: { id: true, cajaId: true },
-      })
-      const sesionPorCaja = new Map(sesionesAbiertas.map((s) => [s.cajaId, s.id]))
-
-      for (const cajaId of cajasInvolucradas) {
-        if (!sesionPorCaja.has(cajaId)) {
-          const caja = cajaPorId.get(cajaId)
-          throw new Error(`Abrí la ${caja?.nombre ?? "caja"} antes de confirmar la venta`)
-        }
-      }
-
-      // 3. Construir líneas con costo-foto
+      // 3. Construir líneas con costo-foto + totales (money-safe: ver domain/pesables)
       let totalCentavos = 0
       let costoTotalCentavos = 0
       const lineasConFoto = input.lineas.map((linea) => {
         const producto = productos.find((p) => p.id === linea.productId)!
-        totalCentavos += producto.precioCentavos * linea.cantidad
-        costoTotalCentavos += producto.costoCentavos * linea.cantidad
+        const precioUnitarioCentavos = precioUnitarioEfectivo(producto)
+        const costoUnitarioCentavos = costoUnitarioEfectivo(producto)
+        const gramos = producto.esPesable ? linea.gramos ?? 0 : null
+
+        totalCentavos += subtotalLinea({ esPesable: producto.esPesable, precioUnitarioCentavos, cantidad: linea.cantidad, gramos })
+        costoTotalCentavos += subtotalLinea({ esPesable: producto.esPesable, precioUnitarioCentavos: costoUnitarioCentavos, cantidad: linea.cantidad, gramos })
+
         return {
           productId: linea.productId,
-          cantidad: linea.cantidad,
-          precioUnitarioCentavos: producto.precioCentavos,
-          costoUnitarioCentavos: producto.costoCentavos,
+          cantidad: producto.esPesable ? 1 : linea.cantidad,
+          gramos,
+          precioUnitarioCentavos,
+          costoUnitarioCentavos,
         }
       })
 
-      // 4. Total pagado (validación en paso 5.6 luego de computar recargo virtual)
-      const totalPagado = input.pagos.reduce((sum, p) => sum + p.montoCentavos, 0)
+      // 4. Split por categoría (atribución BASE, antes de overrides por medio de pago)
+      const montoPorCajaCategoria = new Map<string, number>()
+      for (const linea of input.lineas) {
+        const producto = productos.find((p) => p.id === linea.productId)!
+        const cajaId = resolverCajaId(producto.category.cajaId, cajaPrincipal.id)
+        const precioUnitarioCentavos = precioUnitarioEfectivo(producto)
+        const gramos = producto.esPesable ? linea.gramos ?? 0 : null
+        const subtotal = subtotalLinea({ esPesable: producto.esPesable, precioUnitarioCentavos, cantidad: linea.cantidad, gramos })
+        montoPorCajaCategoria.set(cajaId, (montoPorCajaCategoria.get(cajaId) ?? 0) + subtotal)
+      }
 
-      // 5. Cargar medios de pago y calcular comisiones
+      // 5. Medios de pago usados en esta venta (incluye cajaId: override de atribución)
       const medioIds = input.pagos.map((p) => p.paymentMethodId)
       const medios = await tx.paymentMethod.findMany({
         where: { id: { in: medioIds } },
@@ -125,27 +124,71 @@ export const ventaService = {
         }
       })
 
-      // 5.5. Recargo virtual por caja (solo cuando el pago es no-efectivo)
-      const medioPrincipal = medios.find((m) => m.id === input.pagos[0].paymentMethodId)!
-      let recargoCentavosTotal = 0
-      if (!medioPrincipal.esEfectivo) {
-        for (const [cajaId, monto] of montoPorCaja) {
+      // 6. Cajas candidatas: las de categoría + las que algún medio de pago usado tenga como override
+      const cajaIdsCategoria = [...montoPorCajaCategoria.keys()]
+      const cajaIdsOverride = [...new Set(medios.map((m) => m.cajaId).filter((id): id is string => !!id))]
+      const cajasCandidatas = [...new Set([...cajaIdsCategoria, ...cajaIdsOverride])]
+
+      const cajasDetalle = await tx.caja.findMany({
+        where: { id: { in: cajasCandidatas }, organizationId: input.organizationId },
+        select: { id: true, nombre: true, recargoTipo: true, recargoVirtualBp: true, recargoVirtualFijoCentavos: true },
+      })
+      const cajaPorId = new Map(cajasDetalle.map((c) => [c.id, c]))
+
+      // 7. Atribución final por caja: si el medio de pago tiene caja propia, esa porción va
+      // entera ahí (override); si no, se reparte proporcional al split por categoría. El recargo
+      // virtual se calcula por caja a partir de la porción que efectivamente le toca.
+      const totalPagado = input.pagos.reduce((sum, p) => sum + p.montoCentavos, 0)
+      const montoPorCaja = new Map<string, number>()
+      const recargoPorCaja = new Map<string, number>()
+
+      for (const pago of input.pagos) {
+        const medio = medios.find((m) => m.id === pago.paymentMethodId)!
+        const fraccion = totalPagado > 0 ? pago.montoCentavos / totalPagado : 0
+        const aplicarRecargo = (cajaId: string, monto: number) => {
+          if (medio.esEfectivo || monto === 0) return
           const caja = cajaPorId.get(cajaId)!
-          recargoCentavosTotal +=
-            caja.recargoTipo === "PORCENTUAL"
-              ? Math.round(monto * caja.recargoVirtualBp / 10_000)
-              : caja.recargoVirtualFijoCentavos
+          recargoPorCaja.set(cajaId, (recargoPorCaja.get(cajaId) ?? 0) + calcularRecargoCaja(caja, monto))
+        }
+
+        if (medio.cajaId) {
+          const ingreso = Math.round(totalCentavos * fraccion)
+          montoPorCaja.set(medio.cajaId, (montoPorCaja.get(medio.cajaId) ?? 0) + ingreso)
+          aplicarRecargo(medio.cajaId, ingreso)
+        } else {
+          for (const [cajaId, montoCategoria] of montoPorCajaCategoria) {
+            const porcion = Math.round(montoCategoria * fraccion)
+            montoPorCaja.set(cajaId, (montoPorCaja.get(cajaId) ?? 0) + porcion)
+            aplicarRecargo(cajaId, porcion)
+          }
         }
       }
 
-      // 5.6. Validar pago suficiente (productos + recargo virtual)
+      const recargoCentavosTotal = [...recargoPorCaja.values()].reduce((sum, r) => sum + r, 0)
+
+      // 7.5. Validar sesión abierta para cada caja que efectivamente recibe plata
+      const cajasInvolucradas = [...montoPorCaja.keys()]
+      const sesionesAbiertas = await tx.cajaSesion.findMany({
+        where: { cajaId: { in: cajasInvolucradas }, estado: "ABIERTA", organizationId: input.organizationId },
+        select: { id: true, cajaId: true },
+      })
+      const sesionPorCaja = new Map(sesionesAbiertas.map((s) => [s.cajaId, s.id]))
+
+      for (const cajaId of cajasInvolucradas) {
+        if (!sesionPorCaja.has(cajaId)) {
+          const caja = cajaPorId.get(cajaId)
+          throw new Error(`Abrí la ${caja?.nombre ?? "caja"} antes de confirmar la venta`)
+        }
+      }
+
+      // 8. Validar pago suficiente (productos + recargo virtual)
       if (totalPagado < totalCentavos + recargoCentavosTotal) {
         throw new Error(
           `Pago insuficiente: total a cobrar $${(totalCentavos + recargoCentavosTotal) / 100}, pagado $${totalPagado / 100}`
         )
       }
 
-      // 6. Crear venta con líneas y pagos
+      // 9. Crear venta con líneas y pagos
       const venta = await tx.sale.create({
         data: {
           userId: input.userId,
@@ -162,39 +205,63 @@ export const ventaService = {
         },
       })
 
-      // 7. Descontar stock y crear movimientos
+      // 10. Descontar stock y crear movimientos (gramos para pesables, unidades para el resto)
       for (const linea of input.lineas) {
         const producto = productos.find((p) => p.id === linea.productId)!
-        const stockPosterior = producto.stock - linea.cantidad
 
-        await tx.product.update({
-          where: { id: linea.productId },
-          data: { stock: stockPosterior },
-        })
+        if (producto.esPesable) {
+          const gramos = linea.gramos ?? 0
+          const gramosAnterior = producto.stockGramos ?? 0
+          const gramosPosterior = gramosAnterior - gramos
 
-        await tx.stockMovement.create({
-          data: {
-            productId: linea.productId,
-            userId: input.userId,
-            tipo: "SALIDA",
-            cantidad: linea.cantidad,
-            stockAnterior: producto.stock,
-            stockPosterior,
-            saleId: venta.id,
-            motivo: "Venta",
-          },
-        })
+          await tx.product.update({
+            where: { id: linea.productId },
+            data: { stockGramos: gramosPosterior },
+          })
+
+          await tx.stockMovement.create({
+            data: {
+              productId: linea.productId,
+              userId: input.userId,
+              tipo: "SALIDA",
+              cantidad: 0,
+              stockAnterior: 0,
+              stockPosterior: 0,
+              gramos,
+              gramosAnterior,
+              gramosPosterior,
+              saleId: venta.id,
+              motivo: "Venta",
+            },
+          })
+        } else {
+          const stockPosterior = producto.stock - linea.cantidad
+
+          await tx.product.update({
+            where: { id: linea.productId },
+            data: { stock: stockPosterior },
+          })
+
+          await tx.stockMovement.create({
+            data: {
+              productId: linea.productId,
+              userId: input.userId,
+              tipo: "SALIDA",
+              cantidad: linea.cantidad,
+              stockAnterior: producto.stock,
+              stockPosterior,
+              saleId: venta.id,
+              motivo: "Venta",
+            },
+          })
+        }
       }
 
-      // 8. Atribuir venta a cajas (un MovimientoCaja por caja involucrada)
+      // 11. Atribuir venta a cajas (un MovimientoCaja por caja involucrada)
       const medioPagoId = input.pagos[0].paymentMethodId
       for (const [cajaId, montoCentavos] of montoPorCaja) {
         const cajaSesionId = sesionPorCaja.get(cajaId)!
-        const caja = cajaPorId.get(cajaId)!
-        const recargoCentavos = medioPrincipal.esEfectivo ? 0
-          : caja.recargoTipo === "PORCENTUAL"
-            ? Math.round(montoCentavos * caja.recargoVirtualBp / 10_000)
-            : caja.recargoVirtualFijoCentavos
+        const recargoCentavos = recargoPorCaja.get(cajaId) ?? 0
 
         await tx.movimientoCaja.create({
           data: {

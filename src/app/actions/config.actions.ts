@@ -120,6 +120,8 @@ const MedioPagoSchema = z.object({
   comisionBp: z.number().int().min(0),
   esEfectivo: z.boolean().optional(),
   esMercadoPago: z.boolean().optional(),
+  // Si se setea, las ventas con este medio se atribuyen enteras a esta caja (override del split por categoría)
+  cajaId: z.string().min(1).nullable().optional(),
 })
 
 export async function crearMedioPagoAction(input: unknown) {

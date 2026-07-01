@@ -21,6 +21,9 @@ interface Producto {
   costoCentavos: number
   stock: number
   category: { cajaId: string | null }
+  esPesable: boolean
+  precioPorKgCentavos: number | null
+  stockGramos: number | null
 }
 
 export default function VenderPage() {
@@ -41,15 +44,32 @@ export default function VenderPage() {
 
   const agregar = useCallback(
     (p: Producto) => {
-      if (p.stock < 1) { toast.warning("Sin stock disponible"); return }
-      agregarProducto({
-        productId: p.id,
-        nombre: p.nombre,
-        sku: p.sku,
-        precioUnitarioCentavos: p.precioCentavos,
-        stock: p.stock,
-        cajaId: p.category.cajaId,
-      })
+      if (p.esPesable) {
+        if ((p.stockGramos ?? 0) <= 0) { toast.warning("Sin stock disponible"); return }
+        agregarProducto({
+          productId: p.id,
+          nombre: p.nombre,
+          sku: p.sku,
+          precioUnitarioCentavos: p.precioPorKgCentavos ?? 0,
+          stock: 0,
+          stockGramos: p.stockGramos,
+          esPesable: true,
+          cajaId: p.category.cajaId,
+        })
+        toast.info(`Cargá el peso de "${p.nombre}" en el carrito`)
+      } else {
+        if (p.stock < 1) { toast.warning("Sin stock disponible"); return }
+        agregarProducto({
+          productId: p.id,
+          nombre: p.nombre,
+          sku: p.sku,
+          precioUnitarioCentavos: p.precioCentavos,
+          stock: p.stock,
+          stockGramos: null,
+          esPesable: false,
+          cajaId: p.category.cajaId,
+        })
+      }
       setQuery("")
       setShowDropdown(false)
       inputRef.current?.focus()
@@ -133,9 +153,14 @@ export default function VenderPage() {
                             </div>
                             <div className="text-right shrink-0">
                               <p className="text-sm font-semibold tabular-nums">
-                                {formatPrice(p.precioCentavos)}
+                                {formatPrice(p.esPesable ? (p.precioPorKgCentavos ?? 0) : p.precioCentavos)}
+                                {p.esPesable && "/kg"}
                               </p>
-                              <p className="text-xs text-muted-foreground">Stock: {p.stock}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {p.esPesable
+                                  ? `Stock: ${((p.stockGramos ?? 0) / 1000).toFixed(3)} kg`
+                                  : `Stock: ${p.stock}`}
+                              </p>
                             </div>
                           </button>
                         </li>

@@ -7,8 +7,13 @@ export interface LineaCarrito {
   nombre: string
   sku: string
   cantidad: number
+  /** Solo pesables: gramos cargados. null en productos por unidad. */
+  gramos: number | null
+  esPesable: boolean
   precioUnitarioCentavos: number
   stock: number
+  /** Solo pesables: gramos disponibles. null en productos por unidad. */
+  stockGramos: number | null
   cajaId: string | null
 }
 
@@ -21,7 +26,7 @@ export interface VentaAbierta {
 
 export type ProductoParaCarrito = Pick<
   LineaCarrito,
-  "productId" | "nombre" | "sku" | "precioUnitarioCentavos" | "stock" | "cajaId"
+  "productId" | "nombre" | "sku" | "precioUnitarioCentavos" | "stock" | "cajaId" | "esPesable" | "stockGramos"
 >
 
 interface VentasState {
@@ -37,6 +42,7 @@ interface VentasActions {
   setOverlay: (open: boolean) => void
   agregarProducto: (p: ProductoParaCarrito) => void
   cambiarCantidad: (productId: string, delta: number) => void
+  setGramos: (productId: string, gramos: number) => void
   eliminarLinea: (productId: string) => void
   vaciarCarrito: () => void
   setMedioPago: (medioPagoId: string) => void
@@ -99,6 +105,17 @@ export const useVentasStore = create<VentasState & VentasActions>((set, get) => 
         const activa = ventaActiva(s)
         if (!activa) return s
         const existe = activa.carrito.find((l) => l.productId === p.productId)
+
+        if (p.esPesable) {
+          // Pesable: una sola línea por producto, el peso se carga a mano en el carrito
+          if (existe) return s
+          if ((p.stockGramos ?? 0) <= 0) return s
+          const nuevoCarrito = [...activa.carrito, { ...p, cantidad: 1, gramos: 0 }]
+          return {
+            ventas: s.ventas.map((v) => (v.id === activa.id ? { ...v, carrito: nuevoCarrito } : v)),
+          }
+        }
+
         let nuevoCarrito: LineaCarrito[]
         if (existe) {
           // Stock validation is advisory only — server enforces the real constraint
@@ -108,7 +125,7 @@ export const useVentasStore = create<VentasState & VentasActions>((set, get) => 
           )
         } else {
           if (p.stock < 1) return s
-          nuevoCarrito = [...activa.carrito, { ...p, cantidad: 1 }]
+          nuevoCarrito = [...activa.carrito, { ...p, cantidad: 1, gramos: null }]
         }
         return {
           ventas: s.ventas.map((v) =>
@@ -133,6 +150,21 @@ export const useVentasStore = create<VentasState & VentasActions>((set, get) => 
           ventas: s.ventas.map((v) =>
             v.id === activa.id ? { ...v, carrito: nuevoCarrito } : v
           ),
+        }
+      })
+    },
+
+    setGramos(productId, gramos) {
+      set((s) => {
+        const activa = ventaActiva(s)
+        if (!activa) return s
+        const nuevoCarrito = activa.carrito.map((l) =>
+          l.productId === productId
+            ? { ...l, gramos: Math.max(0, Math.min(l.stockGramos ?? 0, Math.round(gramos))) }
+            : l
+        )
+        return {
+          ventas: s.ventas.map((v) => (v.id === activa.id ? { ...v, carrito: nuevoCarrito } : v)),
         }
       })
     },

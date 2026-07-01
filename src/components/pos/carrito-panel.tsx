@@ -8,6 +8,8 @@ import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { formatearARS } from "@/domain/dinero"
+import { calcularRecargoCaja } from "@/domain/cajas"
+import { subtotalLinea } from "@/domain/pesables"
 import { crearVentaAction } from "@/app/actions/ventas.actions"
 import { useVentasStore, useVentaActiva } from "@/stores/ventas.store"
 import { cn } from "@/lib/utils"
@@ -28,12 +30,6 @@ interface CajaRecargo {
   recargoVirtualFijoCentavos: number
 }
 
-function calcRecargoCaja(caja: CajaRecargo, monto: number): number {
-  return caja.recargoTipo === "PORCENTUAL"
-    ? Math.round(monto * caja.recargoVirtualBp / 10_000)
-    : caja.recargoVirtualFijoCentavos
-}
-
 interface CarritoPanelProps {
   /** Al confirmar con éxito. El caller decide si navega, cierra overlay, etc. */
   onSuccess?: (ventaId: string) => void
@@ -45,7 +41,7 @@ interface CarritoPanelProps {
 export function CarritoPanel({ onSuccess, expandAction, compact = false }: CarritoPanelProps) {
   const qc = useQueryClient()
   const venta = useVentaActiva()
-  const { cambiarCantidad, eliminarLinea, vaciarCarrito, setMedioPago, onVentaConfirmada } =
+  const { cambiarCantidad, setGramos, eliminarLinea, vaciarCarrito, setMedioPago, onVentaConfirmada } =
     useVentasStore()
   const [loading, setLoading] = useState(false)
   const [successInfo, setSuccessInfo] = useState<{
@@ -77,11 +73,14 @@ export function CarritoPanel({ onSuccess, expandAction, compact = false }: Carri
   if (!venta) return null
 
   const { carrito, medioPagoId } = venta
-  const totalCentavos = carrito.reduce((s, l) => s + l.precioUnitarioCentavos * l.cantidad, 0)
+  const subtotal = (l: (typeof carrito)[number]) =>
+    subtotalLinea({ esPesable: l.esPesable, precioUnitarioCentavos: l.precioUnitarioCentavos, cantidad: l.cantidad, gramos: l.gramos })
+  const totalCentavos = carrito.reduce((s, l) => s + subtotal(l), 0)
   const medioPagoSeleccionado = mediosPago?.find((m) => m.id === medioPagoId)
   const comisionCentavos = medioPagoSeleccionado
     ? Math.round((totalCentavos * medioPagoSeleccionado.comisionBp) / 10_000)
     : 0
+  const faltaPeso = carrito.some((l) => l.esPesable && (l.gramos ?? 0) <= 0)
 
   // Recargo virtual por pago no-efectivo
   const cajaPrincipal = cajas?.find((c) => c.esPrincipal)
@@ -90,11 +89,11 @@ export function CarritoPanel({ onSuccess, expandAction, compact = false }: Carri
     const montoPorCaja = new Map<string, number>()
     for (const item of carrito) {
       const cajaId = item.cajaId ?? cajaPrincipal.id
-      montoPorCaja.set(cajaId, (montoPorCaja.get(cajaId) ?? 0) + item.precioUnitarioCentavos * item.cantidad)
+      montoPorCaja.set(cajaId, (montoPorCaja.get(cajaId) ?? 0) + subtotal(item))
     }
     for (const [cajaId, monto] of montoPorCaja) {
       const caja = cajas?.find((c) => c.id === cajaId) ?? cajaPrincipal
-      recargoTotalCentavos += calcRecargoCaja(caja, monto)
+      recargoTotalCentavos += calcularRecargoCaja(caja, monto)
     }
   }
   const totalACobrarCentavos = totalCentavos + recargoTotalCentavos
@@ -102,10 +101,15 @@ export function CarritoPanel({ onSuccess, expandAction, compact = false }: Carri
   async function confirmar() {
     if (!medioPagoId) { toast.error("Seleccioná un medio de pago"); return }
     if (carrito.length === 0) return
+    if (faltaPeso) { toast.error("Cargá el peso de todos los productos pesables"); return }
     setLoading(true)
     try {
       const result = await crearVentaAction({
-        lineas: carrito.map((l) => ({ productId: l.productId, cantidad: l.cantidad })),
+        lineas: carrito.map((l) => ({
+          productId: l.productId,
+          cantidad: l.cantidad,
+          ...(l.esPesable && { gramos: l.gramos ?? 0 }),
+        })),
         pagos: [{ paymentMethodId: medioPagoId, montoCentavos: totalACobrarCentavos }],
       })
       const ventaId = (result as { id: string }).id
@@ -195,12 +199,12 @@ export function CarritoPanel({ onSuccess, expandAction, compact = false }: Carri
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-medium truncate">{item.nombre}</p>
                     <p className="text-[11px] text-muted-foreground tabular-nums">
-                      {formatearARS(item.precioUnitarioCentavos)} c/u
+                      {formatearARS(item.precioUnitarioCentavos)}{item.esPesable ? "/kg" : " c/u"}
                     </p>
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
                     <p className="text-xs font-semibold tabular-nums">
-                      {formatearARS(item.precioUnitarioCentavos * item.cantidad)}
+                      {formatearARS(subtotal(item))}
                     </p>
                     <Button variant="ghost" size="icon-sm" className="text-muted-foreground hover:text-k-loss"
                       onClick={() => eliminarLinea(item.productId)}>
@@ -208,18 +212,40 @@ export function CarritoPanel({ onSuccess, expandAction, compact = false }: Carri
                     </Button>
                   </div>
                 </div>
-                <div className="flex items-center gap-1.5 mt-1.5">
-                  <Button variant="outline" size="icon-sm" className="size-6 rounded-md border-border/60"
-                    onClick={() => cambiarCantidad(item.productId, -1)}>
-                    <Minus className="size-2.5" />
-                  </Button>
-                  <span className="w-5 text-center text-xs font-semibold tabular-nums">{item.cantidad}</span>
-                  <Button variant="outline" size="icon-sm" className="size-6 rounded-md border-border/60"
-                    disabled={item.cantidad >= item.stock}
-                    onClick={() => cambiarCantidad(item.productId, 1)}>
-                    <Plus className="size-2.5" />
-                  </Button>
-                </div>
+                {item.esPesable ? (
+                  <div className="flex items-center gap-1.5 mt-1.5">
+                    <input
+                      type="number"
+                      min={0}
+                      max={item.stockGramos ?? undefined}
+                      step={1}
+                      autoFocus
+                      value={item.gramos ?? 0}
+                      onChange={(e) => setGramos(item.productId, Number(e.target.value) || 0)}
+                      className={cn(
+                        "h-6 w-20 rounded-md border bg-background px-2 text-xs font-semibold tabular-nums",
+                        (item.gramos ?? 0) <= 0 ? "border-k-loss/40" : "border-border/60"
+                      )}
+                    />
+                    <span className="text-[11px] text-muted-foreground">gramos</span>
+                    {(item.gramos ?? 0) <= 0 && (
+                      <span className="text-[11px] text-k-loss">Falta cargar el peso</span>
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-1.5 mt-1.5">
+                    <Button variant="outline" size="icon-sm" className="size-6 rounded-md border-border/60"
+                      onClick={() => cambiarCantidad(item.productId, -1)}>
+                      <Minus className="size-2.5" />
+                    </Button>
+                    <span className="w-5 text-center text-xs font-semibold tabular-nums">{item.cantidad}</span>
+                    <Button variant="outline" size="icon-sm" className="size-6 rounded-md border-border/60"
+                      disabled={item.cantidad >= item.stock}
+                      onClick={() => cambiarCantidad(item.productId, 1)}>
+                      <Plus className="size-2.5" />
+                    </Button>
+                  </div>
+                )}
               </motion.div>
             ))}
           </AnimatePresence>
@@ -293,7 +319,7 @@ export function CarritoPanel({ onSuccess, expandAction, compact = false }: Carri
         {expandAction}
         <Button
           className="w-full h-10 rounded-xl"
-          disabled={carrito.length === 0 || !medioPagoId || loading}
+          disabled={carrito.length === 0 || !medioPagoId || loading || faltaPeso}
           onClick={confirmar}
         >
           {loading ? <Loader2 className="size-4 animate-spin" /> : "Confirmar venta"}

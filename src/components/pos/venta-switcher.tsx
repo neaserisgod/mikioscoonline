@@ -5,6 +5,7 @@ import { Plus, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useVentasStore } from "@/stores/ventas.store"
 import { formatearARS } from "@/domain/dinero"
+import { subtotalLinea } from "@/domain/pesables"
 import { cn } from "@/lib/utils"
 
 export function VentaSwitcher() {
@@ -13,7 +14,10 @@ export function VentaSwitcher() {
   return (
     <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 scrollbar-none">
       {ventas.map((v) => {
-        const total = v.carrito.reduce((s, l) => s + l.precioUnitarioCentavos * l.cantidad, 0)
+        const total = v.carrito.reduce(
+          (s, l) => s + subtotalLinea({ esPesable: l.esPesable, precioUnitarioCentavos: l.precioUnitarioCentavos, cantidad: l.cantidad, gramos: l.gramos }),
+          0
+        )
         const activa = v.id === ventaActivaId
 
         return (

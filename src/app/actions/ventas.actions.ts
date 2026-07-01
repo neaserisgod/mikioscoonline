@@ -7,6 +7,8 @@ import { z } from "zod"
 const LineaSchema = z.object({
   productId: z.string().cuid(),
   cantidad: z.number().int().positive(),
+  // Solo productos pesables: gramos vendidos (0 se rechaza con mensaje claro en venta.service)
+  gramos: z.number().int().min(0).optional(),
 })
 
 const PagoSchema = z.object({

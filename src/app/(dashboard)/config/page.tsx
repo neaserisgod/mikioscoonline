@@ -69,6 +69,7 @@ interface MedioPago {
   id: string; nombre: string; comisionBp: number
   esEfectivo: boolean; esMercadoPago: boolean
   activo: boolean; esDefault: boolean; orden: number
+  cajaId: string | null
 }
 
 type TipoPago = "efectivo" | "mercadopago" | "digital"
@@ -710,24 +711,26 @@ const medioPagoSchema = z.object({
   nombre: z.string().min(1, "Requerido"),
   comisionPct: z.number().min(0, "Mínimo 0"),
   tipo: z.enum(["efectivo", "mercadopago", "digital"]),
+  cajaId: z.string().nullable(),
 })
 type MedioPagoForm = z.infer<typeof medioPagoSchema>
 
 function MediosPagoSection({ onMutate }: { onMutate: () => void }) {
   const { data, isLoading } = useConfig<MedioPago[]>("medios-pago")
+  const { data: cajas } = useConfig<CajaItem[]>("cajas")
   const [sheetOpen, setSheetOpen] = useState(false)
   const [editing, setEditing] = useState<MedioPago | null>(null)
   const [pending, setPending] = useState<string | null>(null)
 
   const { register, handleSubmit, reset, watch, setValue, formState: { errors, isSubmitting } } = useForm<MedioPagoForm>({
     resolver: zodResolver(medioPagoSchema),
-    defaultValues: { tipo: "digital" },
+    defaultValues: { tipo: "digital", cajaId: null },
   })
 
-  function abrirCrear() { setEditing(null); reset({ nombre: "", comisionPct: 0, tipo: "digital" }); setSheetOpen(true) }
+  function abrirCrear() { setEditing(null); reset({ nombre: "", comisionPct: 0, tipo: "digital", cajaId: null }); setSheetOpen(true) }
   function abrirEditar(m: MedioPago) {
     setEditing(m)
-    reset({ nombre: m.nombre, comisionPct: m.comisionBp / 100, tipo: tipoFromMedio(m) })
+    reset({ nombre: m.nombre, comisionPct: m.comisionBp / 100, tipo: tipoFromMedio(m), cajaId: m.cajaId })
     setSheetOpen(true)
   }
 
@@ -736,10 +739,10 @@ function MediosPagoSection({ onMutate }: { onMutate: () => void }) {
     const flags = flagsFromTipo(data.tipo)
     try {
       if (editing) {
-        await editarMedioPagoAction(editing.id, { nombre: data.nombre, comisionBp: bp, ...flags })
+        await editarMedioPagoAction(editing.id, { nombre: data.nombre, comisionBp: bp, ...flags, cajaId: data.cajaId })
         toast.success("Medio de pago actualizado")
       } else {
-        await crearMedioPagoAction({ nombre: data.nombre, comisionBp: bp, ...flags })
+        await crearMedioPagoAction({ nombre: data.nombre, comisionBp: bp, ...flags, cajaId: data.cajaId })
         toast.success("Medio de pago creado")
       }
       setSheetOpen(false); onMutate()
@@ -806,6 +809,7 @@ function MediosPagoSection({ onMutate }: { onMutate: () => void }) {
                 <p className="text-xs text-muted-foreground">
                   {TIPO_LABELS[tipoFromMedio(m)]}
                   {m.comisionBp > 0 && ` · Comisión: ${(m.comisionBp / 100).toFixed(2)}%`}
+                  {m.cajaId && ` · Caja: ${cajas?.find((c) => c.id === m.cajaId)?.nombre ?? "—"}`}
                 </p>
               </div>
 
@@ -866,6 +870,27 @@ function MediosPagoSection({ onMutate }: { onMutate: () => void }) {
               )}
             </div>
             <Field label="Comisión (%)" type="number" step="0.01" min="0" {...register("comisionPct", { valueAsNumber: true })} error={errors.comisionPct?.message} />
+            <div className="space-y-1.5">
+              <Label>Caja de destino (opcional)</Label>
+              <Select
+                value={watch("cajaId") ?? "__categoria__"}
+                onValueChange={(v) => setValue("cajaId", v === "__categoria__" ? null : (v ?? null))}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__categoria__">Según categoría del producto (default)</SelectItem>
+                  {cajas?.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>{c.nombre}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Si elegís una caja, las ventas pagadas con este medio se atribuyen enteras a esa caja
+                (por ejemplo, una caja de MercadoPago separada del efectivo).
+              </p>
+            </div>
             <Button type="submit" className="w-full" disabled={isSubmitting}>
               {isSubmitting ? <Loader2 className="size-4 animate-spin" /> : editing ? "Guardar cambios" : "Crear"}
             </Button>
