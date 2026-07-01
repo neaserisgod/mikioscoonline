@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { motion, AnimatePresence } from "framer-motion"
 import { Minus, Plus, Trash2, Loader2, CheckCircle2, AlertTriangle } from "lucide-react"
@@ -65,6 +65,14 @@ export function CarritoPanel({ onSuccess, expandAction, compact = false }: Carri
     queryFn: () => fetch("/api/cajas").then((r) => r.json()),
     staleTime: 5 * 60_000,
   })
+
+  // Auto-select the default payment method when options load and none is selected
+  useEffect(() => {
+    if (mediosPago?.length && venta && !venta.medioPagoId) {
+      const def = mediosPago.find((m) => m.esEfectivo) ?? mediosPago[0]
+      setMedioPago(def.id)
+    }
+  }, [mediosPago, venta?.medioPagoId])
 
   if (!venta) return null
 
@@ -181,15 +189,26 @@ export function CarritoPanel({ onSuccess, expandAction, compact = false }: Carri
                 animate={{ opacity: 1, height: "auto" }}
                 exit={{ opacity: 0, height: 0 }}
                 transition={{ type: "spring", stiffness: 300, damping: 30 }}
-                className="flex items-center gap-2 px-3 py-2.5"
+                className="px-3 py-2.5"
               >
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-medium truncate">{item.nombre}</p>
-                  <p className="text-[11px] text-muted-foreground tabular-nums">
-                    {formatearARS(item.precioUnitarioCentavos)} c/u
-                  </p>
+                <div className="flex items-start gap-2">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium truncate">{item.nombre}</p>
+                    <p className="text-[11px] text-muted-foreground tabular-nums">
+                      {formatearARS(item.precioUnitarioCentavos)} c/u
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <p className="text-xs font-semibold tabular-nums">
+                      {formatearARS(item.precioUnitarioCentavos * item.cantidad)}
+                    </p>
+                    <Button variant="ghost" size="icon-sm" className="text-muted-foreground hover:text-k-loss"
+                      onClick={() => eliminarLinea(item.productId)}>
+                      <Trash2 className="size-3" />
+                    </Button>
+                  </div>
                 </div>
-                <div className="flex items-center gap-1.5 shrink-0">
+                <div className="flex items-center gap-1.5 mt-1.5">
                   <Button variant="outline" size="icon-sm" className="size-6 rounded-md border-border/60"
                     onClick={() => cambiarCantidad(item.productId, -1)}>
                     <Minus className="size-2.5" />
@@ -201,13 +220,6 @@ export function CarritoPanel({ onSuccess, expandAction, compact = false }: Carri
                     <Plus className="size-2.5" />
                   </Button>
                 </div>
-                <p className="text-xs font-semibold tabular-nums w-20 text-right shrink-0">
-                  {formatearARS(item.precioUnitarioCentavos * item.cantidad)}
-                </p>
-                <Button variant="ghost" size="icon-sm" className="text-muted-foreground hover:text-k-loss shrink-0"
-                  onClick={() => eliminarLinea(item.productId)}>
-                  <Trash2 className="size-3" />
-                </Button>
               </motion.div>
             ))}
           </AnimatePresence>

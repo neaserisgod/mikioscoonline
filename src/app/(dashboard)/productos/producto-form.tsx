@@ -200,6 +200,7 @@ export default function ProductoForm({ producto, barcodePreset, onSuccess }: Pro
       <div className="space-y-1.5">
         <Label>Categoría</Label>
         <Select
+          key={categorias ? "loaded" : "loading"}
           value={watch("categoryId")}
           onValueChange={(v) => setValue("categoryId", v ?? "")}
         >
