@@ -83,14 +83,11 @@ export function CatalogoBuscador({ onSelect, className }: Props) {
               key={i}
               type="button"
               onMouseDown={() => handleSelect(item)}
-              className="w-full text-left px-3 py-2.5 hover:bg-muted/50 transition-colors flex items-start gap-3 border-b border-border/40 last:border-0"
+              className="w-full text-left px-3 py-2.5 hover:bg-muted/50 transition-colors flex items-center gap-3 border-b border-border/40 last:border-0"
             >
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate">{item.nombre}</p>
-                <p className="text-[11px] text-muted-foreground mt-0.5">{item.categoria}</p>
-              </div>
+              <span className="flex-1 min-w-0 text-sm font-medium truncate">{item.nombre}</span>
               {item.sku && (
-                <span className="text-xs text-muted-foreground tabular-nums shrink-0 mt-0.5">
+                <span className="text-xs text-muted-foreground tabular-nums shrink-0">
                   {item.sku}
                 </span>
               )}
