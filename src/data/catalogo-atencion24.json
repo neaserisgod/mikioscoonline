@@ -1,0 +1,1512 @@
+﻿[
+    {
+        "nombre":  "SPRITE RETORNABLE X 2",
+        "sku":  "7790895000225",
+        "categoria":  "GASEOSAS | SPRITE"
+    },
+    {
+        "nombre":  "TARTA OREO",
+        "sku":  "1335",
+        "categoria":  "POSTRES"
+    },
+    {
+        "nombre":  "CERVEZA BAUM SCOTTISCH LATA 473",
+        "sku":  "7798362460022",
+        "categoria":  "CERVEZAS | LATAS"
+    },
+    {
+        "nombre":  "CERVEZA BAUM MALDITA HONEY LATA 473",
+        "sku":  "7798362460046",
+        "categoria":  "CERVEZAS | LATAS"
+    },
+    {
+        "nombre":  "CERVEZA BAUM LAGER DORADA LATA 473",
+        "sku":  "7798362460374",
+        "categoria":  "CERVEZAS | LATAS"
+    },
+    {
+        "nombre":  "CERVEZA BAUM BLONDE LATA 473",
+        "sku":  "7798362460015",
+        "categoria":  "CERVEZAS | LATAS"
+    },
+    {
+        "nombre":  "CERVEZA BAUM APA LATA 473",
+        "sku":  "7798362460237",
+        "categoria":  "CERVEZAS | LATAS"
+    },
+    {
+        "nombre":  "CERVEZA BAUM OLD ALE LATA 473",
+        "sku":  "7798362460053",
+        "categoria":  "CERVEZAS | DESCARTABLES"
+    },
+    {
+        "nombre":  "BATATAS QUENTO CROCANTES 75 GR",
+        "sku":  "7798187211892",
+        "categoria":  "SNACKS"
+    },
+    {
+        "nombre":  "POSTRE LEMON PIE",
+        "sku":  "1331",
+        "categoria":  "POSTRES"
+    },
+    {
+        "nombre":  "TARTA GRANDE LEMON PIE",
+        "sku":  "1330",
+        "categoria":  "POSTRES"
+    },
+    {
+        "nombre":  "POSTRE DE PISTACHO",
+        "sku":  "1327",
+        "categoria":  "POSTRES"
+    },
+    {
+        "nombre":  "TARTA CABSHA GRANDE",
+        "sku":  "1325",
+        "categoria":  "POSTRES"
+    },
+    {
+        "nombre":  "TARTA CABSHA MINI",
+        "sku":  "1326",
+        "categoria":  "POSTRES"
+    },
+    {
+        "nombre":  "COFLER DUBAI 43 G",
+        "sku":  "77973986",
+        "categoria":  "CHOCOLATES"
+    },
+    {
+        "nombre":  "ALFAJOR NEGRO DOU ÑOM NARANJA X 70 G",
+        "sku":  "7798182731654",
+        "categoria":  "ALFAJORES"
+    },
+    {
+        "nombre":  "ALFAJOR BLANCO DOU XD CELESTE X 70 G",
+        "sku":  "7798182731661",
+        "categoria":  "ALFAJORES"
+    },
+    {
+        "nombre":  "PRESERVATIVO PRIME ORGAZMAX X 3",
+        "sku":  "7791519706233",
+        "categoria":  "PRESERVATIVOS"
+    },
+    {
+        "nombre":  "POSTRE BOMBONES DE QUAKER",
+        "sku":  "406",
+        "categoria":  "POSTRES"
+    },
+    {
+        "nombre":  "ENCENDEDOR SHARK",
+        "sku":  "7791519002939",
+        "categoria":  "CIGARRILLOS"
+    },
+    {
+        "nombre":  "ENERGIZANTE MONSTER DURAZNO ULTRA PEACHY KEEN X 473",
+        "sku":  "7798422620298",
+        "categoria":  "ENERGIZANTES"
+    },
+    {
+        "nombre":  "GALLETITAS RELLENAS MELLIZAS LIMON 108 GRS",
+        "sku":  "7790040143548",
+        "categoria":  "GALLETITAS"
+    },
+    {
+        "nombre":  "RED BULL SUMER VIOLETA 250 ML",
+        "sku":  "9002490288341",
+        "categoria":  "ENERGIZANTES"
+    },
+    {
+        "nombre":  "SKYY SABORIZADO + 2 SPEED XL + HIELO",
+        "sku":  "1267",
+        "categoria":  "PROMOS BEBIDAS"
+    },
+    {
+        "nombre":  "SKYY SABORIZADO + 2 SPEED XL",
+        "sku":  "1263",
+        "categoria":  "PROMOS BEBIDAS"
+    },
+    {
+        "nombre":  "SKYY SABORIZADO + 2 MONSTER + HIELO",
+        "sku":  "1269",
+        "categoria":  "PROMOS BEBIDAS"
+    },
+    {
+        "nombre":  "SKYY SABORIZADO + 2 MONSTER",
+        "sku":  "1265",
+        "categoria":  "PROMOS BEBIDAS"
+    },
+    {
+        "nombre":  "SKYY CLASICO + 2 SPEED XL + HIELO",
+        "sku":  "1266",
+        "categoria":  "PROMOS BEBIDAS"
+    },
+    {
+        "nombre":  "SKYY CLASICO + 2 SPEED XL",
+        "sku":  "1262",
+        "categoria":  "PROMOS BEBIDAS"
+    },
+    {
+        "nombre":  "SKYY CLASICO + 2 MONSTER",
+        "sku":  "1264",
+        "categoria":  "PROMOS BEBIDAS"
+    },
+    {
+        "nombre":  "SKYY CLASICO + 2 MONSTER + HIELO",
+        "sku":  "1268",
+        "categoria":  "PROMOS BEBIDAS"
+    },
+    {
+        "nombre":  "PHILIPS MORRIS SELECT RED KS 20",
+        "sku":  "77992536",
+        "categoria":  "CIGARRILLOS"
+    },
+    {
+        "nombre":  "AD KETCHUP HELLMANNS X 250 GR",
+        "sku":  "1147",
+        "categoria":  "ALMACEN"
+    },
+    {
+        "nombre":  "PAPAS QUENTO CLASICAS X 92 GR",
+        "sku":  "7798187211847",
+        "categoria":  "SNACKS"
+    },
+    {
+        "nombre":  "ALFAJOR BON O BON TRIPLE 60 GRS",
+        "sku":  "7790040148840",
+        "categoria":  "ALFAJORES"
+    },
+    {
+        "nombre":  "PAPAS QUENTO QUESO BARBACOA X 82 GR",
+        "sku":  "7798187212189",
+        "categoria":  "SNACKS"
+    },
+    {
+        "nombre":  "FERNET + S/A COCA 2,25 S/A",
+        "sku":  "1198",
+        "categoria":  "PROMOS BEBIDAS"
+    },
+    {
+        "nombre":  "FERNET + S/A COCA 2,25 + HIELO S/A",
+        "sku":  "1199",
+        "categoria":  "PROMOS BEBIDAS"
+    },
+    {
+        "nombre":  "PAPAS QUENTO MOSTAZA X 82 GR",
+        "sku":  "7798187212165",
+        "categoria":  "SNACKS"
+    },
+    {
+        "nombre":  "VODKA SERNOVA CANDY GLOW X 700 ML",
+        "sku":  "7790290101787",
+        "categoria":  "VODKAS Y WHISKYS"
+    },
+    {
+        "nombre":  "CHESTERFIELD 12",
+        "sku":  "77994059",
+        "categoria":  "CIGARRILLOS"
+    },
+    {
+        "nombre":  "NACHOS QUENTO QUESO X 82 GR",
+        "sku":  "7798187211878",
+        "categoria":  "SNACKS"
+    },
+    {
+        "nombre":  "MANAOS POMELO BLANCO 3 LT",
+        "sku":  "7798113301277",
+        "categoria":  "GASEOSAS | MANAOS"
+    },
+    {
+        "nombre":  "MANAOS POMELO 1,5 CC",
+        "sku":  "7798113302571",
+        "categoria":  "GASEOSAS | MANAOS"
+    },
+    {
+        "nombre":  "MANAOS COLA 3 LT",
+        "sku":  "7798113301246",
+        "categoria":  "GASEOSAS | MANAOS"
+    },
+    {
+        "nombre":  "MANAOS 1,5 COLA",
+        "sku":  "7798113302540",
+        "categoria":  "GASEOSAS | MANAOS"
+    },
+    {
+        "nombre":  "COMBO GIN BLU + PASO DE T TONICA + LIMON",
+        "sku":  "1170",
+        "categoria":  "PROMOS BEBIDAS"
+    },
+    {
+        "nombre":  "ENERGIZANTE MONSTER THE DOCTOR AMARILLO X 473",
+        "sku":  "7798422620083",
+        "categoria":  "ENERGIZANTES"
+    },
+    {
+        "nombre":  "ENERGIZANTE MONSTER RESERVE PINEAPPLE X 473 CC",
+        "sku":  "7798422620076",
+        "categoria":  "ENERGIZANTES"
+    },
+    {
+        "nombre":  "FRUTOS MIX SALADO PREMIUM",
+        "sku":  "1155",
+        "categoria":  ""
+    },
+    {
+        "nombre":  "FRUTOS MIX ENERGETICO DEL SOL",
+        "sku":  "1153",
+        "categoria":  ""
+    },
+    {
+        "nombre":  "ENERGIZANTE MONSTER ROSA PIPELINE PUNCH X 473",
+        "sku":  "7798422620120",
+        "categoria":  "ENERGIZANTES"
+    },
+    {
+        "nombre":  "PAÑUELOS ECO PURE",
+        "sku":  "7798178802689",
+        "categoria":  "CUIDADO PERSONAL"
+    },
+    {
+        "nombre":  "ALFAJOR HELADO GRIDO COOKIES \u0026#038; CREAM X UNIDAD",
+        "sku":  "7798183771987",
+        "categoria":  "HELADOS"
+    },
+    {
+        "nombre":  "PAPAS QUENTO QUESO CREMA Y CIBOULETTE X 82 GR",
+        "sku":  "7798187211854",
+        "categoria":  "SNACKS"
+    },
+    {
+        "nombre":  "PAPAS QUENTO DE SALAME X 82 GR",
+        "sku":  "7798187212158",
+        "categoria":  "SNACKS"
+    },
+    {
+        "nombre":  "PAPAS QUENTO ASADO CRIOLLO X 82 GR",
+        "sku":  "7798187212196",
+        "categoria":  "SNACKS"
+    },
+    {
+        "nombre":  "ENERGIZANTE MONSTER S/ AZUCAR ROJO WATERMELON X 473",
+        "sku":  "7798422620069",
+        "categoria":  "ENERGIZANTES"
+    },
+    {
+        "nombre":  "KIT VIÑAS DE BALBO 1,25 + PRITTY 2250 CC",
+        "sku":  "1128",
+        "categoria":  "PROMOS BEBIDAS"
+    },
+    {
+        "nombre":  "GALLETITAS TRAVIATA 108 GRS",
+        "sku":  "7790040144071",
+        "categoria":  "GALLETITAS"
+    },
+    {
+        "nombre":  "KETCHUP HELLMANNS X 250 GR",
+        "sku":  "7794000006188",
+        "categoria":  "ALMACEN"
+    },
+    {
+        "nombre":  "GALLETITAS COQUITAS 177 GRS",
+        "sku":  "7790040143258",
+        "categoria":  "GALLETITAS"
+    },
+    {
+        "nombre":  "FERNET MAS DOS COCAS 1,5",
+        "sku":  "846",
+        "categoria":  "PROMOS BEBIDAS"
+    },
+    {
+        "nombre":  "FERNET MAS COCA 2,5 MAS HIELO",
+        "sku":  "845",
+        "categoria":  "PROMOS BEBIDAS"
+    },
+    {
+        "nombre":  "FERNET MAS COCA 2,5",
+        "sku":  "844",
+        "categoria":  "PROMOS BEBIDAS"
+    },
+    {
+        "nombre":  "GALLETITAS RUMBA COCO 110 GRS",
+        "sku":  "7790040143517",
+        "categoria":  "GALLETITAS"
+    },
+    {
+        "nombre":  "ENERGIZANTE MONSTER S/ AZUCAR NARANJA SUNRISE X 473",
+        "sku":  "1007084703703",
+        "categoria":  "ENERGIZANTES"
+    },
+    {
+        "nombre":  "ENERGIZANTE MONSTER MANGO LOCO CELESTE X 473 ML",
+        "sku":  "7798422620045",
+        "categoria":  "ENERGIZANTES"
+    },
+    {
+        "nombre":  "YOGURT MANFREY BEBIBLE VAINILLA X 900 CC",
+        "sku":  "7791058790779",
+        "categoria":  "LACTEOS"
+    },
+    {
+        "nombre":  "YOGURT MANFREY BEBIBLE FRUTILLA X 900 CC",
+        "sku":  "7791058790762",
+        "categoria":  "LACTEOS"
+    },
+    {
+        "nombre":  "PAPAS QUENTO QUESO JAMON SERRANO X 82 GR",
+        "sku":  "7798187211885",
+        "categoria":  "SNACKS"
+    },
+    {
+        "nombre":  "GALLETITAS BAGLEY SURTIDO 400 GRS",
+        "sku":  "7790040147720",
+        "categoria":  "GALLETITAS"
+    },
+    {
+        "nombre":  "ENERGIZANTE MONSTER S/ AZUCAR BLANCO X 473 ML",
+        "sku":  "7798422620021",
+        "categoria":  "ENERGIZANTES"
+    },
+    {
+        "nombre":  "ENERGIZANTE MONSTER GREEN NEGRO X 473 CC",
+        "sku":  "7798422620014",
+        "categoria":  "ENERGIZANTES"
+    },
+    {
+        "nombre":  "CHAMPAGNE LATITUD 33 EXTRA BRUT X 750 ML",
+        "sku":  "7790975204147",
+        "categoria":  "CHAMPAGNE ESPUMANTES SIDRAS"
+    },
+    {
+        "nombre":  "SPRITE LATA X 354 ML",
+        "sku":  "7790895000270",
+        "categoria":  "GASEOSAS | SPRITE"
+    },
+    {
+        "nombre":  "SCHWEPPES TONICA LATA 310 ML",
+        "sku":  "7790895003202",
+        "categoria":  "GASEOSAS | SCHWEPPES"
+    },
+    {
+        "nombre":  "AGUA BONAQUA 1,5 S/G",
+        "sku":  "7790895003875",
+        "categoria":  "AGUAS | AGUAS"
+    },
+    {
+        "nombre":  "KIT SERNOVA SABORIZADO + 1 SPEED XL",
+        "sku":  "1101",
+        "categoria":  "PROMOS BEBIDAS"
+    },
+    {
+        "nombre":  "KIT SERNOVA REGULAR + 1 SPEED XL",
+        "sku":  "1100",
+        "categoria":  "PROMOS BEBIDAS"
+    },
+    {
+        "nombre":  "VINO TINTO PALO SANTO MALBEC X 750",
+        "sku":  "7798385680018",
+        "categoria":  "TINTOS | VINOS"
+    },
+    {
+        "nombre":  "FANTA NARANJA LATA X 354 ML",
+        "sku":  "7790895000256",
+        "categoria":  "FANTA | GASEOSAS"
+    },
+    {
+        "nombre":  "CERVEZA STELLA ARTOIS RUBIA X 473 LATA",
+        "sku":  "7792798010615",
+        "categoria":  "CERVEZAS | LATAS"
+    },
+    {
+        "nombre":  "VINO TINTO HJ FABRE MALBEC PETT VERDOT ASSEMBLAGE X 750 ML",
+        "sku":  "7798000210545",
+        "categoria":  "TINTOS | VINOS"
+    },
+    {
+        "nombre":  "AGUA BONAQUA X 1,5 C/ GAS ML",
+        "sku":  "7790895003950",
+        "categoria":  "AGUAS"
+    },
+    {
+        "nombre":  "AGUA BONAQUA X 500 S/G",
+        "sku":  "7790895003868",
+        "categoria":  "AGUAS | AGUAS"
+    },
+    {
+        "nombre":  "AQUARIUS X 1,5 LIMONADA",
+        "sku":  "7790895008498",
+        "categoria":  "AGUAS | AGUAS SABORIZADAS"
+    },
+    {
+        "nombre":  "FRUTILLAS GRIDO C/ DOBLE CHOCOLATE",
+        "sku":  "7798183771925",
+        "categoria":  "HELADOS"
+    },
+    {
+        "nombre":  "MARLBORO CRAFTED CONV 20 BOX",
+        "sku":  "77988225",
+        "categoria":  "CIGARRILLOS"
+    },
+    {
+        "nombre":  "COCA COLA LATA X 354 ML",
+        "sku":  "7790895000232",
+        "categoria":  "COCA COLA | GASEOSAS"
+    },
+    {
+        "nombre":  "COCA COLA LATA ZERO X 354 ML",
+        "sku":  "7790895067587",
+        "categoria":  "COCA COLA | GASEOSAS"
+    },
+    {
+        "nombre":  "ALFAJOR RASTA BLANCO X 70 GR",
+        "sku":  "7798397440013",
+        "categoria":  "ALFAJORES"
+    },
+    {
+        "nombre":  "CERVEZA LATON QUILMES X 710",
+        "sku":  "7792798014835",
+        "categoria":  "CERVEZAS | LATAS"
+    },
+    {
+        "nombre":  "SPEED ZERO 473 ML",
+        "sku":  "7798119220381",
+        "categoria":  "ENERGIZANTES"
+    },
+    {
+        "nombre":  "ALFAJOR RASTA NEGRO X 70 GR",
+        "sku":  "7798397444202",
+        "categoria":  "ALFAJORES"
+    },
+    {
+        "nombre":  "QUESO UNTABLE ENTERO MANFREY BLANCO GOURMET X 290 G",
+        "sku":  "7791058790014",
+        "categoria":  "LACTEOS"
+    },
+    {
+        "nombre":  "GALLETITAS RELLENAS AMOR 108 GRS",
+        "sku":  "7790040143531",
+        "categoria":  "GALLETITAS"
+    },
+    {
+        "nombre":  "GALLETITAS CHOCOLINAS 150 GRS",
+        "sku":  "7790040143227",
+        "categoria":  "GALLETITAS"
+    },
+    {
+        "nombre":  "SPRITE ZERO X 500 ML",
+        "sku":  "7790895064142",
+        "categoria":  "GASEOSAS | SPRITE"
+    },
+    {
+        "nombre":  "VINO TINTO PORTILLO MALBEC 750 ML",
+        "sku":  "7798074864675",
+        "categoria":  "TINTOS | VINOS"
+    },
+    {
+        "nombre":  "ES PROVENZAL VELEZ X 25 G",
+        "sku":  "17791122000503",
+        "categoria":  "ALMACEN"
+    },
+    {
+        "nombre":  "SPRITE 500 ML",
+        "sku":  "7790895000829",
+        "categoria":  "GASEOSAS | SPRITE"
+    },
+    {
+        "nombre":  "SCHWEPPES POMELO S/A X 500 ML",
+        "sku":  "7790895010064",
+        "categoria":  "GASEOSAS | SCHWEPPES"
+    },
+    {
+        "nombre":  "POWERADE X 500 MOUNTAIN BLAST AZUL",
+        "sku":  "7790895640025",
+        "categoria":  "ISOTONICOS | POWERADE"
+    },
+    {
+        "nombre":  "POWERADE X 500 MANZANA",
+        "sku":  "7790895640018",
+        "categoria":  "ISOTONICOS | POWERADE"
+    },
+    {
+        "nombre":  "FANTA NARANJA X 500 ML",
+        "sku":  "7790895000836",
+        "categoria":  "FANTA | GASEOSAS"
+    },
+    {
+        "nombre":  "COCA COLA ZERO X 500 CC",
+        "sku":  "7790895067532",
+        "categoria":  "COCA COLA | GASEOSAS"
+    },
+    {
+        "nombre":  "COCA COLA X 500 CC",
+        "sku":  "7790895000782",
+        "categoria":  "COCA COLA | GASEOSAS"
+    },
+    {
+        "nombre":  "AQUARIUS X 1,5 NARANJA",
+        "sku":  "7790895641237",
+        "categoria":  "AGUAS | AGUAS SABORIZADAS"
+    },
+    {
+        "nombre":  "MANI KING SALADO SIN PIEL X 100 G",
+        "sku":  "7798151953384",
+        "categoria":  "SNACKS"
+    },
+    {
+        "nombre":  "VINO TINTO CALLIA MALBEC X 750",
+        "sku":  "7798108833950",
+        "categoria":  "TINTOS | VINOS"
+    },
+    {
+        "nombre":  "BICARBONATO DE SODIO DOS ANCLAS X 25 GR",
+        "sku":  "7792900092805",
+        "categoria":  "ALMACEN"
+    },
+    {
+        "nombre":  ") BOLSITA MOGUL GRANDE ARCOR 16 U",
+        "sku":  "1041",
+        "categoria":  "CARAMELOS Y CHICLES"
+    },
+    {
+        "nombre":  ") BOLSITA MOGUL EUCALIPTUS ARCOR X 15",
+        "sku":  "1043",
+        "categoria":  "CARAMELOS Y CHICLES"
+    },
+    {
+        "nombre":  ") BOLSITA MOGUL CHIQUITA ARCOR 20 U",
+        "sku":  "1042",
+        "categoria":  "CARAMELOS Y CHICLES"
+    },
+    {
+        "nombre":  "BICARBONATO DE SODIO VELEZ X 50 GR",
+        "sku":  "7791122000346",
+        "categoria":  "ALMACEN"
+    },
+    {
+        "nombre":  "PAPEL HIGIENICO ELEGANTE X 4",
+        "sku":  "7793344904143",
+        "categoria":  "CUIDADO PERSONAL"
+    },
+    {
+        "nombre":  "YOGURT MANFREY BEBIBLE DURAZNO 900 CC",
+        "sku":  "7791058790793",
+        "categoria":  "LACTEOS"
+    },
+    {
+        "nombre":  "KIT GANCIA + 1 SPRITE 1 1/2",
+        "sku":  "233",
+        "categoria":  "PROMOS BEBIDAS"
+    },
+    {
+        "nombre":  "FRUTOS MIX TROPICAL DEL SOL",
+        "sku":  "1028",
+        "categoria":  ""
+    },
+    {
+        "nombre":  "PRESERVATIVO PRIME EXTRA LUBR, X 3",
+        "sku":  "7791519000676",
+        "categoria":  "PRESERVATIVOS"
+    },
+    {
+        "nombre":  ") BOLSITA DE CARAMELOS MIEL ARCOR",
+        "sku":  "932",
+        "categoria":  "CARAMELOS Y CHICLES"
+    },
+    {
+        "nombre":  ") BOLSITA DE CARAMELOS MENTA CRISTAL ARCOR",
+        "sku":  "676",
+        "categoria":  "CARAMELOS Y CHICLES"
+    },
+    {
+        "nombre":  "ALFAJOR AGUILA BLANCO X 72 GRS",
+        "sku":  "7790040133570",
+        "categoria":  "ALFAJORES"
+    },
+    {
+        "nombre":  "KIT SMIRNOFF REGULAR + 2 SPEED 250 ML",
+        "sku":  "911",
+        "categoria":  "PROMOS BEBIDAS"
+    },
+    {
+        "nombre":  "SPRITE ZERO X 1500 LT",
+        "sku":  "7790895064173",
+        "categoria":  "GASEOSAS | SPRITE"
+    },
+    {
+        "nombre":  "KIT SMIRNOFF SABORIZADO + 2 SPEED XL",
+        "sku":  "798",
+        "categoria":  "PROMOS BEBIDAS"
+    },
+    {
+        "nombre":  "FERNET CON COCA RETORNABLE DE 2 LT",
+        "sku":  "714",
+        "categoria":  "PROMOS BEBIDAS"
+    },
+    {
+        "nombre":  "FERNET + 1 COCA 1,5 LTS",
+        "sku":  "708",
+        "categoria":  "PROMOS BEBIDAS"
+    },
+    {
+        "nombre":  "VODKA SERNOVA CARIBBEAN X 700 ML",
+        "sku":  "7790290101718",
+        "categoria":  "VODKAS Y WHISKYS"
+    },
+    {
+        "nombre":  "APEROL 750 CC",
+        "sku":  "7891136057029",
+        "categoria":  "BEBIDAS CON ALCOHOL"
+    },
+    {
+        "nombre":  "VINO TINTO PARTRIDGE CABERNET SAUVIGNON 750 CC",
+        "sku":  "7798123971316",
+        "categoria":  "TINTOS | VINOS"
+    },
+    {
+        "nombre":  "YOGURT MANFREY FRUTADO FRUTILLA X 150 G",
+        "sku":  "7791058004159",
+        "categoria":  "LACTEOS"
+    },
+    {
+        "nombre":  "PRESERVATIVO PRIME ESPERMICIDA X3",
+        "sku":  "7791519200076",
+        "categoria":  "PRESERVATIVOS"
+    },
+    {
+        "nombre":  "SPEED XL 473 ML",
+        "sku":  "7798119220183",
+        "categoria":  "ENERGIZANTES"
+    },
+    {
+        "nombre":  "MANI NONO SALADO X 90 GR",
+        "sku":  "520",
+        "categoria":  "SNACKS"
+    },
+    {
+        "nombre":  "KIT SMIRNOFF SABORIZADO + 2 SPEED 250 CC",
+        "sku":  "537",
+        "categoria":  "PROMOS BEBIDAS"
+    },
+    {
+        "nombre":  "KIT SMIRNOFF REGULAR + 2 SPEED XL",
+        "sku":  "540",
+        "categoria":  "PROMOS BEBIDAS"
+    },
+    {
+        "nombre":  "KIT SERNOVA SABORIZADO + 2 SPEED XL",
+        "sku":  "588",
+        "categoria":  "PROMOS BEBIDAS"
+    },
+    {
+        "nombre":  "KIT SERNOVA SABORIZADO + 2 SPEED 250 CC",
+        "sku":  "586",
+        "categoria":  "PROMOS BEBIDAS"
+    },
+    {
+        "nombre":  "KIT SERNOVA REGULAR + 2 SPEED XL",
+        "sku":  "587",
+        "categoria":  "PROMOS BEBIDAS"
+    },
+    {
+        "nombre":  "KIT SERNOVA REGULAR + 2 SPEED 250",
+        "sku":  "585",
+        "categoria":  "PROMOS BEBIDAS"
+    },
+    {
+        "nombre":  "KIT GIN MALEFICIO 500 CC + PASO D T + TONICA",
+        "sku":  "596",
+        "categoria":  "PROMOS BEBIDAS"
+    },
+    {
+        "nombre":  "FERNET CON COCA COLA GRANDE 2,25 LT",
+        "sku":  "591",
+        "categoria":  "PROMOS BEBIDAS"
+    },
+    {
+        "nombre":  "PROMO FERNET 750 + COCA 2,25 + HIELO",
+        "sku":  "593",
+        "categoria":  "PROMOS BEBIDAS"
+    },
+    {
+        "nombre":  "YERBA MATE PLAYADITO 500 GRS",
+        "sku":  "7793704000911",
+        "categoria":  "YERBAS"
+    },
+    {
+        "nombre":  "KIT CAMPARI + JUGO BAGGIO NARANJA LITRO",
+        "sku":  "351",
+        "categoria":  "PROMOS BEBIDAS"
+    },
+    {
+        "nombre":  "TENTACION GRIDO VAINILLA X 1 LITRO",
+        "sku":  "7798183770140",
+        "categoria":  "HELADOS"
+    },
+    {
+        "nombre":  "MARLBORO CRAFTED 20 KS",
+        "sku":  "77987303",
+        "categoria":  "CIGARRILLOS"
+    },
+    {
+        "nombre":  "TOPLINE SEVEN SANDIA X 14GRS,",
+        "sku":  "77948588",
+        "categoria":  "CARAMELOS Y CHICLES"
+    },
+    {
+        "nombre":  "COCA COLA DESC, SIN AZUCAR X 1 L",
+        "sku":  "7790895067631",
+        "categoria":  "COCA COLA | GASEOSAS"
+    },
+    {
+        "nombre":  "MENTHO PLUS MENTOL X UNIDAD",
+        "sku":  "77958624",
+        "categoria":  "CARAMELOS Y CHICLES"
+    },
+    {
+        "nombre":  "MENTHO PLUS MENTA X UNIDAD",
+        "sku":  "77958662",
+        "categoria":  "CARAMELOS Y CHICLES"
+    },
+    {
+        "nombre":  "MENTHO PLUS CEREZA X UNIDAD",
+        "sku":  "77958631",
+        "categoria":  "CARAMELOS Y CHICLES"
+    },
+    {
+        "nombre":  "ALFAJOR AGUILA BROWNIE X 74 GRS",
+        "sku":  "7790040133594",
+        "categoria":  "ALFAJORES"
+    },
+    {
+        "nombre":  "VINO TINTO LOPEZ MALBEC 750 ML",
+        "sku":  "7790336030507",
+        "categoria":  "TINTOS | VINOS"
+    },
+    {
+        "nombre":  "YERBA MATE ROMANCE 500 GRS",
+        "sku":  "7790802000010",
+        "categoria":  "YERBAS"
+    },
+    {
+        "nombre":  "JUGO CEPITA BOTELLA MANZANA ROJA X 1 L",
+        "sku":  "7790895009853",
+        "categoria":  "JUGOS"
+    },
+    {
+        "nombre":  "SCHWEPPES POMELO X 1,5 ML",
+        "sku":  "7790895010088",
+        "categoria":  "GASEOSAS | SCHWEPPES"
+    },
+    {
+        "nombre":  "TENTACION GRIDO MENTA GRANIZADA X 1 LITRO",
+        "sku":  "7798183770546",
+        "categoria":  "HELADOS"
+    },
+    {
+        "nombre":  "TENTACION GRIDO LIMON X 1 LITRO",
+        "sku":  "7798183770119",
+        "categoria":  "HELADOS"
+    },
+    {
+        "nombre":  "TENTACION GRIDO GRANIZADO X 1 LITRO",
+        "sku":  "7798183770058",
+        "categoria":  "HELADOS"
+    },
+    {
+        "nombre":  "TENTACION GRIDO DULCE DE LECHE GRANIZADO X 1 LITRO",
+        "sku":  "7798183770065",
+        "categoria":  "HELADOS"
+    },
+    {
+        "nombre":  "TENTACION GRIDO CREMA COOKIE X 1 LITRO",
+        "sku":  "7798183770102",
+        "categoria":  "HELADOS"
+    },
+    {
+        "nombre":  "TENTACION GRIDO CREMA AMERICANA X 1 LITRO",
+        "sku":  "7798183770157",
+        "categoria":  "HELADOS"
+    },
+    {
+        "nombre":  "TENTACION GRIDO CHOCOLATES CON ALMENDRAS X 1 LITRO",
+        "sku":  "7798183770096",
+        "categoria":  "HELADOS"
+    },
+    {
+        "nombre":  "TENTACION GRIDO CHOCOLATE X 1 LITRO",
+        "sku":  "7798183770126",
+        "categoria":  "HELADOS"
+    },
+    {
+        "nombre":  "TENTACION GRIDO FRUTILLA X 1 LITRO",
+        "sku":  "7798183770133",
+        "categoria":  "HELADOS"
+    },
+    {
+        "nombre":  "SPRITE SIN AZUCAR X 2,25 LT",
+        "sku":  "7790895064166",
+        "categoria":  "GASEOSAS | SPRITE"
+    },
+    {
+        "nombre":  "MOGUL GOMAS PIECITOS 30G",
+        "sku":  "7790580617813",
+        "categoria":  "CARAMELOS Y CHICLES"
+    },
+    {
+        "nombre":  "JUGO CEPITA BOTELLA DURAZNO X 1 L",
+        "sku":  "7790895009846",
+        "categoria":  "JUGOS"
+    },
+    {
+        "nombre":  "SPRITE 1500 LT",
+        "sku":  "7790895000447",
+        "categoria":  "GASEOSAS | SPRITE"
+    },
+    {
+        "nombre":  "COCA COLA RETORNABLE X 2 LT",
+        "sku":  "7790895000218",
+        "categoria":  "COCA COLA | GASEOSAS"
+    },
+    {
+        "nombre":  "COCA COLA RETORNABLE VIDRIO X 1,25 LT",
+        "sku":  "7790895005374",
+        "categoria":  "COCA COLA | GASEOSAS"
+    },
+    {
+        "nombre":  "SALCHICHAS PANCHIN X 6 U",
+        "sku":  "7793893001966",
+        "categoria":  "LACTEOS"
+    },
+    {
+        "nombre":  "MANI KING PANCETA X 80 GR",
+        "sku":  "7798151953148",
+        "categoria":  "SNACKS"
+    },
+    {
+        "nombre":  "MANI KING LIMÓN Y PIMIENTA X 80 GR",
+        "sku":  "7798151953131",
+        "categoria":  "SNACKS"
+    },
+    {
+        "nombre":  "MANI KING CREMA Y CEBOLLA X 80 GR",
+        "sku":  "7798151953124",
+        "categoria":  "SNACKS"
+    },
+    {
+        "nombre":  "CARAMELOS SUELTOS MENTA CRISTAL",
+        "sku":  "91",
+        "categoria":  "CARAMELOS Y CHICLES"
+    },
+    {
+        "nombre":  "VINO TINTO INBOX PARTRIDGE MALBEC 3 L",
+        "sku":  "7798123974515",
+        "categoria":  "TINTOS | VINOS"
+    },
+    {
+        "nombre":  "TOPLINE SEVEN STRAWBERRY",
+        "sku":  "77951113",
+        "categoria":  "CARAMELOS Y CHICLES"
+    },
+    {
+        "nombre":  "TOPLINE SEVEN MENTHOL X UNIDAD",
+        "sku":  "77964137",
+        "categoria":  "CARAMELOS Y CHICLES"
+    },
+    {
+        "nombre":  "TOPLINE SEVEN BUBBLE FUN X UNIDAD",
+        "sku":  "77983794",
+        "categoria":  "CARAMELOS Y CHICLES"
+    },
+    {
+        "nombre":  "TOPLINE SEVEN ATOMIC STRONG",
+        "sku":  "77939753",
+        "categoria":  "CARAMELOS Y CHICLES"
+    },
+    {
+        "nombre":  "MOGUL GOMAS OSITOS 30 GR",
+        "sku":  "7790580199913",
+        "categoria":  "CARAMELOS Y CHICLES"
+    },
+    {
+        "nombre":  "MOGUL GOMAS TIBURON 30 GR",
+        "sku":  "7790580200114",
+        "categoria":  "CARAMELOS Y CHICLES"
+    },
+    {
+        "nombre":  "YOGURT MANFREY FRUTADO DURAZNO X 150 GR",
+        "sku":  "7791058790663",
+        "categoria":  "LACTEOS"
+    },
+    {
+        "nombre":  "QUESO VERDE GOURMET MANFREY LIGTH X 290 GR",
+        "sku":  "7791058790465",
+        "categoria":  "LACTEOS"
+    },
+    {
+        "nombre":  "MANI SABORIZADOS EL NONO",
+        "sku":  "55",
+        "categoria":  "SNACKS"
+    },
+    {
+        "nombre":  "MANI KING QUESO X 80 GR",
+        "sku":  "7798151952592",
+        "categoria":  "SNACKS"
+    },
+    {
+        "nombre":  "MANI KING PIZZA X 80 GR",
+        "sku":  "7798151952608",
+        "categoria":  "SNACKS"
+    },
+    {
+        "nombre":  "MANI KING JAMON X 80 GR",
+        "sku":  "7798151952585",
+        "categoria":  "SNACKS"
+    },
+    {
+        "nombre":  "LECHE CHOCOLATADA BAGGIO X 1 L",
+        "sku":  "7790036948294",
+        "categoria":  "LACTEOS"
+    },
+    {
+        "nombre":  "1 HIELO X BOLSA HIELITO X 3 KG",
+        "sku":  "20",
+        "categoria":  "HIELO"
+    },
+    {
+        "nombre":  "PRESERVATIVO PRIME ULTRA FINO 3 UN",
+        "sku":  "7791519701061",
+        "categoria":  "PRESERVATIVOS"
+    },
+    {
+        "nombre":  "CHAMPAGNE RENAISSANCE EXTRA BRUT X 750 CC",
+        "sku":  "7798167890017",
+        "categoria":  "CHAMPAGNE ESPUMANTES SIDRAS"
+    },
+    {
+        "nombre":  "CHAMPAGNE MERCIER EXTRA BRUT X 750 ML",
+        "sku":  "7790975000022",
+        "categoria":  "CHAMPAGNE ESPUMANTES SIDRAS"
+    },
+    {
+        "nombre":  "CHAMPAGNE CHANDON EXTRA BRUT X 750 ML",
+        "sku":  "7790975198613",
+        "categoria":  "CHAMPAGNE ESPUMANTES SIDRAS"
+    },
+    {
+        "nombre":  "MARLBORO 12",
+        "sku":  "77983343",
+        "categoria":  "CIGARRILLOS"
+    },
+    {
+        "nombre":  "ALFAJOR AGUILA DARK 69 GR",
+        "sku":  "7790040137578",
+        "categoria":  "ALFAJORES"
+    },
+    {
+        "nombre":  "ALFAJOR AGUILA CLASICA X 72 GRS",
+        "sku":  "7790040133587",
+        "categoria":  "ALFAJORES"
+    },
+    {
+        "nombre":  "VINO TINTO EN CAJA TORO TETRA 1 L",
+        "sku":  "7790314063824",
+        "categoria":  "TINTOS | VINOS"
+    },
+    {
+        "nombre":  "POSTRE CHOCOTORTA",
+        "sku":  "767",
+        "categoria":  "POSTRES"
+    },
+    {
+        "nombre":  "POSTRE OREO",
+        "sku":  "770",
+        "categoria":  "POSTRES"
+    },
+    {
+        "nombre":  "POSTRE CHEESECAKE FRUTOS ROJOS",
+        "sku":  "768",
+        "categoria":  "POSTRES"
+    },
+    {
+        "nombre":  "SPRITE 2,25 LT",
+        "sku":  "7790895001000",
+        "categoria":  "GASEOSAS | SPRITE"
+    },
+    {
+        "nombre":  "COCA COLA DESC, X 1 LT,",
+        "sku":  "7790895001413",
+        "categoria":  "COCA COLA | GASEOSAS"
+    },
+    {
+        "nombre":  "AD BARBACOA HELLMANS X 250 GR",
+        "sku":  "7794000003583",
+        "categoria":  "ALMACEN"
+    },
+    {
+        "nombre":  "MAIZ PISINGALLO PRODEMAN X 400GR",
+        "sku":  "7798151951144",
+        "categoria":  "ALMACEN"
+    },
+    {
+        "nombre":  "CAFE EN SAQUITOS CLASICO LA VIRGINIA",
+        "sku":  "7790150079898",
+        "categoria":  "ALMACEN"
+    },
+    {
+        "nombre":  "VODKA SERNOVA REGULAR X 700 ML",
+        "sku":  "7790290101510",
+        "categoria":  "VODKAS Y WHISKYS"
+    },
+    {
+        "nombre":  "VERMUT CARPANO ROSSO X 950 ML",
+        "sku":  "7790290008192",
+        "categoria":  "BEBIDAS CON ALCOHOL"
+    },
+    {
+        "nombre":  "VERMUT CARPANO BIANCO X 950 ML",
+        "sku":  "7790290008291",
+        "categoria":  "BEBIDAS CON ALCOHOL"
+    },
+    {
+        "nombre":  "FERNET VITTONE X 750 ML",
+        "sku":  "7790290101459",
+        "categoria":  "BEBIDAS CON ALCOHOL"
+    },
+    {
+        "nombre":  "FERNET BRANCAMENTA X 750 ML",
+        "sku":  "7790290101473",
+        "categoria":  "BEBIDAS CON ALCOHOL"
+    },
+    {
+        "nombre":  "FERNET BRANCA 750 CC",
+        "sku":  "7790290101602",
+        "categoria":  "BEBIDAS CON ALCOHOL"
+    },
+    {
+        "nombre":  "CAMPARI X 750ML",
+        "sku":  "7891136052000",
+        "categoria":  "BEBIDAS CON ALCOHOL"
+    },
+    {
+        "nombre":  "PRESERVATIVO PRIME TEXTURADO 3 UN",
+        "sku":  "7791519200069",
+        "categoria":  "PRESERVATIVOS"
+    },
+    {
+        "nombre":  "PRESERVATIVO PRIME SUPER FINO 3 UN",
+        "sku":  "7791519200045",
+        "categoria":  "PRESERVATIVOS"
+    },
+    {
+        "nombre":  "PRESERVATIVO PRIME CON TACHAS X3",
+        "sku":  "7791519200090",
+        "categoria":  "PRESERVATIVOS"
+    },
+    {
+        "nombre":  "PRESERVATIVO PRIME ANATOMICO X3",
+        "sku":  "7791519200021",
+        "categoria":  "PRESERVATIVOS"
+    },
+    {
+        "nombre":  "TURRON ARCOR TURRON 25 GR",
+        "sku":  "77940131",
+        "categoria":  ""
+    },
+    {
+        "nombre":  "LAPICERA BIC AZUL X UNIDAD",
+        "sku":  "119",
+        "categoria":  "ALMACEN"
+    },
+    {
+        "nombre":  "CHIP PERSONAL",
+        "sku":  "200",
+        "categoria":  "ALMACEN"
+    },
+    {
+        "nombre":  "ROCKLETS 40 GR",
+        "sku":  "7790580327415",
+        "categoria":  "CHOCOLATES"
+    },
+    {
+        "nombre":  "OBLEA BON O BON X 30 GRS",
+        "sku":  "7790580346515",
+        "categoria":  "CHOCOLATES"
+    },
+    {
+        "nombre":  "OBLEA BON O BON BLANCO X 30 GRS",
+        "sku":  "7790580346614",
+        "categoria":  "CHOCOLATES"
+    },
+    {
+        "nombre":  "CHOCOLATE TOFI LECHE X 27 GR",
+        "sku":  "77974631",
+        "categoria":  "CHOCOLATES"
+    },
+    {
+        "nombre":  "CHOCOLATE COFLER AIR MIXTO X 55 GR",
+        "sku":  "7790580103422",
+        "categoria":  "CHOCOLATES"
+    },
+    {
+        "nombre":  "CHOCOLATE COFLER AIR LECHE X 55 GR",
+        "sku":  "7790580033408",
+        "categoria":  "CHOCOLATES"
+    },
+    {
+        "nombre":  "CHOCOLATE COFLER AIR BLANCO X 55 G",
+        "sku":  "7790580103415",
+        "categoria":  "CHOCOLATES"
+    },
+    {
+        "nombre":  "CHOCOLATE COFLER AIR ALMENDRAS X 55G",
+        "sku":  "7790580103439",
+        "categoria":  "CHOCOLATES"
+    },
+    {
+        "nombre":  "CHOCOLATE BLOCK X 110 GR",
+        "sku":  "77922120",
+        "categoria":  "CHOCOLATES"
+    },
+    {
+        "nombre":  "CHOCOLATE BLOCK 38 GR",
+        "sku":  "77953124",
+        "categoria":  "CHOCOLATES"
+    },
+    {
+        "nombre":  "CHOCOLATE ARCOR LECHE 25 GR",
+        "sku":  "7790580607210",
+        "categoria":  "CHOCOLATES"
+    },
+    {
+        "nombre":  "CHOCOLATE ARCOR BLANCO 25 GRS",
+        "sku":  "7790580607418",
+        "categoria":  "CHOCOLATES"
+    },
+    {
+        "nombre":  "BOCADITO BON O BON NEGRO",
+        "sku":  "77958921",
+        "categoria":  "CHOCOLATES"
+    },
+    {
+        "nombre":  "SALADIX PIZZA 100 GRS",
+        "sku":  "7790580697303",
+        "categoria":  "GALLETITAS"
+    },
+    {
+        "nombre":  "SALADIX DUO QUESO Y JAMON 80 GR",
+        "sku":  "7790040374607",
+        "categoria":  "GALLETITAS"
+    },
+    {
+        "nombre":  "GALLETITAS REX ORIGINAL X 125 GRS",
+        "sku":  "7790040719804",
+        "categoria":  "GALLETITAS"
+    },
+    {
+        "nombre":  "GALLETITAS MANA RELLENAS FRUTILLA X 148 GR",
+        "sku":  "7790040133266",
+        "categoria":  "GALLETITAS"
+    },
+    {
+        "nombre":  "GALLETITAS MANA RELLENAS DE LIMON X 152 GR",
+        "sku":  "7790040133259",
+        "categoria":  "GALLETITAS"
+    },
+    {
+        "nombre":  "GALLETITAS MANA RELLENAS DE CHOCOLATE X 152 GR",
+        "sku":  "7790040133242",
+        "categoria":  "GALLETITAS"
+    },
+    {
+        "nombre":  "GALLETITAS HOGAREÑAS SALVADO X 200 GR",
+        "sku":  "7790040132962",
+        "categoria":  "GALLETITAS"
+    },
+    {
+        "nombre":  "BIZCOCHOS 9 DE ORO CLASICO 200 GRS",
+        "sku":  "7792200000159",
+        "categoria":  "GALLETITAS"
+    },
+    {
+        "nombre":  "ALFAJOR TATIN TRIPLE NEGRO 60 GRS",
+        "sku":  "7790040405608",
+        "categoria":  "ALFAJORES"
+    },
+    {
+        "nombre":  "ALFAJOR TATIN TRIPLE BLANCO 60 GRS",
+        "sku":  "7790040405301",
+        "categoria":  "ALFAJORES"
+    },
+    {
+        "nombre":  "ALFAJOR COFLER BLOCK 60G",
+        "sku":  "7790040659605",
+        "categoria":  "ALFAJORES"
+    },
+    {
+        "nombre":  "ALFAJOR BAGLEY 3,0 BLANCO 73",
+        "sku":  "7790040991910",
+        "categoria":  "ALFAJORES"
+    },
+    {
+        "nombre":  "YOGURT MANFREY FIRME VAINILLA X 140",
+        "sku":  "7791058790359",
+        "categoria":  "LACTEOS"
+    },
+    {
+        "nombre":  "YOGURT MANFREY FIRME FRUTILLA X 140",
+        "sku":  "7791058790342",
+        "categoria":  "LACTEOS"
+    },
+    {
+        "nombre":  "YOGURT MANFREY CON CEREALES X 163 GR",
+        "sku":  "7791058000465",
+        "categoria":  "LACTEOS"
+    },
+    {
+        "nombre":  "QUESO UNTABLE MANFREY AZUL X 180GRS,",
+        "sku":  "7791058002469",
+        "categoria":  "LACTEOS"
+    },
+    {
+        "nombre":  "QUESO UNTAB, MANFREY SALAME X 180GRS,",
+        "sku":  "7791058002476",
+        "categoria":  "LACTEOS"
+    },
+    {
+        "nombre":  "QUESO RALLADO MANFREY X 40G,",
+        "sku":  "7791058000199",
+        "categoria":  "LACTEOS"
+    },
+    {
+        "nombre":  "POSTRE MANFREY VAINILLA X 120G,",
+        "sku":  "7791058000960",
+        "categoria":  "LACTEOS"
+    },
+    {
+        "nombre":  "POSTRE MANFREY DUL,DE LECHE X 120G,",
+        "sku":  "7791058000977",
+        "categoria":  "LACTEOS"
+    },
+    {
+        "nombre":  "LECHE MANFREY ENTERA LARGA VIDA X 1 L",
+        "sku":  "7791058000731",
+        "categoria":  "LACTEOS"
+    },
+    {
+        "nombre":  "LECHE MANFREY DESCREMADA LARGA VIDA X 1 L",
+        "sku":  "7791058000816",
+        "categoria":  "LACTEOS"
+    },
+    {
+        "nombre":  "LECHE CHOCOLATADA BAGGIO X 200CC",
+        "sku":  "7790036972602",
+        "categoria":  "LACTEOS"
+    },
+    {
+        "nombre":  "FLAN MANFREY VAINILLA X 120G ,",
+        "sku":  "7791058002445",
+        "categoria":  "LACTEOS"
+    },
+    {
+        "nombre":  "DULCE DE LECHE MANFREY X 400 GRS",
+        "sku":  "7791058010662",
+        "categoria":  "LACTEOS"
+    },
+    {
+        "nombre":  "DULCE DE LECHE MANFREY X 250 GS",
+        "sku":  "7791058000137",
+        "categoria":  "LACTEOS"
+    },
+    {
+        "nombre":  "CREMA DE LECHE MANFREY X 200ML",
+        "sku":  "7791058000441",
+        "categoria":  "LACTEOS"
+    },
+    {
+        "nombre":  "JUGO BAGGIO X 200 PERA",
+        "sku":  "7790036000596",
+        "categoria":  "JUGOS"
+    },
+    {
+        "nombre":  "JUGO BAGGIO PERA X 1 L",
+        "sku":  "7790036000350",
+        "categoria":  "JUGOS"
+    },
+    {
+        "nombre":  "JUGO BAGGIO X 200 NARANJA",
+        "sku":  "7790036000565",
+        "categoria":  "JUGOS"
+    },
+    {
+        "nombre":  "JUGO BAGGIO NARANJA X 1 L",
+        "sku":  "7790036000329",
+        "categoria":  "JUGOS"
+    },
+    {
+        "nombre":  "JUGO BAGGIO X 200 MULTIFRUTA",
+        "sku":  "7790036000619",
+        "categoria":  "JUGOS"
+    },
+    {
+        "nombre":  "JUGO BAGGIO MULTIFRUTA X 1 L",
+        "sku":  "7790036000466",
+        "categoria":  "JUGOS"
+    },
+    {
+        "nombre":  "JUGO BAGGIO X 200 MANZANA",
+        "sku":  "7790036000572",
+        "categoria":  "JUGOS"
+    },
+    {
+        "nombre":  "JUGO BAGGIO MANZANA X 1 L",
+        "sku":  "7790036000336",
+        "categoria":  "JUGOS"
+    },
+    {
+        "nombre":  "JUGO BAGGIO X 200 DURAZNO",
+        "sku":  "7790036000589",
+        "categoria":  "JUGOS"
+    },
+    {
+        "nombre":  "JUGO BAGGIO DURAZNO X 1 L",
+        "sku":  "7790036000343",
+        "categoria":  "JUGOS"
+    },
+    {
+        "nombre":  "PHILIP MORRIS CONVERTIBLE 12",
+        "sku":  "77971913",
+        "categoria":  "CIGARRILLOS"
+    },
+    {
+        "nombre":  "PHILIP MORRIS 20 KS",
+        "sku":  "77912879",
+        "categoria":  "CIGARRILLOS"
+    },
+    {
+        "nombre":  "PHILIP MORRIS 20 BOX CONVERTIBLE",
+        "sku":  "77940735",
+        "categoria":  "CIGARRILLOS"
+    },
+    {
+        "nombre":  "PHILIP MORRIS 20 BOX",
+        "sku":  "77912954",
+        "categoria":  "CIGARRILLOS"
+    },
+    {
+        "nombre":  "PHILIP MORRIS 12",
+        "sku":  "77981813",
+        "categoria":  "CIGARRILLOS"
+    },
+    {
+        "nombre":  "MARLBORO FUSION 20 BOX PURPLE",
+        "sku":  "77947550",
+        "categoria":  "CIGARRILLOS"
+    },
+    {
+        "nombre":  "MARLBORO 20 BOX",
+        "sku":  "77918482",
+        "categoria":  "CIGARRILLOS"
+    },
+    {
+        "nombre":  "MARLBORO 20 KS",
+        "sku":  "77916433",
+        "categoria":  "CIGARRILLOS"
+    },
+    {
+        "nombre":  "MARLBORO 12 FUSION CONVERTIBLE",
+        "sku":  "77978141",
+        "categoria":  "CIGARRILLOS"
+    },
+    {
+        "nombre":  "CIGARRILLOS SUELTOS CONVERTIBLES",
+        "sku":  "401",
+        "categoria":  "CIGARRILLOS"
+    },
+    {
+        "nombre":  "CIGARRILLOS SUELTOS",
+        "sku":  "400",
+        "categoria":  "CIGARRILLOS"
+    },
+    {
+        "nombre":  "CHESTERFIELD REMIX PURPLE 20 BOX",
+        "sku":  "77973887",
+        "categoria":  "CIGARRILLOS"
+    },
+    {
+        "nombre":  "CHESTERFIELD 20 KS",
+        "sku":  "77953513",
+        "categoria":  "CIGARRILLOS"
+    },
+    {
+        "nombre":  "CHESTERFIELD FRESH 20 BOX CONVERTIBLE",
+        "sku":  "77953957",
+        "categoria":  "CIGARRILLOS"
+    },
+    {
+        "nombre":  "CHESTERFIELD FRESH 12 CONVERTIBLE",
+        "sku":  "77953964",
+        "categoria":  "CIGARRILLOS"
+    },
+    {
+        "nombre":  "CERVEZA QUILMES CRISTAL LATA 473 CC",
+        "sku":  "7792798012923",
+        "categoria":  "CERVEZAS | LATAS"
+    },
+    {
+        "nombre":  "CERVEZA BRAHMA LATA 473 CC",
+        "sku":  "7792798005888",
+        "categoria":  "CERVEZAS | LATAS"
+    },
+    {
+        "nombre":  "SCHWEPPES TONICA X 1,5 LT",
+        "sku":  "7790895006715",
+        "categoria":  "GASEOSAS | SCHWEPPES"
+    },
+    {
+        "nombre":  "PRITTY LIMON X 2250 LT",
+        "sku":  "7791913000746",
+        "categoria":  "GASEOSAS | PRITTY"
+    },
+    {
+        "nombre":  "COCA COLA SIN AZUCAR X 2,5 LT DESCARTABLE",
+        "sku":  "7790895068096",
+        "categoria":  "COCA COLA | GASEOSAS"
+    },
+    {
+        "nombre":  "COCA COLA DESCARTABLE 1,5 LT",
+        "sku":  "7790895000430",
+        "categoria":  "COCA COLA | GASEOSAS"
+    },
+    {
+        "nombre":  "COCA COLA SIN AZUCAR X 1,5 LT DESCARTABLE",
+        "sku":  "7790895067556",
+        "categoria":  "COCA COLA | GASEOSAS"
+    },
+    {
+        "nombre":  "COCA COLA 2,25 L DESCARTABLE",
+        "sku":  "7790895000997",
+        "categoria":  "COCA COLA | GASEOSAS"
+    },
+    {
+        "nombre":  "VINO TINTO PARTRIDGE MALBEC X 750 CC",
+        "sku":  "7798123971309",
+        "categoria":  "TINTOS | VINOS"
+    },
+    {
+        "nombre":  "VINO TINTO VIÑAS DE BALBO X 1125 CC",
+        "sku":  "7791843008294",
+        "categoria":  "TINTOS | VINOS"
+    },
+    {
+        "nombre":  "VINO TINTO LATITUD 33 MALBEC X 750 ML",
+        "sku":  "7790975017518",
+        "categoria":  "TINTOS | VINOS"
+    },
+    {
+        "nombre":  "VINO BLANCO DULCE LOPEZ DULCE NATURAL 750 CC",
+        "sku":  "7790336030262",
+        "categoria":  "BLANCOS DULCES | VINOS"
+    },
+    {
+        "nombre":  "VINO BLANCO EN CAJA TORO BRIK 1 L",
+        "sku":  "7790314000034",
+        "categoria":  "BLANCOS Y ROSADOS | VINOS"
+    }
+]

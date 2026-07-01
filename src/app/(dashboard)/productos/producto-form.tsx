@@ -15,6 +15,7 @@ import { crearProductoAction, editarProductoAction } from "@/app/actions/product
 import { resolverTriangulo } from "@/domain/markup"
 import { formatearARS } from "@/domain/dinero"
 import { cn } from "@/lib/utils"
+import { CatalogoBuscador } from "@/components/catalogo-buscador"
 
 const schema = z.object({
   sku: z.string().min(1, "Requerido"),
@@ -181,6 +182,18 @@ export default function ProductoForm({ producto, barcodePreset, onSuccess }: Pro
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+      {!isEditing && (
+        <div className="space-y-1.5">
+          <Label className="text-muted-foreground text-xs">Buscar en catálogo</Label>
+          <CatalogoBuscador
+            onSelect={(item) => {
+              setValue("nombre", item.nombre)
+              setValue("barcode", item.sku)
+            }}
+          />
+        </div>
+      )}
+
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1.5">
           <Label htmlFor="sku">SKU</Label>
