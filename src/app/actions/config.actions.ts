@@ -118,6 +118,7 @@ export async function eliminarUbicacionAction(id: string) {
 const MedioPagoSchema = z.object({
   nombre: z.string().min(1),
   comisionBp: z.number().int().min(0),
+  esEfectivo: z.boolean().optional(),
   esMercadoPago: z.boolean().optional(),
 })
 

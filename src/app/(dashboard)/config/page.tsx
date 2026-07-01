@@ -66,8 +66,30 @@ interface Ubicacion {
   _count: { products: number }
 }
 interface MedioPago {
-  id: string; nombre: string; comisionBp: number; esMercadoPago: boolean
+  id: string; nombre: string; comisionBp: number
+  esEfectivo: boolean; esMercadoPago: boolean
   activo: boolean; esDefault: boolean; orden: number
+}
+
+type TipoPago = "efectivo" | "mercadopago" | "digital"
+
+function tipoFromMedio(m: { esEfectivo: boolean; esMercadoPago: boolean }): TipoPago {
+  if (m.esEfectivo) return "efectivo"
+  if (m.esMercadoPago) return "mercadopago"
+  return "digital"
+}
+
+function flagsFromTipo(tipo: TipoPago) {
+  return {
+    esEfectivo: tipo === "efectivo",
+    esMercadoPago: tipo === "mercadopago",
+  }
+}
+
+const TIPO_LABELS: Record<TipoPago, string> = {
+  efectivo: "Efectivo",
+  mercadopago: "MercadoPago",
+  digital: "Transferencia / QR",
 }
 interface CajaItem {
   id: string; nombre: string; esPrincipal: boolean; activo: boolean
@@ -687,7 +709,7 @@ function HeladerasSection({ onMutate }: { onMutate: () => void }) {
 const medioPagoSchema = z.object({
   nombre: z.string().min(1, "Requerido"),
   comisionPct: z.number().min(0, "Mínimo 0"),
-  esMercadoPago: z.boolean().optional(),
+  tipo: z.enum(["efectivo", "mercadopago", "digital"]),
 })
 type MedioPagoForm = z.infer<typeof medioPagoSchema>
 
@@ -697,26 +719,27 @@ function MediosPagoSection({ onMutate }: { onMutate: () => void }) {
   const [editing, setEditing] = useState<MedioPago | null>(null)
   const [pending, setPending] = useState<string | null>(null)
 
-  const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<MedioPagoForm>({
+  const { register, handleSubmit, reset, watch, setValue, formState: { errors, isSubmitting } } = useForm<MedioPagoForm>({
     resolver: zodResolver(medioPagoSchema),
-    defaultValues: { esMercadoPago: false },
+    defaultValues: { tipo: "digital" },
   })
 
-  function abrirCrear() { setEditing(null); reset({ nombre: "", comisionPct: 0, esMercadoPago: false }); setSheetOpen(true) }
+  function abrirCrear() { setEditing(null); reset({ nombre: "", comisionPct: 0, tipo: "digital" }); setSheetOpen(true) }
   function abrirEditar(m: MedioPago) {
     setEditing(m)
-    reset({ nombre: m.nombre, comisionPct: m.comisionBp / 100, esMercadoPago: m.esMercadoPago })
+    reset({ nombre: m.nombre, comisionPct: m.comisionBp / 100, tipo: tipoFromMedio(m) })
     setSheetOpen(true)
   }
 
   async function onSubmit(data: MedioPagoForm) {
     const bp = Math.round(data.comisionPct * 100)
+    const flags = flagsFromTipo(data.tipo)
     try {
       if (editing) {
-        await editarMedioPagoAction(editing.id, { nombre: data.nombre, comisionBp: bp, esMercadoPago: data.esMercadoPago })
+        await editarMedioPagoAction(editing.id, { nombre: data.nombre, comisionBp: bp, ...flags })
         toast.success("Medio de pago actualizado")
       } else {
-        await crearMedioPagoAction({ nombre: data.nombre, comisionBp: bp, esMercadoPago: data.esMercadoPago })
+        await crearMedioPagoAction({ nombre: data.nombre, comisionBp: bp, ...flags })
         toast.success("Medio de pago creado")
       }
       setSheetOpen(false); onMutate()
@@ -781,8 +804,8 @@ function MediosPagoSection({ onMutate }: { onMutate: () => void }) {
                   )}
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  {m.comisionBp === 0 ? "Sin comisión" : `Comisión: ${(m.comisionBp / 100).toFixed(2)}%`}
-                  {m.esMercadoPago && " · MercadoPago"}
+                  {TIPO_LABELS[tipoFromMedio(m)]}
+                  {m.comisionBp > 0 && ` · Comisión: ${(m.comisionBp / 100).toFixed(2)}%`}
                 </p>
               </div>
 
@@ -826,16 +849,23 @@ function MediosPagoSection({ onMutate }: { onMutate: () => void }) {
           <SheetHeader><SheetTitle>{editing ? "Editar medio de pago" : "Nuevo medio de pago"}</SheetTitle></SheetHeader>
           <form onSubmit={handleSubmit(onSubmit)} className="mt-6 space-y-4">
             <Field label="Nombre" {...register("nombre")} error={errors.nombre?.message} />
-            <Field label="Comisión (%)" type="number" step="0.01" min="0" {...register("comisionPct", { valueAsNumber: true })} error={errors.comisionPct?.message} />
-            <div className="flex items-center gap-3">
-              <input
-                type="checkbox"
-                id="esMercadoPago"
-                {...register("esMercadoPago")}
-                className="rounded"
-              />
-              <Label htmlFor="esMercadoPago">Es MercadoPago (comisión real al liquidar)</Label>
+            <div className="space-y-1.5">
+              <Label>Tipo</Label>
+              <Select value={watch("tipo")} onValueChange={(v) => setValue("tipo", v as TipoPago)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="efectivo">Efectivo</SelectItem>
+                  <SelectItem value="mercadopago">MercadoPago</SelectItem>
+                  <SelectItem value="digital">Transferencia / QR</SelectItem>
+                </SelectContent>
+              </Select>
+              {watch("tipo") === "mercadopago" && (
+                <p className="text-xs text-muted-foreground">La comisión de MercadoPago se aplica al liquidar, no al precio de venta.</p>
+              )}
             </div>
+            <Field label="Comisión (%)" type="number" step="0.01" min="0" {...register("comisionPct", { valueAsNumber: true })} error={errors.comisionPct?.message} />
             <Button type="submit" className="w-full" disabled={isSubmitting}>
               {isSubmitting ? <Loader2 className="size-4 animate-spin" /> : editing ? "Guardar cambios" : "Crear"}
             </Button>

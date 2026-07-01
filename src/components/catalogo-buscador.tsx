@@ -16,12 +16,13 @@ const catalogo = catalogoRaw as CatalogoItem[]
 
 interface Props {
   onSelect: (item: CatalogoItem) => void
+  initialQuery?: string
   className?: string
 }
 
-export function CatalogoBuscador({ onSelect, className }: Props) {
-  const [query, setQuery] = useState("")
-  const [open, setOpen] = useState(false)
+export function CatalogoBuscador({ onSelect, initialQuery, className }: Props) {
+  const [query, setQuery] = useState(initialQuery ?? "")
+  const [open, setOpen] = useState(!!initialQuery)
 
   const q = query.trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
   const words = q.split(/\s+/).filter(Boolean)

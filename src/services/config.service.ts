@@ -138,7 +138,7 @@ export const medioPagoService = {
 
   async crear(
     organizationId: string,
-    data: { nombre: string; comisionBp: number; esMercadoPago?: boolean }
+    data: { nombre: string; comisionBp: number; esEfectivo?: boolean; esMercadoPago?: boolean }
   ) {
     const maxOrden = await prisma.paymentMethod.aggregate({
       where: { organizationId },
@@ -147,6 +147,7 @@ export const medioPagoService = {
     return prisma.paymentMethod.create({
       data: {
         ...data,
+        esEfectivo: data.esEfectivo ?? false,
         esMercadoPago: data.esMercadoPago ?? false,
         esDefault: false,
         orden: (maxOrden._max.orden ?? -1) + 1,
@@ -158,7 +159,7 @@ export const medioPagoService = {
   async editar(
     id: string,
     organizationId: string,
-    data: { nombre?: string; comisionBp?: number; esMercadoPago?: boolean; activo?: boolean }
+    data: { nombre?: string; comisionBp?: number; esEfectivo?: boolean; esMercadoPago?: boolean; activo?: boolean }
   ) {
     await prisma.paymentMethod.findFirstOrThrow({ where: { id, organizationId } })
     return prisma.paymentMethod.update({ where: { id }, data })

@@ -22,6 +22,8 @@ const schema = z.object({
   nombre: z.string().min(1, "Requerido"),
   categoryId: z.string().min(1, "Requerido"),
   barcode: z.string().optional(),
+  providerId: z.string().optional(),
+  locationId: z.string().optional(),
   precioCentavos: z.number().min(1, "Requerido"),
   costoCentavos: z.number().optional(),
   stock: z.number().min(0),
@@ -41,7 +43,11 @@ interface ProductoFormProps {
     stockMinimo: number
     barcode?: string | null
     categoryId: string
+    providerId?: string | null
+    locationId?: string | null
     category: { nombre: string }
+    provider?: { nombre: string } | null
+    location?: { nombre: string } | null
   }
   barcodePreset?: string
   onSuccess: () => void
@@ -55,12 +61,27 @@ interface Categoria {
   markupDefaultFijoCentavos: number
 }
 
+interface Proveedor { id: string; nombre: string }
+interface Ubicacion { id: string; nombre: string }
+
 export default function ProductoForm({ producto, barcodePreset, onSuccess }: ProductoFormProps) {
   const isEditing = !!producto
 
   const { data: categorias } = useQuery<Categoria[]>({
     queryKey: ["categorias"],
     queryFn: () => fetch("/api/config/categorias").then((r) => r.json()),
+    staleTime: 5 * 60_000,
+  })
+
+  const { data: proveedores } = useQuery<Proveedor[]>({
+    queryKey: ["proveedores"],
+    queryFn: () => fetch("/api/config/proveedores").then((r) => r.json()),
+    staleTime: 5 * 60_000,
+  })
+
+  const { data: ubicaciones } = useQuery<Ubicacion[]>({
+    queryKey: ["ubicaciones"],
+    queryFn: () => fetch("/api/config/ubicaciones").then((r) => r.json()),
     staleTime: 5 * 60_000,
   })
 
@@ -77,6 +98,8 @@ export default function ProductoForm({ producto, barcodePreset, onSuccess }: Pro
       nombre: producto?.nombre ?? "",
       categoryId: producto?.categoryId ?? "",
       barcode: producto?.barcode ?? barcodePreset ?? "",
+      providerId: producto?.providerId ?? undefined,
+      locationId: producto?.locationId ?? undefined,
       precioCentavos: producto ? producto.precioCentavos / 100 : undefined,
       costoCentavos: producto ? producto.costoCentavos / 100 : undefined,
       stock: producto?.stock ?? 0 as number,
@@ -154,6 +177,8 @@ export default function ProductoForm({ producto, barcodePreset, onSuccess }: Pro
       nombre: data.nombre,
       categoryId: data.categoryId,
       barcode: data.barcode || undefined,
+      providerId: data.providerId || undefined,
+      locationId: data.locationId || undefined,
       precioCentavos: centavos(data.precioCentavos),
       costoCentavos: centavos(data.costoCentavos),
       stock: data.stock,
@@ -186,6 +211,7 @@ export default function ProductoForm({ producto, barcodePreset, onSuccess }: Pro
         <div className="space-y-1.5">
           <Label className="text-muted-foreground text-xs">Buscar en catálogo</Label>
           <CatalogoBuscador
+            initialQuery={barcodePreset}
             onSelect={(item) => {
               setValue("nombre", item.nombre)
               setValue("barcode", item.sku)
@@ -231,6 +257,47 @@ export default function ProductoForm({ producto, barcodePreset, onSuccess }: Pro
           </SelectContent>
         </Select>
         {errors.categoryId && <p className="text-xs text-k-loss">{errors.categoryId.message}</p>}
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-1.5">
+          <Label>Proveedor</Label>
+          <Select
+            value={watch("providerId") ?? ""}
+            onValueChange={(v) => setValue("providerId", v === "__none__" ? undefined : v)}
+          >
+            <SelectTrigger className="rounded-xl">
+              <SelectValue placeholder="Sin proveedor">
+                {proveedores?.find((p) => p.id === watch("providerId"))?.nombre ?? (isEditing && producto?.provider?.nombre) ?? undefined}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__none__">Sin proveedor</SelectItem>
+              {proveedores?.map((p) => (
+                <SelectItem key={p.id} value={p.id}>{p.nombre}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1.5">
+          <Label>Heladera</Label>
+          <Select
+            value={watch("locationId") ?? ""}
+            onValueChange={(v) => setValue("locationId", v === "__none__" ? undefined : v)}
+          >
+            <SelectTrigger className="rounded-xl">
+              <SelectValue placeholder="Sin heladera">
+                {ubicaciones?.find((u) => u.id === watch("locationId"))?.nombre ?? (isEditing && producto?.location?.nombre) ?? undefined}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__none__">Sin heladera</SelectItem>
+              {ubicaciones?.map((u) => (
+                <SelectItem key={u.id} value={u.id}>{u.nombre}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       {/* Precio / Costo / Markup con toggle % / $ */}
