@@ -31,6 +31,7 @@ export function BottomNav() {
   const pathname = usePathname()
   const qc = useQueryClient()
   const isMore = pathname.startsWith("/productos") || pathname.startsWith("/config")
+  const enVender = pathname.startsWith("/vender")
   const { setOverlay, overlayAbierto } = useVentasStore()
 
   function prefetch(href: string) {
@@ -64,14 +65,14 @@ export function BottomNav() {
           )
         })}
 
-        {/* Botón Vender — abre overlay con carrito activo */}
+        {/* Botón Vender — abre overlay con carrito activo (ya no hace falta si /vender está a la vista) */}
         <button
           type="button"
           aria-label="Vender"
-          onClick={() => setOverlay(true)}
+          onClick={() => { if (!enVender) setOverlay(true) }}
           className={cn(
             "flex flex-col items-center gap-1 min-w-[60px] px-3 py-2 rounded-xl transition-colors",
-            overlayAbierto ? "text-primary" : "text-muted-foreground"
+            overlayAbierto || enVender ? "text-primary" : "text-muted-foreground"
           )}
         >
           <ShoppingCart className="size-5" />

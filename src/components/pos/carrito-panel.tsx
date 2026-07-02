@@ -39,6 +39,7 @@ export function CarritoPanel({ onSuccess, expandAction, compact = false }: Carri
   const { cambiarCantidad, setGramos, eliminarLinea, vaciarCarrito, setMedioPago, onVentaConfirmada } =
     useVentasStore()
   const [loading, setLoading] = useState(false)
+  const [confirmVaciar, setConfirmVaciar] = useState(false)
   const [successInfo, setSuccessInfo] = useState<{
     ventaId: string
     totalCentavos: number
@@ -60,6 +61,10 @@ export function CarritoPanel({ onSuccess, expandAction, compact = false }: Carri
   }, [mediosPago, venta?.id, venta?.medioPagoId, setMedioPago])
 
   if (!venta) return null
+
+  // Si el carrito quedó vacío (vaciado, venta confirmada, etc.), descartar
+  // cualquier confirmación pendiente en vez de dejarla colgada para la próxima carga.
+  if (venta.carrito.length === 0 && confirmVaciar) setConfirmVaciar(false)
 
   const { carrito, medioPagoId } = venta
   const subtotal = (l: (typeof carrito)[number]) =>
@@ -337,9 +342,33 @@ export function CarritoPanel({ onSuccess, expandAction, compact = false }: Carri
           {loading ? <Loader2 className="size-4 animate-spin" /> : "Confirmar venta"}
         </Button>
         {carrito.length > 0 && (
-          <Button variant="ghost" className="w-full text-xs text-muted-foreground h-8" onClick={vaciarCarrito}>
-            Vaciar carrito
-          </Button>
+          confirmVaciar ? (
+            <div className="flex items-center justify-center gap-3 h-8 text-xs">
+              <span className="text-k-loss font-medium">¿Vaciar carrito?</span>
+              <button
+                type="button"
+                className="text-k-loss font-semibold hover:underline"
+                onClick={() => { vaciarCarrito(); setConfirmVaciar(false) }}
+              >
+                Sí, vaciar
+              </button>
+              <button
+                type="button"
+                className="text-muted-foreground hover:underline"
+                onClick={() => setConfirmVaciar(false)}
+              >
+                Cancelar
+              </button>
+            </div>
+          ) : (
+            <Button
+              variant="ghost"
+              className="w-full text-xs text-muted-foreground h-8"
+              onClick={() => setConfirmVaciar(true)}
+            >
+              Vaciar carrito
+            </Button>
+          )
         )}
       </div>
     </div>

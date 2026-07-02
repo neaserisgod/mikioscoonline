@@ -10,6 +10,8 @@ import { Input } from "@/components/ui/input"
 import { EmptyState } from "@/components/ui/empty-state"
 import { CarritoPanel } from "@/components/pos/carrito-panel"
 import { VentaSwitcher } from "@/components/pos/venta-switcher"
+import { CajaEstadoBar } from "@/components/pos/caja-estado-bar"
+import { CameraScannerSheet } from "@/components/scanner/camera-scanner-sheet"
 import { useVentasStore } from "@/stores/ventas.store"
 import { useState } from "react"
 
@@ -29,6 +31,7 @@ export default function VenderClient() {
   const inputRef = useRef<HTMLInputElement>(null)
   const [query, setQuery] = useState("")
   const [showDropdown, setShowDropdown] = useState(false)
+  const [cameraOpen, setCameraOpen] = useState(false)
 
   const { agregarProducto } = useVentasStore()
 
@@ -76,6 +79,8 @@ export default function VenderClient() {
 
   return (
     <div className="space-y-4">
+      <CajaEstadoBar />
+
       {/* Switcher de ventas en paralelo */}
       <div className="flex items-center justify-between gap-4">
         <h1 className="text-2xl font-semibold shrink-0">Vender</h1>
@@ -114,8 +119,8 @@ export default function VenderClient() {
                 variant="outline"
                 size="icon"
                 className="size-11 rounded-xl shrink-0 lg:hidden border-border/60"
-                aria-label="Escanear código"
-                onClick={() => toast.info("Cámara disponible en modo escáner")}
+                aria-label="Escanear código con la cámara"
+                onClick={() => setCameraOpen(true)}
               >
                 <Camera className="size-4" />
               </Button>
@@ -180,6 +185,8 @@ export default function VenderClient() {
           </div>
         </div>
       </div>
+
+      <CameraScannerSheet open={cameraOpen} onOpenChange={setCameraOpen} />
     </div>
   )
 }

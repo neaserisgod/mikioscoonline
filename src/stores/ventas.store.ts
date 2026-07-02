@@ -45,7 +45,7 @@ interface VentasActions {
   eliminarLinea: (productId: string) => void
   vaciarCarrito: () => void
   setMedioPago: (medioPagoId: string) => void
-  // Llamar tras confirmar venta exitosa: cierra esta, pasa a otra abierta o crea vacía
+  // Llamar tras confirmar venta exitosa: vacía el carrito de la venta activa, sin cambiar de pestaña
   onVentaConfirmada: () => void
 }
 
@@ -207,17 +207,15 @@ export const useVentasStore = create<VentasState & VentasActions>((set, get) => 
     },
 
     onVentaConfirmada() {
+      // La pestaña confirmada se vacía y se queda activa — nunca saltamos
+      // a otra venta sin que el usuario la elija explícitamente.
       set((s) => {
-        const restantes = s.ventas.filter((v) => v.id !== s.ventaActivaId)
-        if (restantes.length === 0) {
-          // No hay otras abiertas → crear una vacía
-          const nueva = crearVentaVacia(1)
-          return { ventas: [nueva], ventaActivaId: nueva.id }
-        }
-        // Pasar a la última venta abierta que quede
+        const activa = ventaActiva(s)
+        if (!activa) return s
         return {
-          ventas: restantes,
-          ventaActivaId: restantes[restantes.length - 1].id,
+          ventas: s.ventas.map((v) =>
+            v.id === activa.id ? { ...v, carrito: [], medioPagoId: "" } : v
+          ),
         }
       })
     },
