@@ -10,7 +10,15 @@ function createPrismaClient() {
   }
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { PrismaPg } = require("@prisma/adapter-pg")
-  const adapter = new PrismaPg({ connectionString: url })
+  // node-postgres cierra conexiones idle a los 10s por default — en un server
+  // de larga vida (next dev/start) eso fuerza reconectar (~700ms) en cada
+  // request separado por más de 10s de inactividad. Con un timeout largo, la
+  // conexión se mantiene viva entre navegaciones normales del usuario.
+  const adapter = new PrismaPg({
+    connectionString: url,
+    idleTimeoutMillis: 5 * 60_000,
+    keepAlive: true,
+  })
   return new PrismaClient({ adapter, log: ["error"] } as never)
 }
 

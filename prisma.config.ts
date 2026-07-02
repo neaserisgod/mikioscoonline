@@ -13,6 +13,8 @@ export default defineConfig({
     path: "prisma/migrations",
   },
   datasource: {
-    url: process.env.DATABASE_URL,
+    // Migraciones van por la conexión directa (sin pooler): las advisory
+    // locks que usa Prisma Migrate no son confiables a través de PgBouncer.
+    url: process.env.DIRECT_URL ?? process.env.DATABASE_URL,
   },
 })

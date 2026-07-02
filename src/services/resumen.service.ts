@@ -76,15 +76,26 @@ export const resumenService = {
     const desde = inicioMes(ref)
     const hasta = finMes(ref)
 
-    // Ventas del mes
-    const ventas = await prisma.sale.findMany({
-      where: { organizationId, fecha: { gte: desde, lte: hasta } },
-      select: {
-        totalCentavos: true,
-        costoTotalCentavos: true,
-        payments: { select: { comisionCentavos: true } },
-      },
-    })
+    // Ventas del mes y gastos fijos son independientes — se piden en paralelo
+    const [ventas, gastosFijos] = await Promise.all([
+      prisma.sale.findMany({
+        where: { organizationId, fecha: { gte: desde, lte: hasta } },
+        select: {
+          totalCentavos: true,
+          costoTotalCentavos: true,
+          payments: { select: { comisionCentavos: true } },
+        },
+      }),
+      prisma.fixedExpense.findMany({
+        where: { organizationId, activo: true },
+        select: {
+          montos: {
+            select: { mesAnio: true, montoCentavos: true },
+            orderBy: { mesAnio: "desc" },
+          },
+        },
+      }),
+    ])
 
     let ventasCentavos = 0
     let costoTotalCentavos = 0
@@ -99,17 +110,6 @@ export const resumenService = {
     }
 
     const gananciaBrutaCentavos = ventasCentavos - costoTotalCentavos
-
-    // Gastos fijos del mes: buscar FixedExpenseMonto de este mes o el monto más reciente anterior
-    const gastosFijos = await prisma.fixedExpense.findMany({
-      where: { organizationId, activo: true },
-      select: {
-        montos: {
-          select: { mesAnio: true, montoCentavos: true },
-          orderBy: { mesAnio: "desc" },
-        },
-      },
-    })
 
     let gastosFijosCentavos = 0
     for (const gasto of gastosFijos) {
