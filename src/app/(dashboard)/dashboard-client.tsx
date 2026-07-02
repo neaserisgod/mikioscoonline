@@ -116,7 +116,6 @@ function CajasPanel() {
   const { data: cajas, isLoading, dataUpdatedAt } = useQuery<CajaPanelItem[]>({
     queryKey: ["cajas-panel"],
     queryFn: () => fetch("/api/cajas").then((r) => r.json()),
-    refetchInterval: 30_000,
   })
 
   const [mode, setMode] = useState<PanelMode | null>(null)
@@ -582,7 +581,6 @@ export default function DashboardClient() {
   const { data, isLoading } = useQuery<ResumenData>({
     queryKey: ["resumen"],
     queryFn: () => fetch("/api/resumen").then((r) => r.json()),
-    refetchInterval: 60_000,
   })
 
   const today = getToday()
@@ -590,7 +588,6 @@ export default function DashboardClient() {
     queryKey: ["rentabilidad-hoy", today],
     queryFn: () =>
       fetch(`/api/rentabilidad?por=proveedor&desde=${today}&hasta=${today}`).then((r) => r.json()),
-    refetchInterval: 60_000,
   })
 
   if (isLoading || !data) {

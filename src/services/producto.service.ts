@@ -57,10 +57,11 @@ export interface FilaCSV {
   barcode?: string
 }
 
+// Solo se usa `nombre` de cada relación en las pantallas que consumen estas queries.
 const incluirRelaciones = {
-  category: true,
-  provider: true,
-  location: true,
+  category: { select: { nombre: true } },
+  provider: { select: { nombre: true } },
+  location: { select: { nombre: true } },
 } as const
 
 // ─── Servicio ─────────────────────────────────────────────────────────────────
@@ -103,7 +104,7 @@ export const productoService = {
         stockMinimoGramos: esPesable ? (input.stockMinimoGramos ?? 0) : null,
         organizationId: input.organizationId,
       },
-      include: incluirRelaciones,
+      // Sin include: el resultado no se usa (las actions devuelven solo {ok, error})
     })
   },
 
@@ -177,7 +178,7 @@ export const productoService = {
               }),
             }),
       },
-      include: incluirRelaciones,
+      // Sin include: el resultado no se usa (las actions devuelven solo {ok, error})
     })
   },
 
@@ -186,7 +187,7 @@ export const productoService = {
     return prisma.product.update({
       where: { id },
       data: { costoCentavos, costoEsProvisional: false },
-      include: incluirRelaciones,
+      // Sin include: el resultado no se usa (la action devuelve solo {ok, error})
     })
   },
 

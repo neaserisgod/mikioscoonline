@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
         v.id,
         new Date(v.fecha).toLocaleDateString("es-AR"),
         v.user.nombre,
-        v.lines.length,
+        v._count.lines,
         medios,
         (v.totalCentavos / 100).toFixed(2),
         (v.costoTotalCentavos / 100).toFixed(2),

@@ -38,7 +38,8 @@ export const rentabilidadService = {
       throw new Error("No se encontró la caja principal. Verificá la configuración de cajas.")
     }
 
-    // Traer todas las líneas de venta del período con sus relaciones
+    // Traer todas las líneas de venta del período — solo los campos usados abajo
+    // (esta tabla puede ser grande: un mes entero de ventas de todos los productos).
     const lineas = await prisma.saleLine.findMany({
       where: {
         sale: {
@@ -46,12 +47,20 @@ export const rentabilidadService = {
           fecha: { gte: fechaDesde, lte: fechaHasta },
         },
       },
-      include: {
+      select: {
+        cantidad: true,
+        gramos: true,
+        precioUnitarioCentavos: true,
+        costoUnitarioCentavos: true,
         product: {
-          include: {
-            category: { include: { caja: { select: { id: true, nombre: true } } } },
-            provider: true,
-            location: true,
+          select: {
+            esPesable: true,
+            categoryId: true,
+            providerId: true,
+            locationId: true,
+            category: { select: { nombre: true, cajaId: true, caja: { select: { id: true, nombre: true } } } },
+            provider: { select: { nombre: true } },
+            location: { select: { nombre: true } },
           },
         },
       },

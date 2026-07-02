@@ -307,10 +307,14 @@ export const ventaService = {
             }
           : {}),
       },
-      include: {
-        lines: true,
-        payments: { include: { paymentMethod: true } },
-        user: { select: { id: true, nombre: true } },
+      select: {
+        id: true,
+        fecha: true,
+        totalCentavos: true,
+        costoTotalCentavos: true,
+        _count: { select: { lines: true } },
+        payments: { select: { paymentMethod: { select: { nombre: true } } } },
+        user: { select: { nombre: true } },
       },
       orderBy: { fecha: "desc" },
       take: opts?.limit ?? 100,

@@ -26,7 +26,7 @@ interface Producto {
   stock: number
   stockMinimo: number
   categoryId: string
-  category: { nombre: string; markupDefaultBp: number }
+  category: { nombre: string }
   provider?: { nombre: string } | null
   location?: { nombre: string } | null
   esPesable: boolean

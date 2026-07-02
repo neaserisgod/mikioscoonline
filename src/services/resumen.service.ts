@@ -32,9 +32,10 @@ export const resumenService = {
 
     const ventas = await prisma.sale.findMany({
       where: { organizationId, fecha: { gte: desde, lte: hasta } },
-      include: {
-        lines: true,
-        payments: true,
+      select: {
+        totalCentavos: true,
+        costoTotalCentavos: true,
+        payments: { select: { comisionCentavos: true } },
       },
     })
 
@@ -78,7 +79,11 @@ export const resumenService = {
     // Ventas del mes
     const ventas = await prisma.sale.findMany({
       where: { organizationId, fecha: { gte: desde, lte: hasta } },
-      include: { payments: true },
+      select: {
+        totalCentavos: true,
+        costoTotalCentavos: true,
+        payments: { select: { comisionCentavos: true } },
+      },
     })
 
     let ventasCentavos = 0
@@ -98,8 +103,9 @@ export const resumenService = {
     // Gastos fijos del mes: buscar FixedExpenseMonto de este mes o el monto más reciente anterior
     const gastosFijos = await prisma.fixedExpense.findMany({
       where: { organizationId, activo: true },
-      include: {
+      select: {
         montos: {
+          select: { mesAnio: true, montoCentavos: true },
           orderBy: { mesAnio: "desc" },
         },
       },
