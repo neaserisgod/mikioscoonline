@@ -58,7 +58,6 @@ export class MercadoPagoProvider implements PagosProvider {
 
   async enviarMontoAQr(datos: DatosOrdenQr): Promise<ResultadoOrdenMp> {
     const monto = centavosAMontoStr(datos.montoCentavos)
-    const expirationDate = new Date(Date.now() + datos.expiracionMinutos * 60_000).toISOString()
 
     const body = await mpFetch("/v1/orders", {
       method: "POST",
@@ -67,7 +66,7 @@ export class MercadoPagoProvider implements PagosProvider {
         type: "qr",
         external_reference: datos.externalReference,
         total_amount: monto,
-        expiration_date: expirationDate,
+        expiration_time: `PT${datos.expiracionMinutos}M`,
         config: {
           qr: {
             external_pos_id: datos.externalPosId,
@@ -83,7 +82,6 @@ export class MercadoPagoProvider implements PagosProvider {
             unit_price: monto,
             quantity: 1,
             unit_measure: "unit",
-            total_amount: monto,
           },
         ],
       }),
