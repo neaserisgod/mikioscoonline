@@ -115,6 +115,11 @@ export class MercadoPagoProvider implements PagosProvider {
             terminal_id: datos.terminalId,
             print_on_terminal: "no_ticket",
           },
+          // Sin esto, la terminal deja elegir entre tarjeta y QR — lo fijamos en
+          // tarjeta para que vaya directo a "apoyar" sin pantalla de selección.
+          payment_method: {
+            default_type: "credit_card",
+          },
         },
         description: datos.descripcion.slice(0, 150),
       }),
