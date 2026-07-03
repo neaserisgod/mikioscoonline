@@ -17,7 +17,7 @@ export default function NuevoProductoPage() {
 
   return (
     <div className="max-w-2xl space-y-4">
-      <h1 className="text-2xl font-bold">Nuevo producto</h1>
+      <h1 className="font-heading text-2xl font-medium">Nuevo producto</h1>
       <div className="border rounded-lg p-6">
         <ProductoForm onSuccess={onSuccess} />
       </div>

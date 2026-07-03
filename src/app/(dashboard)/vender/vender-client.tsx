@@ -7,8 +7,9 @@ import { Search, Camera } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { EmptyState } from "@/components/ui/empty-state"
-import { CarritoPanel } from "@/components/pos/carrito-panel"
+import { useCarritoCheckout } from "@/components/pos/use-carrito-checkout"
+import { CarritoItemsList } from "@/components/pos/carrito-items-list"
+import { CarritoResumenPanel } from "@/components/pos/carrito-resumen-panel"
 import { VentaSwitcher } from "@/components/pos/venta-switcher"
 import { CajaEstadoBar } from "@/components/pos/caja-estado-bar"
 import { CameraScannerSheet } from "@/components/scanner/camera-scanner-sheet"
@@ -34,6 +35,7 @@ export default function VenderClient() {
   const [cameraOpen, setCameraOpen] = useState(false)
 
   const { agregarProducto } = useVentasStore()
+  const checkout = useCarritoCheckout()
 
   const { data: productos } = useQuery<Producto[]>({
     queryKey: ["productos-search", query],
@@ -83,7 +85,7 @@ export default function VenderClient() {
 
       {/* Switcher de ventas en paralelo */}
       <div className="flex items-center justify-between gap-4">
-        <h1 className="text-2xl font-semibold shrink-0">Vender</h1>
+        <h1 className="font-heading text-2xl font-medium shrink-0">Vender</h1>
         <VentaSwitcher />
       </div>
 
@@ -174,14 +176,14 @@ export default function VenderClient() {
             </AnimatePresence>
           </div>
 
-          {/* Área carrito vacío */}
-          <CarritoVacioGuard />
+          {/* Productos del carrito — acá vive el grueso de la pantalla */}
+          <CarritoItemsList checkout={checkout} className="flex-1" />
         </div>
 
         {/* Panel derecho: cobro */}
-        <div className="lg:w-72 shrink-0">
+        <div className="lg:w-80 shrink-0">
           <div className="rounded-2xl border border-border/60 bg-card p-5 space-y-4 lg:sticky lg:top-0 overflow-y-auto lg:max-h-[calc(100dvh-10rem)]">
-            <CarritoPanel />
+            <CarritoResumenPanel checkout={checkout} />
           </div>
         </div>
       </div>
@@ -195,22 +197,4 @@ function formatPrice(centavos: number) {
   return new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS" }).format(
     centavos / 100
   )
-}
-
-function CarritoVacioGuard() {
-  const carrito = useVentasStore((s) => {
-    const activa = s.ventas.find((v) => v.id === s.ventaActivaId)
-    return activa?.carrito ?? []
-  })
-
-  if (carrito.length === 0) {
-    return (
-      <EmptyState
-        icon={Search}
-        title="El carrito está vacío"
-        description="Buscá o escaneá un producto para agregarlo"
-      />
-    )
-  }
-  return null
 }

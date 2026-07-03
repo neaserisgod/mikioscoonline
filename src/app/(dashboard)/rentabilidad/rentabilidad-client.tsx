@@ -69,7 +69,7 @@ export default function RentabilidadClient() {
     <div className="space-y-5">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-semibold">Rentabilidad</h1>
+        <h1 className="font-heading text-2xl font-medium">Rentabilidad</h1>
         <p className="text-sm text-muted-foreground">Mes actual</p>
       </div>
 

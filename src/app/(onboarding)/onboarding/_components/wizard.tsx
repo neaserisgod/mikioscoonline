@@ -189,7 +189,7 @@ export function OnboardingWizard({ orgNombre }: { orgNombre: string }) {
     <div className="w-full max-w-lg">
       {/* Header */}
       <div className="mb-6 text-center">
-        <h1 className="text-2xl font-semibold mb-1">Configurá tu negocio</h1>
+        <h1 className="font-heading text-2xl font-medium mb-1">Configurá tu negocio</h1>
         <p className="text-muted-foreground text-sm">
           Paso {step + 1} de {totalSteps}
           {!currentStep.required && " · Opcional"}

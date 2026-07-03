@@ -61,7 +61,7 @@ export default function ReportesClient() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">Reportes</h1>
+      <h1 className="font-heading text-2xl font-medium">Reportes</h1>
 
       {isLoading || !data ? (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">

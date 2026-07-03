@@ -33,7 +33,7 @@ export default function EditarProductoPage({ params }: { params: Promise<{ id: s
 
   return (
     <div className="max-w-2xl space-y-4">
-      <h1 className="text-2xl font-bold">Editar producto</h1>
+      <h1 className="font-heading text-2xl font-medium">Editar producto</h1>
       <div className="border rounded-lg p-6">
         <ProductoForm producto={producto} onSuccess={onSuccess} />
       </div>

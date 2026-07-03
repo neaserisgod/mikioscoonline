@@ -270,7 +270,7 @@ export default function ConfigPage() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-semibold">Configuración</h1>
+      <h1 className="font-heading text-2xl font-medium">Configuración</h1>
 
       <div className="flex flex-col lg:grid lg:grid-cols-[200px_1fr] lg:gap-6">
         {/* ── Navegación lateral ─────────────────────────────────────────────── */}

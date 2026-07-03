@@ -101,7 +101,7 @@ export default function ProductosClient() {
     <div className="space-y-5">
       {/* Header */}
       <div className="flex items-center justify-between gap-3">
-        <h1 className="text-2xl font-semibold">Productos</h1>
+        <h1 className="font-heading text-2xl font-medium">Productos</h1>
         <Button onClick={abrirNuevo} size="sm" className="gap-1.5">
           <Plus className="size-3.5" />
           Nuevo

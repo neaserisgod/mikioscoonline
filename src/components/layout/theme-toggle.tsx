@@ -2,7 +2,7 @@
 
 import { useSyncExternalStore } from "react"
 import { useTheme } from "next-themes"
-import { Sun, Moon } from "lucide-react"
+import { Sun, Contrast, Moon } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
 function subscribeNoop() {
@@ -16,21 +16,33 @@ function useMounted() {
   return useSyncExternalStore(subscribeNoop, () => true, () => false)
 }
 
+const CYCLE = ["light", "gray", "dark"] as const
+const ICON = { light: Sun, gray: Contrast, dark: Moon } as const
+const LABEL = { light: "claro", gray: "gris", dark: "oscuro" } as const
+
 export function ThemeToggle() {
-  const { resolvedTheme, setTheme } = useTheme()
+  const { theme, setTheme } = useTheme()
   const mounted = useMounted()
 
-  const isDark = resolvedTheme === "dark"
+  const current = mounted && theme && CYCLE.includes(theme as (typeof CYCLE)[number])
+    ? (theme as (typeof CYCLE)[number])
+    : "dark"
+  const Icon = ICON[current]
+
+  function siguiente() {
+    const i = CYCLE.indexOf(current)
+    setTheme(CYCLE[(i + 1) % CYCLE.length])
+  }
 
   return (
     <Button
       variant="ghost"
       size="icon"
-      onClick={() => setTheme(isDark ? "light" : "dark")}
-      className="size-8 text-muted-foreground hover:text-foreground"
-      aria-label="Cambiar tema"
+      onClick={siguiente}
+      className="size-8 xl:size-9 text-muted-foreground hover:text-foreground"
+      aria-label={`Cambiar tema (actual: ${LABEL[current]})`}
     >
-      {mounted ? (isDark ? <Sun className="size-4" /> : <Moon className="size-4" />) : <Moon className="size-4" />}
+      <Icon className="size-4 xl:size-5" />
     </Button>
   )
 }

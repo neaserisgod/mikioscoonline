@@ -121,7 +121,7 @@ export function TabsBar() {
   if (tabs.length === 0) return null
 
   return (
-    <div className="flex items-center gap-1 px-3 h-9 border-b border-border/60 bg-background overflow-x-auto scrollbar-none shrink-0">
+    <div className="flex items-center gap-1">
       {editMode ? (
         <Reorder.Group
           axis="x"
@@ -135,8 +135,8 @@ export function TabsBar() {
             if (!item) return null
             return (
               <Reorder.Item key={href} value={href} as="div" className="cursor-grab active:cursor-grabbing">
-                <div className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-muted text-xs font-medium text-muted-foreground select-none">
-                  <item.icon className="size-3 shrink-0" />
+                <div className="flex items-center gap-1 px-2.5 py-1 xl:px-3 xl:py-1.5 rounded-md bg-muted text-xs xl:text-sm font-medium text-muted-foreground select-none">
+                  <item.icon className="size-3 xl:size-3.5 shrink-0" />
                   <span>{item.label}</span>
                   <button
                     type="button"
@@ -144,7 +144,7 @@ export function TabsBar() {
                     className="ml-0.5 hover:text-k-loss transition-colors"
                     onClick={() => removeTab(href)}
                   >
-                    <X className="size-3" />
+                    <X className="size-3 xl:size-3.5" />
                   </button>
                 </div>
               </Reorder.Item>
@@ -161,7 +161,7 @@ export function TabsBar() {
               <Link key={href} href={href} className="relative shrink-0" onMouseEnter={() => prefetch(href)} onFocus={() => prefetch(href)}>
                 <div
                   className={cn(
-                    "flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-colors",
+                    "flex items-center gap-1.5 xl:gap-2 px-3 py-1 xl:px-4 xl:py-1.5 rounded-md text-xs xl:text-sm font-medium transition-colors",
                     active ? "text-foreground" : "text-muted-foreground hover:text-foreground"
                   )}
                 >
@@ -172,7 +172,7 @@ export function TabsBar() {
                       transition={{ type: "spring", stiffness: 380, damping: 38 }}
                     />
                   )}
-                  <item.icon className="size-3 shrink-0 relative z-10" />
+                  <item.icon className="size-3 xl:size-4 shrink-0 relative z-10" />
                   <span className="relative z-10">{item.label}</span>
                 </div>
               </Link>
@@ -185,10 +185,10 @@ export function TabsBar() {
         variant="ghost"
         size="icon-sm"
         aria-label={editMode ? "Guardar orden" : "Editar pestañas"}
-        className="ml-auto shrink-0 size-6 text-muted-foreground hover:text-foreground"
+        className="ml-auto shrink-0 size-6 xl:size-7 text-muted-foreground hover:text-foreground"
         onClick={() => setEditMode((v) => !v)}
       >
-        {editMode ? <Check className="size-3" /> : <Pencil className="size-3" />}
+        {editMode ? <Check className="size-3 xl:size-3.5" /> : <Pencil className="size-3 xl:size-3.5" />}
       </Button>
     </div>
   )
