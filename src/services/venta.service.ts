@@ -15,6 +15,8 @@ export interface LineaVentaInput {
 export interface PagoInput {
   paymentMethodId: string
   montoCentavos: number
+  /** orderId de MercadoPago u otra referencia externa (opcional). */
+  referencia?: string
 }
 
 export interface CrearVentaInput {
@@ -121,6 +123,7 @@ export const ventaService = {
           montoCentavos: pago.montoCentavos,
           comisionCentavos,
           montoNetoCentavos,
+          referencia: pago.referencia,
         }
       })
 

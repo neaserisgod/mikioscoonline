@@ -126,6 +126,10 @@ const MedioPagoSchema = z.object({
   recargoTipo: z.enum(["PORCENTUAL", "FIJO"]).optional(),
   recargoVirtualBp: z.number().int().min(0).optional(),
   recargoVirtualFijoCentavos: z.number().int().min(0).optional(),
+  // external_pos_id del QR físico de MercadoPago (solo aplica si esMercadoPago = true)
+  mpExternalPosId: z.string().min(1).nullable().optional(),
+  // terminal_id del posnet Point de MercadoPago (solo aplica si esMercadoPago = true)
+  mpTerminalId: z.string().min(1).nullable().optional(),
 })
 
 export async function crearMedioPagoAction(input: unknown) {

@@ -14,6 +14,7 @@ const LineaSchema = z.object({
 const PagoSchema = z.object({
   paymentMethodId: z.string().cuid(),
   montoCentavos: z.number().int().positive(),
+  referencia: z.string().optional(),
 })
 
 const CrearVentaSchema = z.object({

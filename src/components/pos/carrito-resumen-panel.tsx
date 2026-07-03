@@ -21,10 +21,39 @@ export function CarritoResumenPanel({ checkout, mostrarItems = false, expandActi
     venta, carrito, medioPagoId, mediosPago, medioPagoSeleccionado, subtotal,
     totalCentavos, comisionCentavos, recargoTotalCentavos, totalACobrarCentavos, faltaPeso,
     loading, successInfo, setSuccessInfo, confirmVaciar, setConfirmVaciar,
-    vaciarCarrito, setMedioPago, confirmar,
+    vaciarCarrito, setMedioPago, confirmar, cancelarPagoMp,
   } = checkout
 
   if (!venta) return null
+
+  // ── Esperando pago con MercadoPago (QR o posnet) ─────────────────────────────
+  if (venta.pagoMpPendiente) {
+    const mensaje =
+      venta.pagoMpPendiente.tipo === "posnet"
+        ? "Esperando que el cliente pase la tarjeta en el posnet…"
+        : "Esperando que el cliente pague por QR…"
+    return (
+      <motion.div
+        className="flex flex-col items-center justify-center gap-5 py-10 text-center"
+        initial={{ opacity: 0, scale: 0.94 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ type: "spring", stiffness: 260, damping: 24 }}
+      >
+        <div className="rounded-full bg-primary/8 p-5">
+          <Loader2 className="size-8 text-primary animate-spin" />
+        </div>
+        <div className="space-y-0.5">
+          <p className="text-lg font-semibold">{mensaje}</p>
+          <p className="text-sm text-muted-foreground tabular-nums">
+            {formatearARS(venta.pagoMpPendiente.montoCentavos)}
+          </p>
+        </div>
+        <Button onClick={cancelarPagoMp} variant="ghost" size="sm" className="min-w-32">
+          Cancelar
+        </Button>
+      </motion.div>
+    )
+  }
 
   // ── Pantalla de éxito ────────────────────────────────────────────────────────
   if (successInfo) {

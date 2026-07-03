@@ -141,6 +141,7 @@ export const medioPagoService = {
     data: {
       nombre: string; comisionBp: number; esEfectivo?: boolean; esMercadoPago?: boolean; cajaId?: string | null
       recargoTipo?: "PORCENTUAL" | "FIJO"; recargoVirtualBp?: number; recargoVirtualFijoCentavos?: number
+      mpExternalPosId?: string | null; mpTerminalId?: string | null
     }
   ) {
     const maxOrden = await prisma.paymentMethod.aggregate({
@@ -171,6 +172,7 @@ export const medioPagoService = {
     data: {
       nombre?: string; comisionBp?: number; esEfectivo?: boolean; esMercadoPago?: boolean; activo?: boolean; cajaId?: string | null
       recargoTipo?: "PORCENTUAL" | "FIJO"; recargoVirtualBp?: number; recargoVirtualFijoCentavos?: number
+      mpExternalPosId?: string | null; mpTerminalId?: string | null
     }
   ) {
     await prisma.paymentMethod.findFirstOrThrow({ where: { id, organizationId } })

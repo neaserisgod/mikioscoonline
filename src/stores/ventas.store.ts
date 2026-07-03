@@ -1,6 +1,7 @@
 "use client"
 
 import { create } from "zustand"
+import type { TipoDispositivoMp } from "@/app/actions/pagos.actions"
 
 export interface LineaCarrito {
   productId: string
@@ -16,11 +17,20 @@ export interface LineaCarrito {
   stockGramos: number | null
 }
 
+export interface PagoMpPendiente {
+  tipo: TipoDispositivoMp
+  orderId: string
+  montoCentavos: number
+  iniciadoEn: number
+}
+
 export interface VentaAbierta {
   id: string
   label: string
   carrito: LineaCarrito[]
   medioPagoId: string
+  /** Cobro con MercadoPago (QR o posnet) esperando confirmación — null si no hay ninguno en curso. */
+  pagoMpPendiente: PagoMpPendiente | null
 }
 
 export type ProductoParaCarrito = Pick<
@@ -47,6 +57,11 @@ interface VentasActions {
   setMedioPago: (medioPagoId: string) => void
   // Llamar tras confirmar venta exitosa: vacía el carrito de la venta activa, sin cambiar de pestaña
   onVentaConfirmada: () => void
+  // Las siguientes tres operan por id (no necesariamente la venta activa) porque el cobro
+  // con MercadoPago sigue esperando confirmación en background aunque el cajero cambie de pestaña.
+  iniciarPagoMp: (ventaId: string, data: PagoMpPendiente) => void
+  cancelarPagoMp: (ventaId: string) => void
+  confirmarPagoMp: (ventaId: string) => void
 }
 
 function crearVentaVacia(n: number): VentaAbierta {
@@ -55,6 +70,7 @@ function crearVentaVacia(n: number): VentaAbierta {
     label: `Venta ${n}`,
     carrito: [],
     medioPagoId: "",
+    pagoMpPendiente: null,
   }
 }
 
@@ -218,6 +234,26 @@ export const useVentasStore = create<VentasState & VentasActions>((set, get) => 
           ),
         }
       })
+    },
+
+    iniciarPagoMp(ventaId, data) {
+      set((s) => ({
+        ventas: s.ventas.map((v) => (v.id === ventaId ? { ...v, pagoMpPendiente: data } : v)),
+      }))
+    },
+
+    cancelarPagoMp(ventaId) {
+      set((s) => ({
+        ventas: s.ventas.map((v) => (v.id === ventaId ? { ...v, pagoMpPendiente: null } : v)),
+      }))
+    },
+
+    confirmarPagoMp(ventaId) {
+      set((s) => ({
+        ventas: s.ventas.map((v) =>
+          v.id === ventaId ? { ...v, carrito: [], medioPagoId: "", pagoMpPendiente: null } : v
+        ),
+      }))
     },
   }
 })

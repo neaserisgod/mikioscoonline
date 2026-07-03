@@ -6,6 +6,7 @@ import { toast } from "sonner"
 import { calcularRecargo } from "@/domain/comisiones"
 import { subtotalLinea } from "@/domain/pesables"
 import { crearVentaAction } from "@/app/actions/ventas.actions"
+import { cancelarOrdenMpAction, enviarMontoMpAction } from "@/app/actions/pagos.actions"
 import { useVentasStore, useVentaActiva } from "@/stores/ventas.store"
 
 export interface MedioPago {
@@ -29,6 +30,7 @@ export function useCarritoCheckout(onSuccess?: (ventaId: string) => void) {
   const venta = useVentaActiva()
   const {
     cambiarCantidad, setGramos, eliminarLinea, vaciarCarrito, setMedioPago, onVentaConfirmada,
+    iniciarPagoMp, cancelarPagoMp,
   } = useVentasStore()
   const [loading, setLoading] = useState(false)
   const [confirmVaciar, setConfirmVaciar] = useState(false)
@@ -80,6 +82,32 @@ export function useCarritoCheckout(onSuccess?: (ventaId: string) => void) {
     if (!medioPagoId) { toast.error("Seleccioná un medio de pago"); return }
     if (carrito.length === 0) return
     if (faltaPeso) { toast.error("Cargá el peso de todos los productos pesables"); return }
+    if (!venta) return
+
+    // Cobro con MercadoPago (QR o posnet): no se registra la venta todavía — se manda
+    // el monto al dispositivo y se espera la confirmación real del pago (ver
+    // use-pago-mp-polling.ts, que corre en background y recién ahí crea la venta).
+    if (medioPagoSeleccionado?.esMercadoPago) {
+      setLoading(true)
+      try {
+        const result = await enviarMontoMpAction(medioPagoId, totalACobrarCentavos)
+        if (!result.ok) {
+          toast.error(result.error)
+          return
+        }
+        iniciarPagoMp(venta.id, {
+          tipo: result.tipo,
+          orderId: result.orderId,
+          montoCentavos: totalACobrarCentavos,
+          iniciadoEn: Date.now(),
+        })
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "No se pudo enviar el monto a MercadoPago")
+      } finally {
+        setLoading(false)
+      }
+      return
+    }
 
     setLoading(true)
     try {
@@ -125,6 +153,11 @@ export function useCarritoCheckout(onSuccess?: (ventaId: string) => void) {
     loading, successInfo, setSuccessInfo, confirmVaciar, setConfirmVaciar,
     cambiarCantidad, setGramos, eliminarLinea, vaciarCarrito, setMedioPago,
     confirmar,
+    cancelarPagoMp: async () => {
+      if (!venta?.pagoMpPendiente) return
+      await cancelarOrdenMpAction(venta.pagoMpPendiente.orderId, venta.pagoMpPendiente.tipo)
+      cancelarPagoMp(venta.id)
+    },
   }
 }
 

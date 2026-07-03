@@ -2,7 +2,15 @@ import type { PagosProvider } from "./types"
 import { MockPagosProvider } from "./mock"
 import { MercadoPagoProvider } from "./mercadopago"
 
-export type { PagosProvider, DatosPago, ResultadoPago } from "./types"
+export type {
+  PagosProvider,
+  DatosPago,
+  ResultadoPago,
+  DatosOrdenQr,
+  DatosOrdenPosnet,
+  ResultadoOrdenMp,
+  EstadoOrdenMp,
+} from "./types"
 
 let _provider: PagosProvider | null = null
 

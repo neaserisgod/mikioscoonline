@@ -71,6 +71,8 @@ interface MedioPago {
   activo: boolean; esDefault: boolean; orden: number
   cajaId: string | null
   recargoTipo: string; recargoVirtualBp: number; recargoVirtualFijoCentavos: number
+  mpExternalPosId: string | null
+  mpTerminalId: string | null
 }
 
 type TipoPago = "efectivo" | "mercadopago" | "digital"
@@ -717,12 +719,17 @@ const medioPagoSchema = z.object({
   recargoTipo: z.enum(["PORCENTUAL", "FIJO"]),
   recargoVirtualPct: z.number().min(0),
   recargoVirtualFijoPesos: z.number().min(0),
+  // Sub-selector solo de UI — decide cuál de los dos campos de abajo se manda al guardar
+  mpDispositivo: z.enum(["qr", "posnet"]),
+  mpExternalPosId: z.string(),
+  mpTerminalId: z.string(),
 })
 type MedioPagoForm = z.infer<typeof medioPagoSchema>
 
 const MEDIO_PAGO_DEFAULTS: MedioPagoForm = {
   nombre: "", comisionPct: 0, tipo: "digital", cajaId: null,
   recargoTipo: "PORCENTUAL", recargoVirtualPct: 0, recargoVirtualFijoPesos: 0,
+  mpDispositivo: "qr", mpExternalPosId: "", mpTerminalId: "",
 }
 
 function MediosPagoSection({ onMutate }: { onMutate: () => void }) {
@@ -738,6 +745,7 @@ function MediosPagoSection({ onMutate }: { onMutate: () => void }) {
   })
   const tipo = watch("tipo")
   const recargoTipo = watch("recargoTipo") ?? "PORCENTUAL"
+  const mpDispositivo = watch("mpDispositivo") ?? "qr"
 
   function abrirCrear() { setEditing(null); reset(MEDIO_PAGO_DEFAULTS); setSheetOpen(true) }
   function abrirEditar(m: MedioPago) {
@@ -750,6 +758,9 @@ function MediosPagoSection({ onMutate }: { onMutate: () => void }) {
       recargoTipo: (m.recargoTipo as "PORCENTUAL" | "FIJO") ?? "PORCENTUAL",
       recargoVirtualPct: m.recargoVirtualBp / 100,
       recargoVirtualFijoPesos: m.recargoVirtualFijoCentavos / 100,
+      mpDispositivo: m.mpTerminalId ? "posnet" : "qr",
+      mpExternalPosId: m.mpExternalPosId ?? "",
+      mpTerminalId: m.mpTerminalId ?? "",
     })
     setSheetOpen(true)
   }
@@ -764,6 +775,8 @@ function MediosPagoSection({ onMutate }: { onMutate: () => void }) {
       recargoTipo: data.recargoTipo,
       recargoVirtualBp: Math.round(data.recargoVirtualPct * 100),
       recargoVirtualFijoCentavos: Math.round(data.recargoVirtualFijoPesos * 100),
+      mpExternalPosId: data.mpDispositivo === "qr" ? (data.mpExternalPosId.trim() || null) : null,
+      mpTerminalId: data.mpDispositivo === "posnet" ? (data.mpTerminalId.trim() || null) : null,
     }
     try {
       if (editing) {
@@ -900,6 +913,49 @@ function MediosPagoSection({ onMutate }: { onMutate: () => void }) {
                 <p className="text-xs text-muted-foreground">La comisión de MercadoPago se aplica al liquidar, no al precio de venta.</p>
               )}
             </div>
+            {watch("tipo") === "mercadopago" && (
+              <div className="space-y-3">
+                <div className="space-y-1.5">
+                  <Label>Dispositivo</Label>
+                  <Select value={mpDispositivo} onValueChange={(v) => v && setValue("mpDispositivo", v as "qr" | "posnet")}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="qr">QR</SelectItem>
+                      <SelectItem value="posnet">Posnet (Point)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                {mpDispositivo === "qr" ? (
+                  <div className="space-y-1.5">
+                    <Field
+                      label="External POS ID (MercadoPago)"
+                      placeholder="ej. SUC0101POS"
+                      {...register("mpExternalPosId")}
+                      error={errors.mpExternalPosId?.message}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      ID de la caja/QR físico en MercadoPago (Tu negocio → Sucursales y cajas). Necesario para
+                      que el POS mande el monto real al QR al cobrar.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-1.5">
+                    <Field
+                      label="Terminal ID (MercadoPago)"
+                      placeholder="ej. NEWLAND_N950__N950NCC503383252"
+                      {...register("mpTerminalId")}
+                      error={errors.mpTerminalId?.message}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      ID de la terminal Point (MercadoPago → Terminales). Necesario para que el POS mande
+                      el monto real al posnet al cobrar.
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
             <Field label="Comisión (%)" type="number" step="0.01" min="0" {...register("comisionPct", { valueAsNumber: true })} error={errors.comisionPct?.message} />
             <div className="space-y-1.5">
               <Label>Caja de destino (opcional)</Label>

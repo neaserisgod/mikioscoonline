@@ -4,6 +4,7 @@ import { organizacionService } from "@/services/config.service"
 import { TopBar } from "@/components/layout/top-bar"
 import { BottomNav } from "@/components/layout/bottom-nav"
 import { VentaOverlay } from "@/components/pos/venta-overlay"
+import { PagoMpPollingMount } from "@/components/pos/pago-mp-polling-mount"
 import { GlobalScannerMount } from "@/components/scanner/global-scanner-mount"
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -28,6 +29,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
       </main>
       <BottomNav />
       <VentaOverlay />
+      <PagoMpPollingMount />
       <GlobalScannerMount />
     </div>
   )

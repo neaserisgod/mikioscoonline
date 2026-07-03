@@ -127,6 +127,8 @@ model PaymentMethod {
   orden          Int          @default(0)     // define orden en el POS
   cajaId         String?      // si está seteado, las ventas con este medio van enteras a esta caja (override del split por categoría)
   caja           Caja?        @relation(fields: [cajaId], references: [id])
+  mpExternalPosId String?     // external_pos_id del QR físico de MercadoPago (solo si esMercadoPago = true)
+  mpTerminalId    String?     // terminal_id del posnet Point de MercadoPago (solo si esMercadoPago = true)
   // Recargo por pago virtual — se configura UNA vez por medio de pago, no por caja.
   recargoTipo                String @default("PORCENTUAL") // "PORCENTUAL" | "FIJO" — validado Zod
   recargoVirtualBp           Int    @default(0)             // recargo % si el medio no es efectivo (0 = sin recargo)
