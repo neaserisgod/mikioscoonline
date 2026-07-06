@@ -93,7 +93,7 @@ fn load_or_init_config_env(path: &std::path::Path) -> HashMap<String, String> {
         for (k, v) in &vars {
             out.push_str(&format!("{k}=\"{v}\"\n"));
         }
-        out.push_str("\n# Completar acá MP_ACCESS_TOKEN / MP_PUBLIC_KEY / MP_WEBHOOK_SECRET / PAGOS_PROVIDER\n# cuando corresponda cobrar con MercadoPago desde esta PC.\n");
+        out.push_str("\n# Completar acá MP_ACCESS_TOKEN / MP_PUBLIC_KEY / MP_WEBHOOK_SECRET / PAGOS_PROVIDER\n# cuando corresponda cobrar con MercadoPago desde esta PC.\n# Completar también AUTH_GOOGLE_ID / AUTH_GOOGLE_SECRET (mismos valores que\n# en .env.local del proyecto) para habilitar \"Continuar con Google\" acá.\n");
         fs::write(path, out).ok();
     }
 
