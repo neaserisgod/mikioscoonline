@@ -52,7 +52,8 @@ model Organization {
 model User {
   id             String       @id @default(cuid())
   email          String       @unique
-  passwordHash   String
+  passwordHash   String?      // null si el usuario solo se loguea con Google
+  image          String?      // foto de perfil de Google, opcional
   nombre         String
   role           Role         @default(VENDEDOR)
   activo         Boolean      @default(true)
