@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { MarkupBadge } from "@/components/ui/markup-badge"
 import { EmptyState } from "@/components/ui/empty-state"
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { formatearARS } from "@/domain/dinero"
 import { cn } from "@/lib/utils"
 import ProductoForm from "./producto-form"
@@ -248,13 +248,13 @@ export default function ProductosClient() {
         </div>
       )}
 
-      {/* Sheet para crear/editar */}
-      <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
-        <SheetContent side="right" className="w-full sm:max-w-md overflow-y-auto">
-          <SheetHeader>
-            <SheetTitle>{editingId ? "Editar producto" : "Nuevo producto"}</SheetTitle>
-          </SheetHeader>
-          <div className="mt-6">
+      {/* Modal para crear/editar */}
+      <Dialog open={sheetOpen} onOpenChange={setSheetOpen}>
+        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>{editingId ? "Editar producto" : "Nuevo producto"}</DialogTitle>
+          </DialogHeader>
+          <div className="mt-2">
             <ProductoForm
               key={editingId ?? `new-${barcodePreset ?? ""}`}
               producto={productoEditing}
@@ -262,8 +262,8 @@ export default function ProductosClient() {
               onSuccess={onSuccess}
             />
           </div>
-        </SheetContent>
-      </Sheet>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
