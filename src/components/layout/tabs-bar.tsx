@@ -1,12 +1,12 @@
 "use client"
 
-import { useState, useCallback, useSyncExternalStore } from "react"
+import { useState, useSyncExternalStore } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { motion, Reorder } from "framer-motion"
 import { X, Pencil, Check } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { useQueryClient } from "@tanstack/react-query"
+import { useRoutePrefetch } from "@/lib/use-route-prefetch"
 import { NAV_ITEMS } from "./nav-drawer"
 import { cn } from "@/lib/utils"
 
@@ -82,39 +82,11 @@ export function useTabsStore() {
 
 // ── Componente ────────────────────────────────────────────────────────────────
 
-const TODAY = new Date().toISOString().slice(0, 10)
-
-const PREFETCH_MAP: Record<string, Array<{ key: unknown[]; url: string }>> = {
-  "/": [
-    { key: ["resumen"], url: "/api/resumen" },
-    { key: ["cajas-panel"], url: "/api/cajas" },
-  ],
-  "/productos": [
-    { key: ["productos", ""], url: "/api/productos?q=" },
-  ],
-  "/vender": [
-    { key: ["medios-pago"], url: "/api/config/medios-pago" },
-    { key: ["cajas-panel"], url: "/api/cajas" },
-  ],
-  "/rentabilidad": [
-    { key: ["rentabilidad", "proveedor", TODAY, TODAY], url: `/api/rentabilidad?por=proveedor&desde=${TODAY}&hasta=${TODAY}` },
-  ],
-}
-
 export function TabsBar() {
   const pathname = usePathname()
-  const qc = useQueryClient()
+  const prefetch = useRoutePrefetch()
   const { tabs, removeTab, reorderTabs } = useTabsStore()
   const [editMode, setEditMode] = useState(false)
-
-  const prefetch = useCallback((href: string) => {
-    const queries = PREFETCH_MAP[href]
-    if (!queries) return
-    for (const { key, url } of queries) {
-      if (qc.getQueryState(key)?.data != null) continue
-      qc.prefetchQuery({ queryKey: key, queryFn: () => fetch(url).then(r => r.json()), staleTime: 30_000 })
-    }
-  }, [qc])
 
   const navMap = Object.fromEntries(NAV_ITEMS.map((i) => [i.href, i]))
 

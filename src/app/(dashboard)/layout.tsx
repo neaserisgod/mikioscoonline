@@ -6,6 +6,7 @@ import { BottomNav } from "@/components/layout/bottom-nav"
 import { VentaOverlay } from "@/components/pos/venta-overlay"
 import { PagoMpPollingMount } from "@/components/pos/pago-mp-polling-mount"
 import { GlobalScannerMount } from "@/components/scanner/global-scanner-mount"
+import { QueryWarmup } from "@/components/providers/query-warmup"
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const session = await auth()
@@ -31,6 +32,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
       <VentaOverlay />
       <PagoMpPollingMount />
       <GlobalScannerMount />
+      <QueryWarmup />
     </div>
   )
 }

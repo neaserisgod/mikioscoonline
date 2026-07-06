@@ -1,6 +1,8 @@
 "use client"
 
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import { QueryClient } from "@tanstack/react-query"
+import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client"
+import { createSyncStoragePersister } from "@tanstack/query-sync-storage-persister"
 import { useState } from "react"
 import dynamic from "next/dynamic"
 
@@ -21,10 +23,24 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
       })
   )
 
+  // Persiste el cache en localStorage: al reabrir la app, los datos de la
+  // última sesión aparecen al instante mientras se revalidan en segundo plano
+  // (en vez de arrancar siempre de cero). En el server no hay `window` — se usa
+  // un persister no-op para que el árbol de providers sea idéntico en SSR/cliente
+  // (cambiar de provider entre renders rompería la hidratación).
+  const [persister] = useState(() =>
+    typeof window !== "undefined"
+      ? createSyncStoragePersister({ storage: window.localStorage, key: "pyme-query-cache" })
+      : { persistClient: async () => {}, restoreClient: async () => undefined, removeClient: async () => {} }
+  )
+
   return (
-    <QueryClientProvider client={queryClient}>
+    <PersistQueryClientProvider
+      client={queryClient}
+      persistOptions={{ persister, maxAge: 24 * 60 * 60_000 }}
+    >
       {children}
       <ReactQueryDevtools initialIsOpen={false} />
-    </QueryClientProvider>
+    </PersistQueryClientProvider>
   )
 }

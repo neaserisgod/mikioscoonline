@@ -117,6 +117,7 @@ function CajasPanel() {
   const { data: cajas, isLoading, dataUpdatedAt } = useQuery<CajaPanelItem[]>({
     queryKey: ["cajas-panel"],
     queryFn: () => fetch("/api/cajas").then((r) => r.json()),
+    staleTime: 5 * 60_000,
   })
 
   const [mode, setMode] = useState<PanelMode | null>(null)
