@@ -11,7 +11,7 @@
     "start": "next start",
     "start:local": "cross-env LOCAL_DEV=1 node .next/standalone/server.js",
     "lint": "eslint",
-    "postinstall": "prisma generate",
+    "postinstall": "prisma generate && cross-env LOCAL_DEV=1 prisma generate",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
