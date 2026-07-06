@@ -8,7 +8,7 @@ import { useVentasStore } from "@/stores/ventas.store"
 import { useRoutePrefetch } from "@/lib/use-route-prefetch"
 
 const staticItems = [
-  { href: "/", label: "Inicio", icon: Home },
+  { href: "/inicio", label: "Inicio", icon: Home },
   { href: "/rentabilidad", label: "Rent.", icon: TrendingUp },
 ]
 
@@ -23,7 +23,7 @@ export function BottomNav() {
     <nav className="lg:hidden fixed bottom-0 inset-x-0 z-50 bg-background/85 backdrop-blur-xl border-t border-border/60 pb-safe">
       <div className="flex items-center justify-around h-16 px-2">
         {staticItems.map((item) => {
-          const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href)
+          const active = pathname.startsWith(item.href)
           return (
             <Link
               key={item.href}

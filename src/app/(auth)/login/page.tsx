@@ -49,7 +49,7 @@ export default function LoginPage() {
       setError("Credenciales incorrectas. Verificá tu email y contraseña.")
       setLoading(false)
     } else {
-      router.push("/")
+      router.push("/inicio")
       router.refresh()
     }
   }
@@ -57,7 +57,7 @@ export default function LoginPage() {
   function onGoogleClick() {
     setGoogleLoading(true)
     // Redirect real (no redirect: false) — el flujo OAuth necesita ir y volver de Google.
-    signIn("google", { callbackUrl: "/" })
+    signIn("google", { callbackUrl: "/inicio" })
   }
 
   return (

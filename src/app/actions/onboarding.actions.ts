@@ -169,7 +169,7 @@ export async function guardarGastosFijosOnboardingAction(input: unknown) {
 export async function completarOnboardingAction() {
   const user = await requireAuth()
   await organizacionService.completarOnboarding(user.organizationId)
-  redirect("/")
+  redirect("/inicio")
 }
 
 // ─── Re-disparar desde Configuración ─────────────────────────────────────────

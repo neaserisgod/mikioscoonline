@@ -12,7 +12,7 @@ import { cn } from "@/lib/utils"
 import { useTabsStore } from "./tabs-bar"
 
 export const NAV_ITEMS = [
-  { href: "/", label: "Inicio", icon: Home },
+  { href: "/inicio", label: "Inicio", icon: Home },
   { href: "/vender", label: "Vender", icon: ShoppingCart },
   { href: "/rentabilidad", label: "Rentabilidad", icon: TrendingUp },
   { href: "/productos", label: "Productos", icon: Package },

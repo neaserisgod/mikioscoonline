@@ -16,7 +16,7 @@ export default async function OnboardingPage() {
     redirect("/login")
   }
 
-  if (org.onboardingCompletadoAt) redirect("/")
+  if (org.onboardingCompletadoAt) redirect("/inicio")
 
   return <OnboardingWizard orgNombre={org.nombre} />
 }

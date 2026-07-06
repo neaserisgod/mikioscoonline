@@ -17,7 +17,7 @@ const TODAY = new Date().toISOString().slice(0, 10)
 // Se usa tanto para el prefetch on hover/focus de la navegación como para el
 // warm-up al iniciar sesión (ver query-warmup.tsx).
 export const ROUTE_PREFETCH_MAP: Record<string, PrefetchEntry[]> = {
-  "/": [
+  "/inicio": [
     { key: ["resumen"], url: "/api/resumen", staleTime: 30_000 },
     { key: ["cajas-panel"], url: "/api/cajas", staleTime: 5 * 60_000 },
     {

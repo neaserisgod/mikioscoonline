@@ -13,16 +13,14 @@ const titles: [string, string][] = [
   ["/rentabilidad", "Rentabilidad"],
   ["/productos", "Productos"],
   ["/config", "Configuración"],
-  ["/", "Inicio"],
+  ["/inicio", "Inicio"],
 ]
 
 export function TopBar() {
   const pathname = usePathname()
   const [drawerOpen, setDrawerOpen] = useState(false)
 
-  const title =
-    titles.find(([path]) => (path === "/" ? pathname === "/" : pathname.startsWith(path)))?.[1] ??
-    "Kiosco"
+  const title = titles.find(([path]) => pathname.startsWith(path))?.[1] ?? "Kiosco"
 
   return (
     <>
