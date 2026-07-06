@@ -1,18 +1,16 @@
 import { NextRequest, NextResponse } from "next/server"
-import { auth } from "@/auth"
+import { requireAdminApi } from "@/lib/api-auth"
 import { ventaService } from "@/services/venta.service"
 
 export async function GET(req: NextRequest) {
-  const session = await auth()
-  if (!session?.user?.organizationId) {
-    return NextResponse.json({ error: "No autorizado" }, { status: 401 })
-  }
+  const result = await requireAdminApi()
+  if ("error" in result) return result.error
 
   const { searchParams } = req.nextUrl
   const desde = searchParams.get("desde") ? new Date(searchParams.get("desde")!) : undefined
   const hasta = searchParams.get("hasta") ? new Date(searchParams.get("hasta")!) : undefined
 
-  const ventas = await ventaService.listar(session.user.organizationId, { fechaDesde: desde, fechaHasta: hasta })
+  const ventas = await ventaService.listar(result.user.organizationId, { fechaDesde: desde, fechaHasta: hasta })
 
   const rows = [
     ["id", "fecha", "usuario", "items", "medioPago", "totalPesos", "costoPesos", "gananciaPesos"],

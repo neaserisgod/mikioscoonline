@@ -1,13 +1,11 @@
 import { NextResponse } from "next/server"
-import { auth } from "@/auth"
+import { requireAdminApi } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
 
 export async function GET() {
-  const session = await auth()
-  if (!session?.user?.organizationId) {
-    return NextResponse.json({ error: "No autorizado" }, { status: 401 })
-  }
-  const orgId = session.user.organizationId
+  const result = await requireAdminApi()
+  if ("error" in result) return result.error
+  const orgId = result.user.organizationId
 
   const [org, categorias, proveedores, ubicaciones, mediosPago, gastosFijos, productos] = await Promise.all([
     prisma.organization.findUniqueOrThrow({ where: { id: orgId } }),

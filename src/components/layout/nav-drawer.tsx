@@ -14,9 +14,9 @@ import { useTabsStore } from "./tabs-bar"
 export const NAV_ITEMS = [
   { href: "/inicio", label: "Inicio", icon: Home },
   { href: "/vender", label: "Vender", icon: ShoppingCart },
-  { href: "/rentabilidad", label: "Rentabilidad", icon: TrendingUp },
-  { href: "/productos", label: "Productos", icon: Package },
-  { href: "/config", label: "Configuración", icon: Settings },
+  { href: "/rentabilidad", label: "Rentabilidad", icon: TrendingUp, adminOnly: true },
+  { href: "/productos", label: "Productos", icon: Package, adminOnly: true },
+  { href: "/config", label: "Configuración", icon: Settings, adminOnly: true },
 ]
 
 interface NavDrawerProps {
@@ -28,6 +28,8 @@ export function NavDrawer({ open, onClose }: NavDrawerProps) {
   const pathname = usePathname()
   const { data: session } = useSession()
   const { tabs, addTab, removeTab } = useTabsStore()
+  const esAdmin = session?.user?.role === "ADMIN"
+  const navItems = NAV_ITEMS.filter((item) => !item.adminOnly || esAdmin)
 
   return (
     <Sheet open={open} onOpenChange={(v) => !v && onClose()}>
@@ -40,7 +42,7 @@ export function NavDrawer({ open, onClose }: NavDrawerProps) {
 
         {/* Nav items */}
         <nav className="flex-1 overflow-y-auto px-3 py-3 space-y-0.5">
-          {NAV_ITEMS.map((item) => {
+          {navItems.map((item) => {
             const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href)
             const pinned = tabs.includes(item.href)
 

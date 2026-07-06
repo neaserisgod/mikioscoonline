@@ -1,13 +1,13 @@
 import { dehydrate, HydrationBoundary } from "@tanstack/react-query"
 import { getQueryClient, serializable } from "@/lib/get-query-client"
-import { requireSession } from "@/lib/session"
+import { requireAdminSession } from "@/lib/session"
 import { rentabilidadService } from "@/services/rentabilidad.service"
 import RentabilidadClient from "./rentabilidad-client"
 
 // Debe coincidir con el default del cliente: agrupador "proveedor" + mes actual (ver getMesRango en rentabilidad-client.tsx)
 // y con cómo /api/rentabilidad parsea desde/hasta (new Date(string), no inicioMes/finMes — esos son solo fallback sin params).
 export default async function RentabilidadPage() {
-  const session = await requireSession()
+  const session = await requireAdminSession()
 
   const ahora = new Date()
   const y = ahora.getFullYear()

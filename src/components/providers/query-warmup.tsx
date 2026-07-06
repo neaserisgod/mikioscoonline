@@ -2,6 +2,7 @@
 
 import { useEffect } from "react"
 import { useQueryClient } from "@tanstack/react-query"
+import { useSession } from "next-auth/react"
 import { ROUTE_PREFETCH_MAP, prefetchRoute } from "@/lib/use-route-prefetch"
 
 /**
@@ -13,12 +14,14 @@ import { ROUTE_PREFETCH_MAP, prefetchRoute } from "@/lib/use-route-prefetch"
  */
 export function QueryWarmup() {
   const qc = useQueryClient()
+  const { data: session } = useSession()
+  const role = session?.user?.role
 
   useEffect(() => {
     for (const href of Object.keys(ROUTE_PREFETCH_MAP)) {
-      prefetchRoute(qc, href)
+      prefetchRoute(qc, href, role)
     }
-  }, [qc])
+  }, [qc, role])
 
   return null
 }

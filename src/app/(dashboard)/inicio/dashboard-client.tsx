@@ -38,8 +38,8 @@ interface ResumenMes {
 }
 
 interface ResumenData {
-  hoy: ResumenHoy
-  mes: ResumenMes
+  hoy: ResumenHoy | null // null para VENDEDOR — no ve cifras de ganancia
+  mes: ResumenMes | null
   stockBajo: { id: string; nombre: string; stock: number; stockMinimo: number }[]
 }
 
@@ -527,6 +527,57 @@ function Row({ label, value, muted }: { label: string; value: number; muted?: bo
   )
 }
 
+// ─── Inicio para VENDEDOR (sin cifras de ganancia) ────────────────────────────
+
+function InicioVendedor({ stockBajo }: { stockBajo: { id: string; nombre: string; stock: number; stockMinimo: number }[] }) {
+  return (
+    <motion.div className="space-y-5" variants={stagger.container} initial="hidden" animate="show">
+      <motion.div variants={stagger.item}>
+        <CajasPanel />
+      </motion.div>
+
+      <motion.div variants={stagger.item}>
+        <Link href="/vender" className="block">
+          <div className="rounded-2xl border border-border/60 bg-card hover:bg-muted/30 transition-colors p-5 flex items-center gap-3">
+            <div className="rounded-xl bg-foreground/8 p-2.5 shrink-0">
+              <Zap className="size-4 text-foreground/70" />
+            </div>
+            <div>
+              <p className="text-sm font-medium">Vender</p>
+              <p className="text-xs text-muted-foreground">Nueva venta</p>
+            </div>
+          </div>
+        </Link>
+      </motion.div>
+
+      {stockBajo.length > 0 && (
+        <motion.div variants={stagger.item} className="space-y-2.5">
+          <div className="flex items-center gap-2 px-1">
+            <AlertTriangle className="size-3.5 text-k-loss" />
+            <p className="text-sm font-medium">Stock bajo</p>
+            <span className="text-xs text-muted-foreground">({stockBajo.length})</span>
+          </div>
+          <div className="rounded-2xl border border-k-loss/15 bg-k-loss-muted/15 overflow-hidden divide-y divide-border/40">
+            {stockBajo.slice(0, 5).map((p) => (
+              <div key={p.id} className="flex items-center justify-between px-4 py-2.5">
+                <p className="text-sm truncate">{p.nombre}</p>
+                <span className="text-xs tabular-nums text-k-loss shrink-0 ml-3 font-medium">
+                  {p.stock} / {p.stockMinimo}
+                </span>
+              </div>
+            ))}
+            {stockBajo.length > 5 && (
+              <div className="px-4 py-2 text-xs text-muted-foreground">
+                +{stockBajo.length - 5} más
+              </div>
+            )}
+          </div>
+        </motion.div>
+      )}
+    </motion.div>
+  )
+}
+
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 
 const stagger = {
@@ -552,6 +603,7 @@ export default function DashboardClient() {
     queryKey: ["rentabilidad-hoy", today],
     queryFn: () =>
       fetch(`/api/rentabilidad?por=proveedor&desde=${today}&hasta=${today}`).then((r) => r.json()),
+    enabled: !!data?.hoy, // VENDEDOR no tiene acceso a /api/rentabilidad — ni intentarlo
   })
 
   if (isLoading || !data) {
@@ -581,6 +633,10 @@ export default function DashboardClient() {
         </div>
       </div>
     )
+  }
+
+  if (!data.hoy || !data.mes) {
+    return <InicioVendedor stockBajo={data.stockBajo ?? []} />
   }
 
   const { hoy, mes } = data

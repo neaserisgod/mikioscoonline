@@ -7,3 +7,10 @@ export async function requireSession() {
   if (!session?.user?.organizationId) redirect("/login")
   return session
 }
+
+/** Páginas de solo-ADMIN (config, rentabilidad, reportes, catálogo con costos). */
+export async function requireAdminSession() {
+  const session = await requireSession()
+  if (session.user.role !== "ADMIN") redirect("/inicio")
+  return session
+}

@@ -17,6 +17,7 @@ function getToday() {
 export default async function HomePage() {
   const session = await requireSession()
   const orgId = session.user.organizationId
+  const esAdmin = session.user.role === "ADMIN"
   const today = getToday()
 
   const queryClient = getQueryClient()
@@ -24,26 +25,31 @@ export default async function HomePage() {
     queryClient.prefetchQuery({
       queryKey: ["resumen"],
       queryFn: async () => {
+        // hoy/mes son cifras de ganancia — VENDEDOR no debe verlas.
         const [hoy, mes, stockBajo] = await Promise.all([
-          resumenService.hoy(orgId),
-          resumenService.mes(orgId),
+          esAdmin ? resumenService.hoy(orgId) : null,
+          esAdmin ? resumenService.mes(orgId) : null,
           productoService.stockBajo(orgId),
         ])
         return serializable({ hoy, mes, stockBajo })
       },
     }),
-    queryClient.prefetchQuery({
-      queryKey: ["rentabilidad-hoy", today],
-      queryFn: async () =>
-        serializable(
-          await rentabilidadService.porAgrupador({
-            organizationId: orgId,
-            agrupador: "proveedor",
-            fechaDesde: new Date(today),
-            fechaHasta: new Date(today),
-          })
-        ),
-    }),
+    ...(esAdmin
+      ? [
+          queryClient.prefetchQuery({
+            queryKey: ["rentabilidad-hoy", today],
+            queryFn: async () =>
+              serializable(
+                await rentabilidadService.porAgrupador({
+                  organizationId: orgId,
+                  agrupador: "proveedor",
+                  fechaDesde: new Date(today),
+                  fechaHasta: new Date(today),
+                })
+              ),
+          }),
+        ]
+      : []),
     queryClient.prefetchQuery({
       queryKey: ["cajas-panel"],
       queryFn: async () => serializable(await cajaService.listarActivas(orgId)),

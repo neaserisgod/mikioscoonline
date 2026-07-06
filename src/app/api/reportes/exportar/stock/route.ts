@@ -1,15 +1,13 @@
 import { NextResponse } from "next/server"
-import { auth } from "@/auth"
+import { requireAdminApi } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
 
 export async function GET() {
-  const session = await auth()
-  if (!session?.user?.organizationId) {
-    return NextResponse.json({ error: "No autorizado" }, { status: 401 })
-  }
+  const result = await requireAdminApi()
+  if ("error" in result) return result.error
 
   const productos = await prisma.product.findMany({
-    where: { organizationId: session.user.organizationId },
+    where: { organizationId: result.user.organizationId },
     include: {
       category: { select: { nombre: true } },
       provider: { select: { nombre: true } },

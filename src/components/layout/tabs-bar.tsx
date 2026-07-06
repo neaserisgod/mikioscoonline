@@ -4,6 +4,7 @@ import { useState, useSyncExternalStore } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { motion, Reorder } from "framer-motion"
+import { useSession } from "next-auth/react"
 import { X, Pencil, Check } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useRoutePrefetch } from "@/lib/use-route-prefetch"
@@ -85,10 +86,13 @@ export function useTabsStore() {
 export function TabsBar() {
   const pathname = usePathname()
   const prefetch = useRoutePrefetch()
-  const { tabs, removeTab, reorderTabs } = useTabsStore()
+  const { data: session } = useSession()
+  const esAdmin = session?.user?.role === "ADMIN"
+  const { tabs: tabsGuardadas, removeTab, reorderTabs } = useTabsStore()
   const [editMode, setEditMode] = useState(false)
 
   const navMap = Object.fromEntries(NAV_ITEMS.map((i) => [i.href, i]))
+  const tabs = tabsGuardadas.filter((href) => !navMap[href]?.adminOnly || esAdmin)
 
   if (tabs.length === 0) return null
 

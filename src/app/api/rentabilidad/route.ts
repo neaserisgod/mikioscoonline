@@ -1,15 +1,13 @@
 import { NextRequest, NextResponse } from "next/server"
-import { auth } from "@/auth"
+import { requireAdminApi } from "@/lib/api-auth"
 import { rentabilidadService, type AgrupadorRentabilidad } from "@/services/rentabilidad.service"
 import { inicioMes, finMes } from "@/domain/dinero"
 
 const agrupadores: AgrupadorRentabilidad[] = ["proveedor", "heladera", "categoria", "caja"]
 
 export async function GET(req: NextRequest) {
-  const session = await auth()
-  if (!session?.user?.organizationId) {
-    return NextResponse.json({ error: "No autorizado" }, { status: 401 })
-  }
+  const result = await requireAdminApi()
+  if ("error" in result) return result.error
 
   const { searchParams } = req.nextUrl
   const agrupador = (searchParams.get("por") ?? "categoria") as AgrupadorRentabilidad
@@ -30,7 +28,7 @@ export async function GET(req: NextRequest) {
     : finMes(ahora)
 
   const data = await rentabilidadService.porAgrupador({
-    organizationId: session.user.organizationId,
+    organizationId: result.user.organizationId,
     agrupador,
     fechaDesde,
     fechaHasta,
