@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma"
 import { resolverTriangulo } from "@/domain/markup"
+import { normalizarTexto } from "@/lib/utils"
 import Papa from "papaparse"
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
@@ -207,19 +208,23 @@ export const productoService = {
   },
 
   async buscar(organizationId: string, query: string) {
-    return prisma.product.findMany({
-      where: {
-        organizationId,
-        activo: true,
-        OR: [
-          { nombre: { contains: query, mode: "insensitive" } },
-          { sku: { contains: query, mode: "insensitive" } },
-          { barcode: query }, // búsqueda exacta de barcode
-        ],
-      },
+    // Filtro en JS (no `mode: "insensitive"`, exclusivo del conector Postgres/MongoDB
+    // de Prisma) para funcionar igual en SQLite y Postgres. El catálogo es chico
+    // (cientos de productos por organización), así que traer todo y filtrar acá
+    // es instantáneo y evita depender de una feature específica del motor.
+    const q = normalizarTexto(query)
+    const productos = await prisma.product.findMany({
+      where: { organizationId, activo: true },
       include: incluirRelaciones,
-      take: 50,
+      orderBy: { nombre: "asc" },
     })
+    return productos
+      .filter((p) =>
+        normalizarTexto(p.nombre).includes(q) ||
+        normalizarTexto(p.sku).includes(q) ||
+        p.barcode === query
+      )
+      .slice(0, 50)
   },
 
   async buscarPorCodigo(barcode: string, organizationId: string) {

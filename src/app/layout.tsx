@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next"
-import { Inter, Oswald, Geist_Mono } from "next/font/google"
+import localFont from "next/font/local"
 import "./globals.css"
 import { SessionProvider } from "@/components/providers/session-provider"
 import { QueryProvider } from "@/components/providers/query-provider"
@@ -7,11 +7,31 @@ import { ThemeProvider } from "@/components/providers/theme-provider"
 import { SwProvider } from "@/components/providers/sw-provider"
 import { Toaster } from "@/components/ui/sonner"
 
+// Fuentes autoalojadas (src/assets/fonts) en vez de next/font/google: el build no
+// debe depender de la red — clave para poder compilar sin internet y evitar
+// problemas de conectividad con fonts.gstatic.com.
 // UI/datos/tablas — grotesk moderna, alta legibilidad a tamaño chico.
-const inter = Inter({ subsets: ["latin"], variable: "--font-sans" })
+const inter = localFont({
+  src: [
+    { path: "../assets/fonts/inter-regular.woff2", weight: "100 900", style: "normal" },
+    { path: "../assets/fonts/inter-italic.woff2", weight: "100 900", style: "italic" },
+  ],
+  variable: "--font-sans",
+  display: "swap",
+})
 // Títulos — condensada y con peso, tipo cartel de almacén/oferta.
-const oswald = Oswald({ subsets: ["latin"], variable: "--font-oswald" })
-const geistMono = Geist_Mono({ subsets: ["latin"], variable: "--font-geist-mono" })
+const oswald = localFont({
+  src: "../assets/fonts/oswald-variable.woff2",
+  weight: "200 700",
+  variable: "--font-oswald",
+  display: "swap",
+})
+const geistMono = localFont({
+  src: "../assets/fonts/geist-mono-variable.woff2",
+  weight: "100 900",
+  variable: "--font-geist-mono",
+  display: "swap",
+})
 
 export const metadata: Metadata = {
   title: "Kiosco",

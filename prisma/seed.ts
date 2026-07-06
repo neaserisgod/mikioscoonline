@@ -9,8 +9,7 @@ if (!process.env.LOCAL_DEV) {
   if (savedUrl) process.env.DATABASE_URL = savedUrl
 }
 
-import { PrismaPg } from "@prisma/adapter-pg"
-import { PrismaClient } from "@prisma/client"
+import { createPrismaClient } from "../src/lib/prisma-client-factory"
 import bcrypt from "bcryptjs"
 
 const adminPassword = process.env.SEED_ADMIN_PASSWORD
@@ -24,8 +23,7 @@ const adminEmail = process.env.SEED_ADMIN_EMAIL ?? "admin@kiosco.ar"
 const url = process.env.DATABASE_URL!
 if (!url) { console.error("❌ Falta DATABASE_URL"); process.exit(1) }
 
-const adapter = new PrismaPg({ connectionString: url })
-const prisma = new PrismaClient({ adapter, log: ["error"] })
+const prisma = createPrismaClient()
 
 async function main() {
   console.log(`🌱 Seed mínimo → ${url.startsWith("file:") ? "SQLite" : "PostgreSQL (Neon)"}`)

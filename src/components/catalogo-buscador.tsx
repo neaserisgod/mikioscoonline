@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { Search, X } from "lucide-react"
 import { Input } from "@/components/ui/input"
-import { cn } from "@/lib/utils"
+import { cn, normalizarTexto } from "@/lib/utils"
 import catalogoRaw from "@/data/catalogo-atencion24.json"
 
 interface CatalogoItem {
@@ -24,14 +24,14 @@ export function CatalogoBuscador({ onSelect, initialQuery, className }: Props) {
   const [query, setQuery] = useState(initialQuery ?? "")
   const [open, setOpen] = useState(!!initialQuery)
 
-  const q = query.trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
+  const q = normalizarTexto(query.trim())
   const words = q.split(/\s+/).filter(Boolean)
 
   const filtered =
     words.length > 0
       ? catalogo
           .filter((item) => {
-            const nombre = item.nombre.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
+            const nombre = normalizarTexto(item.nombre)
             return (
               words.every((w) => nombre.includes(w)) ||
               item.sku.includes(q)
