@@ -21,18 +21,29 @@ enum TipoMovimientoStock {
   AJUSTE
 }
 
+enum EstadoPago {
+  TRIAL     // periodo de prueba, sin tarjeta
+  ACTIVO    // suscripción de Mercado Pago autorizada y al día
+  VENCIDO   // trial terminado sin suscripción, o suscripción pausada/con pago rechazado
+  CANCELADO // el usuario canceló la suscripción
+}
+
 // ─── Tenant ─────────────────────────────────────────────────────────────────
 
 model Organization {
-  id                      String    @id @default(cuid())
+  id                      String     @id @default(cuid())
   nombre                  String
   cuit                    String?
   puntoDeVenta            Int?
-  condicionIva            String?   // validado vía Zod: RESPONSABLE_INSCRIPTO | MONOTRIBUTO | EXENTO | CONSUMIDOR_FINAL
-  stockMinimoDefault      Int       @default(0)
-  onboardingCompletadoAt  DateTime? // null = primer inicio sin completar
-  createdAt               DateTime  @default(now())
-  updatedAt               DateTime  @updatedAt
+  condicionIva            String?    // validado vía Zod: RESPONSABLE_INSCRIPTO | MONOTRIBUTO | EXENTO | CONSUMIDOR_FINAL
+  stockMinimoDefault      Int        @default(0)
+  onboardingCompletadoAt  DateTime?  // null = primer inicio sin completar
+  // ── Suscripción (paywall del SaaS, no confundir con los cobros del kiosco a SUS clientes) ──
+  estadoPago              EstadoPago @default(TRIAL)
+  trialTerminaEl          DateTime?  // seteado al completar el onboarding = ahora + 14 días
+  mpPreapprovalId         String?    // id de la suscripción en Mercado Pago una vez autorizada
+  createdAt               DateTime   @default(now())
+  updatedAt               DateTime   @updatedAt
 
   users           User[]
   categories      Category[]

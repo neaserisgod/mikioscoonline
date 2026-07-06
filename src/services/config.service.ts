@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma"
 import { mesAnioActual } from "@/domain/dinero"
+import { calcularTrialTerminaEl } from "@/lib/suscripcion"
 import bcrypt from "bcryptjs"
 
 // ─── Categorías ──────────────────────────────────────────────────────────────
@@ -312,7 +313,7 @@ export const organizacionService = {
   async obtenerOnboardingStatus(organizationId: string) {
     return prisma.organization.findUniqueOrThrow({
       where: { id: organizationId },
-      select: { onboardingCompletadoAt: true },
+      select: { onboardingCompletadoAt: true, estadoPago: true, trialTerminaEl: true },
     })
   },
 
@@ -332,7 +333,7 @@ export const organizacionService = {
   async completarOnboarding(organizationId: string) {
     return prisma.organization.update({
       where: { id: organizationId },
-      data: { onboardingCompletadoAt: new Date() },
+      data: { onboardingCompletadoAt: new Date(), trialTerminaEl: calcularTrialTerminaEl() },
     })
   },
 

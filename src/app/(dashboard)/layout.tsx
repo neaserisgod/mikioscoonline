@@ -1,6 +1,7 @@
 import { auth } from "@/auth"
 import { redirect } from "next/navigation"
 import { organizacionService } from "@/services/config.service"
+import { accesoBloqueado } from "@/lib/suscripcion"
 import { TopBar } from "@/components/layout/top-bar"
 import { BottomNav } from "@/components/layout/bottom-nav"
 import { VentaOverlay } from "@/components/pos/venta-overlay"
@@ -19,6 +20,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
     redirect("/login")
   }
   if (!org.onboardingCompletadoAt) redirect("/onboarding")
+  if (accesoBloqueado(org)) redirect("/suscripcion")
 
   return (
     <div className="flex flex-col h-dvh overflow-hidden">

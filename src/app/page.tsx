@@ -3,15 +3,19 @@ import Link from "next/link"
 import { redirect } from "next/navigation"
 import { auth } from "@/auth"
 import { Button } from "@/components/ui/button"
+import { formatearARS } from "@/domain/dinero"
+import { PRECIO_MENSUAL_CENTAVOS, TRIAL_DIAS } from "@/lib/suscripcion"
 import {
   ShoppingCart,
   Package,
-  TrendingUp,
   QrCode,
   BarChart3,
   Zap,
   ArrowRight,
+  Check,
 } from "lucide-react"
+
+const PRECIO_DE_LISTA_CENTAVOS = 24_900_00
 
 export const metadata: Metadata = {
   title: "Kiosco — el sistema de gestión para tu negocio",
@@ -96,6 +100,53 @@ export default async function LandingPage() {
                 </div>
               ))}
             </div>
+          </div>
+        </section>
+
+        {/* Precio */}
+        <section className="max-w-5xl mx-auto px-4 lg:px-8 py-16 lg:py-20">
+          <div className="text-center mb-10">
+            <h2 className="font-heading text-2xl sm:text-3xl font-semibold tracking-tight">
+              Un solo plan, todo incluido
+            </h2>
+            <p className="mt-2 text-muted-foreground">Sin letra chica, sin límites de uso.</p>
+          </div>
+
+          <div className="max-w-sm mx-auto bg-card border border-primary/30 rounded-2xl p-6 text-center">
+            <span className="inline-block rounded-full bg-primary/15 text-primary px-3 py-1 text-xs font-medium mb-4">
+              Precio de fundador
+            </span>
+            <div className="flex items-center justify-center gap-2">
+              <span className="text-muted-foreground line-through text-lg">
+                {formatearARS(PRECIO_DE_LISTA_CENTAVOS)}
+              </span>
+              <span className="font-heading text-4xl font-semibold">
+                {formatearARS(PRECIO_MENSUAL_CENTAVOS)}
+              </span>
+            </div>
+            <p className="text-sm text-muted-foreground mt-1">por mes — congelado mientras sigas suscripto</p>
+
+            <ul className="text-left space-y-2.5 my-6">
+              {[
+                "Ventas, stock y rentabilidad sin límites",
+                "Usuarios ilimitados de tu equipo",
+                "Cobros con Mercado Pago (QR y posnet)",
+                "Soporte por WhatsApp",
+              ].map((item) => (
+                <li key={item} className="flex items-start gap-2 text-sm">
+                  <Check className="size-4 text-primary shrink-0 mt-0.5" />
+                  {item}
+                </li>
+              ))}
+            </ul>
+
+            <Button render={<Link href="/login" />} size="lg" className="w-full h-11 text-base gap-1.5">
+              Empezar gratis
+              <ArrowRight className="size-4" />
+            </Button>
+            <p className="text-xs text-muted-foreground mt-3">
+              {TRIAL_DIAS} días de prueba, sin tarjeta. Cancelás cuando quieras.
+            </p>
           </div>
         </section>
 
