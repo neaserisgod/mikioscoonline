@@ -45,3 +45,9 @@ export async function asignarCategoriasCajaAction(cajaId: string, categoriaIds: 
   const user = await requireAdmin()
   return cajaService.asignarCategorias(cajaId, user.organizationId, categoriaIds)
 }
+
+export async function actualizarSaldoManualCajaAction(cajaId: string, montoCentavos: unknown) {
+  const user = await requireAdmin()
+  const monto = z.number().int().min(0).parse(montoCentavos)
+  return cajaService.actualizarSaldoManual(cajaId, user.organizationId, monto)
+}

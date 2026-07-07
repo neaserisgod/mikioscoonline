@@ -26,12 +26,20 @@ export default async function HomePage() {
       queryKey: ["resumen"],
       queryFn: async () => {
         // hoy/mes son cifras de ganancia — VENDEDOR no debe verlas.
-        const [hoy, mes, stockBajo] = await Promise.all([
+        const [hoy, real, stockBajo] = await Promise.all([
           esAdmin ? resumenService.hoy(orgId) : null,
-          esAdmin ? resumenService.mes(orgId) : null,
+          esAdmin ? resumenService.equilibrioReal(orgId) : null,
           productoService.stockBajo(orgId),
         ])
-        return serializable({ hoy, mes, stockBajo })
+        return serializable({
+          hoy,
+          mes: real?.mesActual ?? null,
+          saldoMp: real?.saldoMp ?? null,
+          cajas: real?.cajas ?? null,
+          disponibleRealCentavos: real?.disponibleRealCentavos ?? null,
+          equilibrio: real?.equilibrio ?? null,
+          stockBajo,
+        })
       },
     }),
     ...(esAdmin

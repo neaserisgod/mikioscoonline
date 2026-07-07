@@ -38,6 +38,10 @@ model Organization {
   condicionIva            String?    // validado vía Zod: RESPONSABLE_INSCRIPTO | MONOTRIBUTO | EXENTO | CONSUMIDOR_FINAL
   stockMinimoDefault      Int        @default(0)
   onboardingCompletadoAt  DateTime?  // null = primer inicio sin completar
+  // Saldo real en la cuenta de Mercado Pago, cargado a mano (no hay API de saldo
+  // disponible para esta integración) — se usa en el equilibrio de Inicio.
+  saldoMpCentavos         Int?
+  saldoMpActualizadoEn    DateTime?
   // ── Suscripción (paywall del SaaS, no confundir con los cobros del kiosco a SUS clientes) ──
   estadoPago              EstadoPago @default(TRIAL)
   trialTerminaEl          DateTime?  // seteado al completar el onboarding = ahora + 14 días
@@ -191,6 +195,10 @@ model Caja {
   esPrincipal              Boolean      @default(false) // "Caja general" — una por org, no borrable
   orden                    Int          @default(0)
   activo                   Boolean      @default(true)
+  // Saldo real contado a mano (efectivo físico), para el equilibrio de Inicio —
+  // independiente del efectivo esperado calculado por movimientos de la sesión abierta.
+  saldoManualCentavos      Int?
+  saldoManualActualizadoEn DateTime?
   organizationId           String
   organization             Organization @relation(fields: [organizationId], references: [id])
   createdAt                DateTime     @default(now())

@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma"
-import { calcularEquilibrio } from "@/domain/equilibrio"
+import { calcularEquilibrio, type ResultadoEquilibrio } from "@/domain/equilibrio"
 import { inicioDia, finDia, inicioMes, finMes, toMesAnio } from "@/domain/dinero"
 
 export interface ResumenHoy {
@@ -139,5 +139,59 @@ export const resumenService = {
       faltanteCentavos: equilibrio.faltanteCentavos,
       cubierto: equilibrio.cubierto,
     }
+  },
+
+  /**
+   * No hay API de saldo para esta integración de Mercado Pago (ver mercadopago.ts) ni
+   * forma confiable de estimar el efectivo real de cada caja solo con las ventas — el
+   * dueño carga a mano lo que tiene HOY en la cuenta de MP y en cada caja, y eso (no
+   * una ganancia estimada) es lo que se contrasta contra los gastos fijos a pagar
+   * este mes para saber si alcanza.
+   */
+  async equilibrioReal(
+    organizationId: string,
+    fecha?: Date
+  ): Promise<{
+    mesActual: ResumenMes
+    saldoMp: { montoCentavos: number; actualizadoEn: Date | null }
+    cajas: { id: string; nombre: string; montoCentavos: number; actualizadoEn: Date | null }[]
+    disponibleRealCentavos: number
+    equilibrio: ResultadoEquilibrio
+  }> {
+    const [mesActual, organization, cajas] = await Promise.all([
+      resumenService.mes(organizationId, fecha),
+      prisma.organization.findUniqueOrThrow({
+        where: { id: organizationId },
+        select: { saldoMpCentavos: true, saldoMpActualizadoEn: true },
+      }),
+      prisma.caja.findMany({
+        where: { organizationId, activo: true },
+        select: { id: true, nombre: true, saldoManualCentavos: true, saldoManualActualizadoEn: true },
+        orderBy: [{ esPrincipal: "desc" }, { orden: "asc" }],
+      }),
+    ])
+
+    const saldoMp = {
+      montoCentavos: organization.saldoMpCentavos ?? 0,
+      actualizadoEn: organization.saldoMpActualizadoEn,
+    }
+    const cajasConSaldo = cajas.map((c) => ({
+      id: c.id,
+      nombre: c.nombre,
+      montoCentavos: c.saldoManualCentavos ?? 0,
+      actualizadoEn: c.saldoManualActualizadoEn,
+    }))
+    const disponibleRealCentavos =
+      saldoMp.montoCentavos + cajasConSaldo.reduce((sum, c) => sum + c.montoCentavos, 0)
+
+    // Reutiliza calcularEquilibrio pasando el disponible real como "ganancia bruta" y
+    // comisiones en 0 — ya es el neto contado a mano, no hay nada más que restarle.
+    const equilibrio = calcularEquilibrio({
+      gastosFijosCentavos: mesActual.gastosFijosCentavos,
+      gananciaBrutaCentavos: disponibleRealCentavos,
+      comisionesTotalesCentavos: 0,
+    })
+
+    return { mesActual, saldoMp, cajas: cajasConSaldo, disponibleRealCentavos, equilibrio }
   },
 }

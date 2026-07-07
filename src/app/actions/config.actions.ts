@@ -217,6 +217,12 @@ export async function actualizarNegocioAction(input: unknown) {
   return organizacionService.actualizar(user.organizationId, data)
 }
 
+export async function actualizarSaldoMpAction(montoCentavos: unknown) {
+  const user = await requireAdmin()
+  const monto = z.number().int().min(0).parse(montoCentavos)
+  return organizacionService.actualizarSaldoMp(user.organizationId, monto)
+}
+
 // ─── Usuarios ─────────────────────────────────────────────────────────────────
 
 const CrearUsuarioSchema = z.object({

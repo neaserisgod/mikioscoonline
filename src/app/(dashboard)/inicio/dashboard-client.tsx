@@ -17,6 +17,8 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { formatearARS } from "@/domain/dinero"
 import { cn } from "@/lib/utils"
 import { cerrarCajaAction, registrarMovimientoAction } from "@/app/actions/cajaSesion.actions"
+import { actualizarSaldoMpAction } from "@/app/actions/config.actions"
+import { actualizarSaldoManualCajaAction } from "@/app/actions/caja.actions"
 import { AbrirCajaSheet } from "@/components/pos/abrir-caja-sheet"
 
 interface ResumenHoy {
@@ -28,6 +30,7 @@ interface ResumenHoy {
 }
 
 interface ResumenMes {
+  mesAnio: string
   gananciaNetaCentavos: number
   pctAvance: number
   faltanteCentavos: number
@@ -37,10 +40,126 @@ interface ResumenMes {
   comisionesTotalesCentavos: number
 }
 
+interface Equilibrio {
+  gastosFijosCentavos: number
+  gananciaBrutaCentavos: number
+  comisionesTotalesCentavos: number
+  gananciaNetaCentavos: number
+  pctAvance: number
+  faltanteCentavos: number
+  cubierto: boolean
+}
+
+interface SaldoManual {
+  montoCentavos: number
+  actualizadoEn: string | null
+}
+
+interface CajaSaldo extends SaldoManual {
+  id: string
+  nombre: string
+}
+
 interface ResumenData {
   hoy: ResumenHoy | null // null para VENDEDOR — no ve cifras de ganancia
   mes: ResumenMes | null
+  // Saldo real cargado a mano (MP no tiene API de saldo) — "equilibrio" ya contrasta
+  // saldoMp + cajas contra los gastos fijos de "mes". Ver resumenService.equilibrioReal.
+  saldoMp: SaldoManual | null
+  cajas: CajaSaldo[] | null
+  disponibleRealCentavos: number | null
+  equilibrio: Equilibrio | null
   stockBajo: { id: string; nombre: string; stock: number; stockMinimo: number }[]
+}
+
+function nombreMes(mesAnio: string): string {
+  const [y, m] = mesAnio.split("-").map(Number)
+  const nombre = new Date(y, m - 1, 1).toLocaleDateString("es-AR", { month: "long" })
+  return nombre.charAt(0).toUpperCase() + nombre.slice(1)
+}
+
+/** Carga a mano el saldo real de Mercado Pago y de cada caja — no hay API de saldo
+ * para esta integración de MP, y el efectivo real puede diferir de lo calculado por
+ * movimientos. Estos valores son los que arma "Disponible real" en el equilibrio. */
+function SaldosRealesEditor({ saldoMp, cajas }: { saldoMp: SaldoManual; cajas: CajaSaldo[] }) {
+  const qc = useQueryClient()
+  const [open, setOpen] = useState(false)
+  const [guardando, setGuardando] = useState<string | null>(null)
+
+  async function guardar(accion: () => Promise<unknown>, id: string) {
+    setGuardando(id)
+    try {
+      await accion()
+      qc.invalidateQueries({ queryKey: ["resumen"] })
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "No se pudo actualizar el saldo")
+    } finally {
+      setGuardando(null)
+    }
+  }
+
+  return (
+    <div className="pt-1">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="text-xs text-muted-foreground underline underline-offset-2"
+      >
+        {open ? "Ocultar saldos" : "Cargar/editar saldos"}
+      </button>
+      {open && (
+        <div className="space-y-2 pt-2">
+          <SaldoInput
+            label="Mercado Pago"
+            montoCentavos={saldoMp.montoCentavos}
+            loading={guardando === "mp"}
+            onGuardar={(centavos) => guardar(() => actualizarSaldoMpAction(centavos), "mp")}
+          />
+          {cajas.map((c) => (
+            <SaldoInput
+              key={c.id}
+              label={c.nombre}
+              montoCentavos={c.montoCentavos}
+              loading={guardando === c.id}
+              onGuardar={(centavos) => guardar(() => actualizarSaldoManualCajaAction(c.id, centavos), c.id)}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function SaldoInput({
+  label, montoCentavos, loading, onGuardar,
+}: {
+  label: string
+  montoCentavos: number
+  loading: boolean
+  onGuardar: (centavos: number) => void
+}) {
+  const [valor, setValor] = useState(String(montoCentavos / 100))
+
+  return (
+    <div className="flex items-center gap-2">
+      <span className="text-xs text-muted-foreground w-28 shrink-0 truncate">{label}</span>
+      <input
+        type="number"
+        inputMode="decimal"
+        min={0}
+        step="0.01"
+        value={valor}
+        onChange={(e) => setValor(e.target.value)}
+        onBlur={() => {
+          const pesos = Number(valor)
+          if (!Number.isFinite(pesos) || pesos < 0) { setValor(String(montoCentavos / 100)); return }
+          onGuardar(Math.round(pesos * 100))
+        }}
+        className="h-7 flex-1 rounded-lg border border-border/60 bg-background px-2 text-xs tabular-nums"
+      />
+      {loading && <Loader2 className="size-3 shrink-0 animate-spin text-muted-foreground" />}
+    </div>
+  )
 }
 
 interface FilaProveedor {
@@ -635,11 +754,11 @@ export default function DashboardClient() {
     )
   }
 
-  if (!data.hoy || !data.mes) {
+  if (!data.hoy || !data.mes || !data.saldoMp || !data.cajas || !data.equilibrio) {
     return <InicioVendedor stockBajo={data.stockBajo ?? []} />
   }
 
-  const { hoy, mes } = data
+  const { hoy, mes, saldoMp, cajas: cajasSaldo, equilibrio } = data
   const stockBajo = data.stockBajo ?? []
   const margenPct =
     hoy.ventasCentavos > 0
@@ -701,44 +820,70 @@ export default function DashboardClient() {
         {/* Columna izquierda */}
         <div className="space-y-4">
 
-          {/* Equilibrio del mes */}
+          {/* Equilibrio real: contra los gastos fijos a pagar este mes, no se estima con
+              ventas — se contrasta lo que el dueño carga a mano que tiene HOY en Mercado
+              Pago + cada caja (no hay API de saldo de MP, y el efectivo real puede diferir
+              de lo calculado por movimientos). Ver resumenService.equilibrioReal. */}
           <div className="rounded-2xl border border-border/60 bg-card p-5 space-y-4">
-            <div className="flex items-center justify-between">
-              <p className="text-sm font-medium">Equilibrio del mes</p>
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-sm font-medium truncate">¿Cubro {nombreMes(mes.mesAnio)}?</p>
+                <p className="text-xs text-muted-foreground truncate">
+                  Con lo que tenés cargado hoy en MP y en caja
+                </p>
+              </div>
               <span className={cn(
-                "text-xs font-medium px-2 py-0.5 rounded-full",
-                mes.cubierto
+                "shrink-0 text-xs font-medium px-2 py-0.5 rounded-full",
+                equilibrio.cubierto
                   ? "bg-k-gain-muted text-k-gain"
                   : "bg-muted text-muted-foreground"
               )}>
-                {mes.cubierto ? "Cubierto" : "En curso"}
+                {equilibrio.cubierto ? "Cubierto" : "Falta"}
               </span>
             </div>
-            <EquilibrioBar pctAvance={mes.pctAvance} cubierto={mes.cubierto} />
+            <EquilibrioBar pctAvance={equilibrio.pctAvance} cubierto={equilibrio.cubierto} />
             <div className="grid grid-cols-3 gap-x-2 pt-1 text-sm">
               <div className="min-w-0">
-                <p className="text-xs text-muted-foreground truncate">Gastos fijos</p>
-                <p className="font-semibold tabular-nums text-[13px] truncate">
-                  {formatearARS(mes.gastosFijosCentavos)}
-                </p>
-              </div>
-              <div className="min-w-0">
-                <p className="text-xs text-muted-foreground truncate">Bruta del mes</p>
+                <p className="text-xs text-muted-foreground truncate">Disponible real</p>
                 <p className="font-semibold tabular-nums text-[13px] text-k-gain truncate">
-                  {formatearARS(mes.gananciaBrutaCentavos)}
+                  {formatearARS(equilibrio.gananciaBrutaCentavos)}
                 </p>
               </div>
               <div className="min-w-0">
                 <p className="text-xs text-muted-foreground truncate">
-                  {mes.cubierto ? "Neta del mes" : "Faltante"}
+                  A pagar {nombreMes(mes.mesAnio)}
+                </p>
+                <p className="font-semibold tabular-nums text-[13px] truncate">
+                  {formatearARS(equilibrio.gastosFijosCentavos)}
+                </p>
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs text-muted-foreground truncate">
+                  {equilibrio.cubierto ? "Neta" : "Falta"}
                 </p>
                 <p className={cn(
                   "font-semibold tabular-nums text-[13px] truncate",
-                  mes.cubierto ? "text-k-gain" : "text-k-loss"
+                  equilibrio.cubierto ? "text-k-gain" : "text-k-loss"
                 )}>
-                  {mes.cubierto
-                    ? formatearARS(mes.gananciaNetaCentavos)
-                    : formatearARS(mes.faltanteCentavos)}
+                  {equilibrio.cubierto
+                    ? formatearARS(equilibrio.gananciaNetaCentavos)
+                    : formatearARS(equilibrio.faltanteCentavos)}
+                </p>
+              </div>
+            </div>
+            <SaldosRealesEditor saldoMp={saldoMp} cajas={cajasSaldo} />
+          </div>
+
+          {/* Progreso del mes en curso — esto es lo que se está generando ahora y va a
+              pagar los gastos fijos del mes que viene, no los de este mes */}
+          <div className="rounded-2xl border border-border/60 bg-card p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-xs text-muted-foreground truncate">
+                  Progreso de {nombreMes(mes.mesAnio)} (para pagar el mes que viene)
+                </p>
+                <p className="font-semibold tabular-nums text-lg text-k-gain mt-0.5">
+                  {formatearARS(mes.gananciaBrutaCentavos - mes.comisionesTotalesCentavos)}
                 </p>
               </div>
             </div>

@@ -72,6 +72,15 @@ export const cajaService = {
     return prisma.caja.update({ where: { id }, data: { activo: true } })
   },
 
+  /** Saldo real contado a mano (efectivo físico), para el equilibrio de Inicio. */
+  async actualizarSaldoManual(id: string, organizationId: string, montoCentavos: number) {
+    await prisma.caja.findFirstOrThrow({ where: { id, organizationId } })
+    return prisma.caja.update({
+      where: { id },
+      data: { saldoManualCentavos: montoCentavos, saldoManualActualizadoEn: new Date() },
+    })
+  },
+
   /**
    * Asigna un conjunto de categorías a esta caja.
    * Quita la asignación de las categorías que ya no están en la lista.

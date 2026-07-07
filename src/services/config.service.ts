@@ -343,6 +343,14 @@ export const organizacionService = {
       data: { onboardingCompletadoAt: null },
     })
   },
+
+  /** Saldo real de la cuenta de Mercado Pago, cargado a mano (ver equilibrioReal en resumen.service.ts). */
+  async actualizarSaldoMp(organizationId: string, montoCentavos: number) {
+    return prisma.organization.update({
+      where: { id: organizationId },
+      data: { saldoMpCentavos: montoCentavos, saldoMpActualizadoEn: new Date() },
+    })
+  },
 }
 
 // ─── Usuarios ────────────────────────────────────────────────────────────────
