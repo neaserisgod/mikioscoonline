@@ -15,7 +15,7 @@ const TODAY = new Date().toISOString().slice(0, 10)
 
 // Secciones enteras de solo-ADMIN — VENDEDOR nunca navega ahí (los links ni se
 // muestran), pero el warm-up al iniciar sesión igual las precarga si no se filtran acá.
-const RUTAS_ADMIN_ONLY = new Set(["/productos", "/rentabilidad", "/config", "/reportes"])
+const RUTAS_ADMIN_ONLY = new Set(["/productos", "/rentabilidad", "/config"])
 
 // Mapa único de qué precargar por sección — el staleTime de cada entrada debe
 // coincidir con el que usa la query real consumidora (si no, el dato
@@ -50,7 +50,6 @@ export const ROUTE_PREFETCH_MAP: Record<string, PrefetchEntry[]> = {
       staleTime: 30_000,
     },
   ],
-  "/reportes": [{ key: ["resumen"], url: "/api/resumen", staleTime: 30_000 }],
   "/config": [{ key: ["config", "negocio"], url: "/api/config/negocio", staleTime: 60_000 }],
 }
 

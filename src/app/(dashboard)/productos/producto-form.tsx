@@ -19,7 +19,6 @@ import { cn } from "@/lib/utils"
 import { CatalogoBuscador } from "@/components/catalogo-buscador"
 
 const schema = z.object({
-  sku: z.string().min(1, "Requerido"),
   nombre: z.string().min(1, "Requerido"),
   categoryId: z.string().min(1, "Requerido"),
   barcode: z.string().optional(),
@@ -102,7 +101,6 @@ export default function ProductoForm({ producto, barcodePreset, onSuccess }: Pro
   } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: {
-      sku: producto?.sku ?? "",
       nombre: producto?.nombre ?? "",
       categoryId: producto?.categoryId ?? "",
       barcode: producto?.barcode ?? barcodePreset ?? "",
@@ -189,7 +187,6 @@ export default function ProductoForm({ producto, barcodePreset, onSuccess }: Pro
       v !== undefined && !Number.isNaN(v) ? Math.round(v * 100) : undefined
 
     const base = {
-      sku: data.sku,
       nombre: data.nombre,
       categoryId: data.categoryId,
       barcode: data.barcode || undefined,
@@ -249,16 +246,15 @@ export default function ProductoForm({ producto, barcodePreset, onSuccess }: Pro
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-1.5">
-          <Label htmlFor="sku">SKU</Label>
-          <Input id="sku" {...register("sku")} className="rounded-xl" />
-          {errors.sku && <p className="text-xs text-k-loss">{errors.sku.message}</p>}
-        </div>
-        <div className="space-y-1.5">
-          <Label htmlFor="barcode">Código de barras</Label>
-          <Input id="barcode" {...register("barcode")} className="rounded-xl" data-barcode-input />
-        </div>
+      <div className="space-y-1.5">
+        <Label htmlFor="barcode">Código de barras</Label>
+        <Input
+          id="barcode"
+          {...register("barcode")}
+          placeholder="Opcional — dejalo vacío si no tiene"
+          className="rounded-xl"
+          data-barcode-input
+        />
       </div>
 
       <div className="space-y-1.5">

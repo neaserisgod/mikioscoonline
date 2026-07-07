@@ -11,7 +11,7 @@ import { z, ZodError } from "zod"
 // sobre un schema que ya tiene .refine(), así que el refinement se aplica recién
 // al derivar CrearProductoSchema, y Editar parte de esta base limpia.
 const ProductoBaseSchema = z.object({
-  sku: z.string().min(1),
+  sku: z.string().min(1).optional(),
   barcode: z.string().optional(),
   nombre: z.string().min(1),
   categoryId: z.string().min(1, "Elegí una categoría"),

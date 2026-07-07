@@ -6,7 +6,7 @@ import Papa from "papaparse"
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
 export interface CrearProductoInput {
-  sku: string
+  sku?: string
   barcode?: string
   nombre: string
   categoryId: string
@@ -65,6 +65,17 @@ const incluirRelaciones = {
   location: { select: { nombre: true } },
 } as const
 
+/** Productos sin código de barras (raros) necesitan igual un SKU único — se
+ * genera uno interno en vez de pedírselo al usuario en el alta. */
+async function generarSkuInterno(organizationId: string): Promise<string> {
+  for (let intento = 0; intento < 5; intento++) {
+    const candidato = `SC${Math.floor(100000 + Math.random() * 900000)}`
+    const existe = await prisma.product.findFirst({ where: { sku: candidato, organizationId } })
+    if (!existe) return candidato
+  }
+  throw new Error("No se pudo generar un SKU interno único, reintentá")
+}
+
 // ─── Servicio ─────────────────────────────────────────────────────────────────
 
 export const productoService = {
@@ -89,9 +100,13 @@ export const productoService = {
       markupDefaultFijoCentavos: category.markupDefaultFijoCentavos,
     })
 
+    // SKU = código de barras (convención de toda la app, ver importarCSV) — si no
+    // hay código de barras, se genera un SKU interno para no pedírselo al usuario.
+    const sku = input.sku || input.barcode || (await generarSkuInterno(input.organizationId))
+
     return prisma.product.create({
       data: {
-        sku: input.sku,
+        sku,
         barcode: input.barcode ?? null,
         nombre: input.nombre,
         // No pesable: costoCentavos/precioCentavos son los reales. Pesable: quedan en 0

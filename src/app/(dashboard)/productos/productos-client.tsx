@@ -12,6 +12,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { MarkupBadge } from "@/components/ui/markup-badge"
 import { EmptyState } from "@/components/ui/empty-state"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { formatearARS } from "@/domain/dinero"
 import { cn } from "@/lib/utils"
 import ProductoForm from "./producto-form"
@@ -27,6 +28,7 @@ interface Producto {
   stockMinimo: number
   categoryId: string
   category: { nombre: string }
+  providerId: string | null
   provider?: { nombre: string } | null
   location?: { nombre: string } | null
   esPesable: boolean
@@ -34,6 +36,11 @@ interface Producto {
   costoPorKgCentavos: number | null
   stockGramos: number | null
   stockMinimoGramos: number | null
+}
+
+interface Proveedor {
+  id: string
+  nombre: string
 }
 
 const stagger = {
@@ -48,6 +55,7 @@ const PROD_COLS = "lg:grid-cols-[2fr_0.9fr_1fr_1fr_auto_auto]"
 
 export default function ProductosClient() {
   const [q, setQ] = useState("")
+  const [proveedorId, setProveedorId] = useState("todos")
   const [sheetOpen, setSheetOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [barcodePreset, setBarcodePreset] = useState<string | undefined>()
@@ -79,6 +87,16 @@ export default function ProductosClient() {
     staleTime: 30_000,
   })
 
+  const { data: proveedores } = useQuery<Proveedor[]>({
+    queryKey: ["proveedores"],
+    queryFn: () => fetch("/api/config/proveedores").then((r) => r.json()),
+    staleTime: 5 * 60_000,
+  })
+
+  const productosFiltrados = productos?.filter(
+    (p) => proveedorId === "todos" || p.providerId === proveedorId
+  )
+
   const productoEditing = productos?.find((p) => p.id === editingId)
 
   function abrirNuevo() {
@@ -108,15 +126,28 @@ export default function ProductosClient() {
         </Button>
       </div>
 
-      {/* Búsqueda */}
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground pointer-events-none" />
-        <Input
-          placeholder="Buscar por nombre, SKU o código de barras..."
-          className="pl-9 rounded-xl bg-card border-border/60"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-        />
+      {/* Búsqueda + filtro por proveedor */}
+      <div className="flex flex-col sm:flex-row gap-3">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground pointer-events-none" />
+          <Input
+            placeholder="Buscar por nombre, SKU o código de barras..."
+            className="pl-9 rounded-xl bg-card border-border/60"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+          />
+        </div>
+        <Select value={proveedorId} onValueChange={(v) => setProveedorId(v ?? "todos")}>
+          <SelectTrigger className="rounded-xl bg-card border-border/60 sm:w-56 shrink-0">
+            <SelectValue placeholder="Todos los proveedores" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="todos">Todos los proveedores</SelectItem>
+            {proveedores?.map((p) => (
+              <SelectItem key={p.id} value={p.id}>{p.nombre}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       {/* Lista */}
@@ -126,7 +157,7 @@ export default function ProductosClient() {
             <Skeleton key={i} className="h-16 rounded-2xl" />
           ))}
         </div>
-      ) : !productos || productos.length === 0 ? (
+      ) : !productosFiltrados || productosFiltrados.length === 0 ? (
         <EmptyState
           icon={Package}
           title={q ? `Sin resultados para "${q}"` : "Sin productos"}
@@ -160,7 +191,7 @@ export default function ProductosClient() {
             initial="hidden"
             animate="show"
           >
-            {productos.map((p) => {
+            {productosFiltrados.map((p) => {
               const precioDisplay = p.esPesable ? (p.precioPorKgCentavos ?? 0) : p.precioCentavos
               const costoDisplay = p.esPesable ? (p.costoPorKgCentavos ?? 0) : p.costoCentavos
               const stockDisplay = p.esPesable ? (p.stockGramos ?? 0) / 1000 : p.stock
