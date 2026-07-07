@@ -106,7 +106,7 @@ export const ventaService = {
       // 5. Medios de pago usados en esta venta (incluye cajaId: override de atribución)
       const medioIds = input.pagos.map((p) => p.paymentMethodId)
       const medios = await tx.paymentMethod.findMany({
-        where: { id: { in: medioIds } },
+        where: { id: { in: medioIds }, organizationId: input.organizationId },
       })
       if (medios.length !== new Set(medioIds).size) {
         throw new Error("Uno o más medios de pago no encontrados")
@@ -210,19 +210,29 @@ export const ventaService = {
         },
       })
 
-      // 10. Descontar stock y crear movimientos (gramos para pesables, unidades para el resto)
+      // 10. Descontar stock y crear movimientos (gramos para pesables, unidades para el resto).
+      // Decremento atómico condicional (`decrement` + guard `gte` en el where) en vez de restar
+      // sobre el valor leído en el paso 2 — dos ventas concurrentes del mismo producto podían
+      // leer el mismo stock y la segunda pisaba el resultado de la primera (oversell). El chequeo
+      // del paso 2 queda como mensaje de error temprano; este `updateMany` es la validación real.
       for (const linea of input.lineas) {
         const producto = productos.find((p) => p.id === linea.productId)!
 
         if (producto.esPesable) {
           const gramos = linea.gramos ?? 0
-          const gramosAnterior = producto.stockGramos ?? 0
-          const gramosPosterior = gramosAnterior - gramos
-
-          await tx.product.update({
-            where: { id: linea.productId },
-            data: { stockGramos: gramosPosterior },
+          const { count } = await tx.product.updateMany({
+            where: { id: linea.productId, stockGramos: { gte: gramos } },
+            data: { stockGramos: { decrement: gramos } },
           })
+          if (count === 0) {
+            throw new Error(`Stock insuficiente para "${producto.nombre}"`)
+          }
+          const actualizado = await tx.product.findUniqueOrThrow({
+            where: { id: linea.productId },
+            select: { stockGramos: true },
+          })
+          const gramosPosterior = actualizado.stockGramos ?? 0
+          const gramosAnterior = gramosPosterior + gramos
 
           await tx.stockMovement.create({
             data: {
@@ -240,12 +250,19 @@ export const ventaService = {
             },
           })
         } else {
-          const stockPosterior = producto.stock - linea.cantidad
-
-          await tx.product.update({
-            where: { id: linea.productId },
-            data: { stock: stockPosterior },
+          const { count } = await tx.product.updateMany({
+            where: { id: linea.productId, stock: { gte: linea.cantidad } },
+            data: { stock: { decrement: linea.cantidad } },
           })
+          if (count === 0) {
+            throw new Error(`Stock insuficiente para "${producto.nombre}"`)
+          }
+          const actualizado = await tx.product.findUniqueOrThrow({
+            where: { id: linea.productId },
+            select: { stock: true },
+          })
+          const stockPosterior = actualizado.stock
+          const stockAnterior = stockPosterior + linea.cantidad
 
           await tx.stockMovement.create({
             data: {
@@ -253,7 +270,7 @@ export const ventaService = {
               userId: input.userId,
               tipo: "SALIDA",
               cantidad: linea.cantidad,
-              stockAnterior: producto.stock,
+              stockAnterior,
               stockPosterior,
               saleId: venta.id,
               motivo: "Venta",

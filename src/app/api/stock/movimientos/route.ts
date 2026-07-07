@@ -34,6 +34,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Datos inválidos", details: parsed.error.flatten() }, { status: 400 })
   }
 
+  // Mismo chequeo que ajusteStockAction — sin esto, un VENDEDOR podía ajustar stock
+  // pegándole directo a esta API aunque la acción del formulario se lo impida.
+  if (parsed.data.tipo === "AJUSTE" && session.user.role !== "ADMIN") {
+    return NextResponse.json({ error: "Solo ADMIN puede hacer ajustes de stock" }, { status: 403 })
+  }
+
   try {
     const result = await stockService.registrarMovimiento({
       ...parsed.data,

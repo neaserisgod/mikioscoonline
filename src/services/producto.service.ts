@@ -72,6 +72,12 @@ export const productoService = {
     const category = await prisma.category.findFirstOrThrow({
       where: { id: input.categoryId, organizationId: input.organizationId },
     })
+    if (input.providerId) {
+      await prisma.provider.findFirstOrThrow({ where: { id: input.providerId, organizationId: input.organizationId } })
+    }
+    if (input.locationId) {
+      await prisma.location.findFirstOrThrow({ where: { id: input.locationId, organizationId: input.organizationId } })
+    }
 
     const esPesable = input.esPesable ?? false
     const triangulo = resolverTriangulo({
@@ -118,6 +124,12 @@ export const productoService = {
     const cat = input.categoryId
       ? await prisma.category.findFirstOrThrow({ where: { id: input.categoryId, organizationId: input.organizationId } })
       : producto.category
+    if (input.providerId) {
+      await prisma.provider.findFirstOrThrow({ where: { id: input.providerId, organizationId: input.organizationId } })
+    }
+    if (input.locationId) {
+      await prisma.location.findFirstOrThrow({ where: { id: input.locationId, organizationId: input.organizationId } })
+    }
 
     const esPesable = input.esPesable ?? producto.esPesable
 

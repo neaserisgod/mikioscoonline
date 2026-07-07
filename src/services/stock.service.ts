@@ -18,10 +18,40 @@ export const stockService = {
     })
 
     if (producto.esPesable) {
-      const gramosAnterior = producto.stockGramos ?? 0
-      const gramosPosterior =
-        input.tipo === "ENTRADA" ? gramosAnterior + input.cantidad : input.cantidad
+      if (input.tipo === "ENTRADA") {
+        // Incremento atómico — no depende del valor leído arriba, así que una venta
+        // concurrente entre la lectura y el guardado no se pisa (a diferencia de sumar
+        // en JS y guardar un valor absoluto).
+        return prisma.$transaction(async (tx) => {
+          const actualizado = await tx.product.update({
+            where: { id: input.productId },
+            data: { stockGramos: { increment: input.cantidad } },
+            select: { stockGramos: true },
+          })
+          const gramosPosterior = actualizado.stockGramos ?? 0
+          const gramosAnterior = gramosPosterior - input.cantidad
 
+          return tx.stockMovement.create({
+            data: {
+              productId: input.productId,
+              userId: input.userId,
+              tipo: input.tipo,
+              cantidad: 0,
+              stockAnterior: 0,
+              stockPosterior: 0,
+              gramos: input.cantidad,
+              gramosAnterior,
+              gramosPosterior,
+              motivo: input.motivo,
+            },
+          })
+        })
+      }
+
+      // AJUSTE: es un conteo físico — el nuevo valor absoluto debe pisar cualquier
+      // cambio concurrente (es la fuente de verdad más reciente), no sumarse/restarse.
+      const gramosAnterior = producto.stockGramos ?? 0
+      const gramosPosterior = input.cantidad
       if (gramosPosterior < 0) {
         throw new Error(`Stock resultante no puede ser negativo: ${gramosPosterior}g`)
       }
@@ -40,7 +70,7 @@ export const stockService = {
             cantidad: 0,
             stockAnterior: 0,
             stockPosterior: 0,
-            gramos: input.tipo === "AJUSTE" ? gramosPosterior - gramosAnterior : input.cantidad,
+            gramos: gramosPosterior - gramosAnterior,
             gramosAnterior,
             gramosPosterior,
             motivo: input.motivo,
@@ -49,12 +79,33 @@ export const stockService = {
       })
     }
 
-    const stockAnterior = producto.stock
-    const stockPosterior =
-      input.tipo === "ENTRADA"
-        ? stockAnterior + input.cantidad
-        : input.cantidad // AJUSTE: la cantidad es el nuevo stock
+    if (input.tipo === "ENTRADA") {
+      return prisma.$transaction(async (tx) => {
+        const actualizado = await tx.product.update({
+          where: { id: input.productId },
+          data: { stock: { increment: input.cantidad } },
+          select: { stock: true },
+        })
+        const stockPosterior = actualizado.stock
+        const stockAnterior = stockPosterior - input.cantidad
 
+        return tx.stockMovement.create({
+          data: {
+            productId: input.productId,
+            userId: input.userId,
+            tipo: input.tipo,
+            cantidad: input.cantidad,
+            stockAnterior,
+            stockPosterior,
+            motivo: input.motivo,
+          },
+        })
+      })
+    }
+
+    // AJUSTE: mismo razonamiento que en el caso pesable — set absoluto intencional.
+    const stockAnterior = producto.stock
+    const stockPosterior = input.cantidad
     if (stockPosterior < 0) {
       throw new Error(`Stock resultante no puede ser negativo: ${stockPosterior}`)
     }
@@ -70,7 +121,7 @@ export const stockService = {
           productId: input.productId,
           userId: input.userId,
           tipo: input.tipo,
-          cantidad: input.tipo === "AJUSTE" ? stockPosterior - stockAnterior : input.cantidad,
+          cantidad: stockPosterior - stockAnterior,
           stockAnterior,
           stockPosterior,
           motivo: input.motivo,

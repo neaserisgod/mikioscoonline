@@ -112,6 +112,9 @@ export const cajaSesionService = {
       where: { id: cajaSesionId, organizationId, estado: "ABIERTA" },
       select: { cajaId: true, caja: { select: { nombre: true } } },
     })
+    if (data.medioPagoId) {
+      await prisma.paymentMethod.findFirstOrThrow({ where: { id: data.medioPagoId, organizationId } })
+    }
 
     return prisma.movimientoCaja.create({
       data: {
