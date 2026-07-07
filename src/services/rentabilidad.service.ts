@@ -17,8 +17,9 @@ export interface FilaRentabilidad {
 export interface QueryRentabilidadInput {
   organizationId: string
   agrupador: AgrupadorRentabilidad
-  fechaDesde: Date
-  fechaHasta: Date
+  /** Sin fecha = histórico completo, sin límite en ese extremo. */
+  fechaDesde?: Date
+  fechaHasta?: Date
 }
 
 export const rentabilidadService = {
@@ -44,7 +45,12 @@ export const rentabilidadService = {
       where: {
         sale: {
           organizationId,
-          fecha: { gte: fechaDesde, lte: fechaHasta },
+          ...((fechaDesde || fechaHasta) && {
+            fecha: {
+              ...(fechaDesde && { gte: fechaDesde }),
+              ...(fechaHasta && { lte: fechaHasta }),
+            },
+          }),
         },
       },
       select: {

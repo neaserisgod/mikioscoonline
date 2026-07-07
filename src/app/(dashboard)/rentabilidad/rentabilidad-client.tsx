@@ -11,6 +11,7 @@ import { formatearARS } from "@/domain/dinero"
 import { cn } from "@/lib/utils"
 
 type Agrupador = "proveedor" | "categoria" | "heladera" | "caja"
+type Periodo = "mes" | "historico"
 
 interface FilaRentabilidad {
   id: string
@@ -51,12 +52,17 @@ const COLS = "grid-cols-[1fr_auto_auto_auto] lg:grid-cols-[1.4fr_0.7fr_0.9fr_1fr
 
 export default function RentabilidadClient() {
   const [agrupador, setAgrupador] = useState<Agrupador>("proveedor")
+  const [periodo, setPeriodo] = useState<Periodo>("mes")
   const { desde, hasta } = getMesRango()
 
   const { data: filas, isLoading } = useQuery<FilaRentabilidad[]>({
-    queryKey: ["rentabilidad", agrupador, desde, hasta],
+    queryKey: ["rentabilidad", agrupador, periodo, desde, hasta],
     queryFn: () =>
-      fetch(`/api/rentabilidad?por=${agrupador}&desde=${desde}&hasta=${hasta}`).then((r) => r.json()),
+      fetch(
+        periodo === "mes"
+          ? `/api/rentabilidad?por=${agrupador}&desde=${desde}&hasta=${hasta}`
+          : `/api/rentabilidad?por=${agrupador}`
+      ).then((r) => r.json()),
   })
 
   const totalVentas = filas?.reduce((s, f) => s + f.ventasCentavos, 0) ?? 0
@@ -68,15 +74,38 @@ export default function RentabilidadClient() {
   return (
     <div className="space-y-5">
       {/* Header */}
-      <div>
-        <h1 className="font-heading text-2xl font-medium">Rentabilidad</h1>
-        <p className="text-sm text-muted-foreground">Mes actual</p>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h1 className="font-heading text-2xl font-medium">Rentabilidad</h1>
+          <p className="text-sm text-muted-foreground">
+            {periodo === "mes" ? "Mes actual" : "Histórico completo"}
+          </p>
+        </div>
+        <div className="flex shrink-0 gap-1 rounded-full bg-muted p-1">
+          {(["mes", "historico"] as const).map((p) => (
+            <button
+              key={p}
+              type="button"
+              onClick={() => setPeriodo(p)}
+              className={cn(
+                "px-3 py-1 rounded-full text-xs font-medium transition-colors",
+                periodo === p
+                  ? "bg-foreground text-background"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              {p === "mes" ? "Mes actual" : "Histórico"}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Totales — 2 cols mobile, 4 cols desktop */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <div className="rounded-2xl border border-border/60 bg-card p-4">
-          <p className="text-xs text-muted-foreground">Ventas del mes</p>
+          <p className="text-xs text-muted-foreground">
+            {periodo === "mes" ? "Ventas del mes" : "Ventas totales"}
+          </p>
           <p className="text-xl font-semibold tabular-nums mt-1">{formatearARS(totalVentas)}</p>
         </div>
         <div className="rounded-2xl border border-k-gain/20 bg-k-gain-muted/20 p-4">
