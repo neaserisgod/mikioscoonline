@@ -77,3 +77,14 @@ export function inicioMes(date: Date = new Date()): Date {
 export function finMes(date: Date = new Date()): Date {
   return new Date(date.getFullYear(), date.getMonth() + 1, 0, 23, 59, 59, 999)
 }
+
+/**
+ * Parsea una fecha de query param ("YYYY-MM-DD"). `undefined` = el param no vino
+ * (usar el default del caller); `null` = vino pero es un string inválido (el
+ * caller debe responder 400, no dejar que un Invalid Date llegue a Prisma).
+ */
+export function parseFechaQuery(valor: string | null): Date | undefined | null {
+  if (valor == null) return undefined
+  const fecha = new Date(valor)
+  return isNaN(fecha.getTime()) ? null : fecha
+}

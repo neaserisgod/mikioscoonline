@@ -19,7 +19,7 @@ export function BottomNav() {
   const { data: session } = useSession()
   const esAdmin = session?.user?.role === "ADMIN"
   const items = staticItems.filter((item) => !item.adminOnly || esAdmin)
-  const isMore = pathname.startsWith("/productos") || pathname.startsWith("/config")
+  const isMore = pathname.startsWith("/config")
   const enVender = pathname.startsWith("/vender")
   const { setOverlay, overlayAbierto } = useVentasStore()
 

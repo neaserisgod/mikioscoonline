@@ -1,7 +1,18 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { stockService } from "@/services/stock.service"
+import { Prisma } from "@prisma/client"
 import { z } from "zod"
+
+function mensajeError(e: unknown): string {
+  // No devolver el mensaje nativo de Prisma al cliente — filtra nombres de
+  // columnas/tablas internas. Los errores de negocio (stock negativo, producto
+  // no encontrado en la org) son `new Error(...)` planos y siguen pasando abajo.
+  if (e instanceof Prisma.PrismaClientKnownRequestError) {
+    return e.code === "P2025" ? "Producto no encontrado" : "Error de base de datos"
+  }
+  return e instanceof Error ? e.message : "Error"
+}
 
 export async function GET(req: NextRequest) {
   const session = await auth()
@@ -48,9 +59,6 @@ export async function POST(req: NextRequest) {
     })
     return NextResponse.json(result)
   } catch (e) {
-    return NextResponse.json(
-      { error: e instanceof Error ? e.message : "Error" },
-      { status: 400 }
-    )
+    return NextResponse.json({ error: mensajeError(e) }, { status: 400 })
   }
 }

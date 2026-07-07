@@ -2,6 +2,7 @@
 
 import { auth } from "@/auth"
 import { ventaService } from "@/services/venta.service"
+import { Prisma } from "@prisma/client"
 import { z, ZodError } from "zod"
 
 const LineaSchema = z.object({
@@ -30,6 +31,12 @@ type CrearVentaResult = { ok: true; id: string } | { ok: false; error: string }
 function mensajeError(e: unknown): string {
   if (e instanceof ZodError) {
     return e.issues.map((i) => i.message).join(" · ")
+  }
+  // No devolver el mensaje nativo de Prisma al cliente — filtra nombres de
+  // columnas/tablas internas. Los errores de negocio (stock insuficiente, caja
+  // cerrada, etc.) son `new Error(...)` planos, no Prisma, y siguen pasando abajo.
+  if (e instanceof Prisma.PrismaClientKnownRequestError) {
+    return "No se pudo registrar la venta (error de base de datos)"
   }
   if (e instanceof Error) return e.message
   return "No se pudo registrar la venta"

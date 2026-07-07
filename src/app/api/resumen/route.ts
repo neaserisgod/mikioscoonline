@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { requireSessionApi } from "@/lib/api-auth"
 import { resumenService } from "@/services/resumen.service"
 import { productoService } from "@/services/producto.service"
+import { parseFechaQuery } from "@/domain/dinero"
 
 export async function GET(req: NextRequest) {
   const result = await requireSessionApi()
@@ -10,14 +11,16 @@ export async function GET(req: NextRequest) {
 
   const { searchParams } = req.nextUrl
   const mesParam = searchParams.get("mes") // "YYYY-MM" opcional
+  const mesFecha = mesParam ? parseFechaQuery(`${mesParam}-01`) : undefined
+  if (mesFecha === null) {
+    return NextResponse.json({ error: "Parámetro mes inválido (esperado YYYY-MM)" }, { status: 400 })
+  }
 
   // hoy/mes son cifras de ganancia — VENDEDOR no debe verlas, solo el stock bajo
   // (operativo, no financiero) le sirve para cualquiera.
   const [hoy, mes, stockBajo] = await Promise.all([
     role === "ADMIN" ? resumenService.hoy(organizationId) : null,
-    role === "ADMIN"
-      ? resumenService.mes(organizationId, mesParam ? new Date(`${mesParam}-01`) : undefined)
-      : null,
+    role === "ADMIN" ? resumenService.mes(organizationId, mesFecha) : null,
     productoService.stockBajo(organizationId),
   ])
 

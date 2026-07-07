@@ -275,6 +275,15 @@ export const productoService = {
       return { creados: 0, actualizados: 0, errores: parseErrors.map(e => ({ fila: e.row ?? 0, error: e.message })) }
     }
 
+    const MAX_FILAS = 5000
+    if (data.length > MAX_FILAS) {
+      return {
+        creados: 0,
+        actualizados: 0,
+        errores: [{ fila: 0, error: `El CSV tiene ${data.length} filas, el máximo permitido es ${MAX_FILAS}` }],
+      }
+    }
+
     let creados = 0
     let actualizados = 0
     const errores: Array<{ fila: number; error: string }> = []

@@ -1,14 +1,18 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireAdminApi } from "@/lib/api-auth"
 import { ventaService } from "@/services/venta.service"
+import { parseFechaQuery } from "@/domain/dinero"
 
 export async function GET(req: NextRequest) {
   const result = await requireAdminApi()
   if ("error" in result) return result.error
 
   const { searchParams } = req.nextUrl
-  const desde = searchParams.get("desde") ? new Date(searchParams.get("desde")!) : undefined
-  const hasta = searchParams.get("hasta") ? new Date(searchParams.get("hasta")!) : undefined
+  const desde = parseFechaQuery(searchParams.get("desde"))
+  const hasta = parseFechaQuery(searchParams.get("hasta"))
+  if (desde === null || hasta === null) {
+    return NextResponse.json({ error: "Fecha inválida en desde/hasta" }, { status: 400 })
+  }
 
   const ventas = await ventaService.listar(result.user.organizationId, { fechaDesde: desde, fechaHasta: hasta })
 

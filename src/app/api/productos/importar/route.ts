@@ -15,6 +15,12 @@ export async function POST(req: NextRequest) {
   if (!text.trim()) {
     return NextResponse.json({ error: "CSV vacío" }, { status: 422 })
   }
+  // Tope de tamaño — cada fila se procesa secuencialmente (upserts de categoría/
+  // proveedor incluidos), un archivo enorme podría colgar el request.
+  const MAX_BYTES = 5 * 1024 * 1024 // 5 MB
+  if (Buffer.byteLength(text, "utf-8") > MAX_BYTES) {
+    return NextResponse.json({ error: "El archivo supera el tamaño máximo permitido (5 MB)" }, { status: 413 })
+  }
 
   const resultado = await productoService.importarCSV(text, session.user.organizationId)
   return NextResponse.json(resultado, { status: resultado.errores.length === 0 ? 200 : 207 })

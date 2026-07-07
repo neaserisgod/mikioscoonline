@@ -33,8 +33,8 @@ export function calcularEquilibrio(input: InputEquilibrio): ResultadoEquilibrio 
 
   const pctAvance =
     gastosFijosCentavos === 0
-      ? 100
-      : Math.min(100, Math.round((gananciaDisponible / gastosFijosCentavos) * 100))
+      ? (gananciaDisponible >= 0 ? 100 : 0)
+      : Math.max(0, Math.min(100, Math.round((gananciaDisponible / gastosFijosCentavos) * 100)))
 
   const faltanteCentavos = Math.max(0, gastosFijosCentavos - gananciaDisponible)
 

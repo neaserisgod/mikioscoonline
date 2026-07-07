@@ -57,8 +57,11 @@ function mensajeError(e: unknown): string {
   if (e instanceof ZodError) {
     return e.issues.map((i) => i.message).join(" · ")
   }
-  if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
-    return "Ya existe un producto con ese SKU o código de barras"
+  if (e instanceof Prisma.PrismaClientKnownRequestError) {
+    if (e.code === "P2002") return "Ya existe un producto con ese SKU o código de barras"
+    // Cualquier otro código (P2003, P2025, etc.) — no devolver el mensaje nativo de
+    // Prisma al cliente, filtra nombres de columnas/tablas internas.
+    return "No se pudo guardar el producto (error de base de datos)"
   }
   if (e instanceof Error) return e.message
   return "No se pudo guardar el producto"
