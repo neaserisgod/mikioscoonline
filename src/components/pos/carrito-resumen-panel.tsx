@@ -1,12 +1,66 @@
 "use client"
 
+import { useState } from "react"
 import { motion } from "framer-motion"
 import { Loader2, CheckCircle2, AlertTriangle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+} from "@/components/ui/dialog"
 import { formatearARS } from "@/domain/dinero"
 import { cn } from "@/lib/utils"
 import type { CarritoCheckout } from "./use-carrito-checkout"
+
+/** Diálogo compartido por los dos puntos de entrada del cierre manual de
+ * emergencia (pantalla de espera y previo a intentar con el dispositivo). */
+function DialogoCobroManual({
+  open, onOpenChange, loading, onConfirmar,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  loading: boolean
+  onConfirmar: (comprobante: string) => void
+}) {
+  const [comprobante, setComprobante] = useState("")
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Cobro manual de emergencia</DialogTitle>
+          <DialogDescription>
+            Usalo si cobraste con otra terminal aparte (posnet/QR en modo manual, sin
+            integración). La venta queda registrada con el mismo medio de pago.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-1.5">
+          <Label htmlFor="comprobante-manual">Últimos 4 dígitos del comprobante (opcional)</Label>
+          <Input
+            id="comprobante-manual"
+            value={comprobante}
+            onChange={(e) => setComprobante(e.target.value.replace(/\D/g, "").slice(0, 4))}
+            placeholder="Ej: 1234"
+            inputMode="numeric"
+            maxLength={4}
+            className="rounded-xl"
+            autoFocus
+          />
+        </div>
+        <DialogFooter>
+          <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={loading}>
+            Cancelar
+          </Button>
+          <Button onClick={() => onConfirmar(comprobante)} disabled={loading}>
+            {loading ? <Loader2 className="size-4 animate-spin" /> : "Registrar cobro"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
 
 interface CarritoResumenPanelProps {
   checkout: CarritoCheckout
@@ -21,6 +75,7 @@ export function CarritoResumenPanel({ checkout, mostrarItems = false, expandActi
     venta, carrito, medioPagoId, mediosPago, medioPagoSeleccionado, subtotal,
     totalCentavos, comisionCentavos, recargoTotalCentavos, totalACobrarCentavos, faltaPeso,
     loading, successInfo, setSuccessInfo, confirmVaciar, setConfirmVaciar,
+    manualDialogOpen, setManualDialogOpen, manualLoading, confirmarCobroManual,
     vaciarCarrito, setMedioPago, confirmar, cancelarPagoMp,
   } = checkout
 
@@ -33,25 +88,43 @@ export function CarritoResumenPanel({ checkout, mostrarItems = false, expandActi
         ? "Esperando que el cliente pase la tarjeta en el posnet…"
         : "Esperando que el cliente pague por QR…"
     return (
-      <motion.div
-        className="flex flex-col items-center justify-center gap-5 py-10 text-center"
-        initial={{ opacity: 0, scale: 0.94 }}
-        animate={{ opacity: 1, scale: 1 }}
-        transition={{ type: "spring", stiffness: 260, damping: 24 }}
-      >
-        <div className="rounded-full bg-primary/8 p-5">
-          <Loader2 className="size-8 text-primary animate-spin" />
-        </div>
-        <div className="space-y-0.5">
-          <p className="text-lg font-semibold">{mensaje}</p>
-          <p className="text-sm text-muted-foreground tabular-nums">
-            {formatearARS(venta.pagoMpPendiente.montoCentavos)}
-          </p>
-        </div>
-        <Button onClick={cancelarPagoMp} variant="ghost" size="sm" className="min-w-32">
-          Cancelar
-        </Button>
-      </motion.div>
+      <>
+        <motion.div
+          className="flex flex-col items-center justify-center gap-5 py-10 text-center"
+          initial={{ opacity: 0, scale: 0.94 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ type: "spring", stiffness: 260, damping: 24 }}
+        >
+          <div className="rounded-full bg-primary/8 p-5">
+            <Loader2 className="size-8 text-primary animate-spin" />
+          </div>
+          <div className="space-y-0.5">
+            <p className="text-lg font-semibold">{mensaje}</p>
+            <p className="text-sm text-muted-foreground tabular-nums">
+              {formatearARS(venta.pagoMpPendiente.montoCentavos)}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button onClick={cancelarPagoMp} variant="ghost" size="sm" className="min-w-28">
+              Cancelar
+            </Button>
+            <Button
+              onClick={() => setManualDialogOpen(true)}
+              variant="outline"
+              size="sm"
+              className="min-w-28"
+            >
+              Cobrar manual
+            </Button>
+          </div>
+        </motion.div>
+        <DialogoCobroManual
+          open={manualDialogOpen}
+          onOpenChange={setManualDialogOpen}
+          loading={manualLoading}
+          onConfirmar={confirmarCobroManual}
+        />
+      </>
     )
   }
 
@@ -199,6 +272,22 @@ export function CarritoResumenPanel({ checkout, mostrarItems = false, expandActi
         >
           {loading ? <Loader2 className="size-4 animate-spin" /> : "Confirmar venta"}
         </Button>
+        {medioPagoSeleccionado?.esMercadoPago && carrito.length > 0 && !faltaPeso && (
+          <Button
+            variant="ghost"
+            className="w-full text-xs text-muted-foreground h-8"
+            disabled={loading}
+            onClick={() => setManualDialogOpen(true)}
+          >
+            Cobrar con otro dispositivo (manual)
+          </Button>
+        )}
+        <DialogoCobroManual
+          open={manualDialogOpen}
+          onOpenChange={setManualDialogOpen}
+          loading={manualLoading}
+          onConfirmar={confirmarCobroManual}
+        />
         {carrito.length > 0 && (
           confirmVaciar ? (
             <div className="flex items-center justify-center gap-3 h-8 text-xs">

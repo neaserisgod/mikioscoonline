@@ -34,6 +34,8 @@ export function useCarritoCheckout(onSuccess?: (ventaId: string) => void) {
   } = useVentasStore()
   const [loading, setLoading] = useState(false)
   const [confirmVaciar, setConfirmVaciar] = useState(false)
+  const [manualDialogOpen, setManualDialogOpen] = useState(false)
+  const [manualLoading, setManualLoading] = useState(false)
   const [successInfo, setSuccessInfo] = useState<{
     ventaId: string
     totalCentavos: number
@@ -147,10 +149,71 @@ export function useCarritoCheckout(onSuccess?: (ventaId: string) => void) {
     }
   }
 
+  // Cierre manual de emergencia: cuando el dispositivo de QR/posnet falló o se
+  // decide cobrar con otra terminal aparte (en modo standalone), se registra la
+  // venta bajo el MISMO medio de pago (misma comisión/caja configurada) sin
+  // esperar la confirmación del dispositivo integrado. El comprobante de la
+  // terminal alternativa es opcional, solo para poder reconciliar después.
+  async function confirmarCobroManual(comprobante: string) {
+    if (!venta) return
+    const pendiente = venta.pagoMpPendiente
+    const montoCentavos = pendiente?.montoCentavos ?? totalACobrarCentavos
+    setManualLoading(true)
+    try {
+      if (pendiente) {
+        // Limpiar el pendiente ANTES de crear la venta (no después del éxito): el
+        // polling de use-pago-mp-polling.ts corre en paralelo cada 2.5s y si
+        // justo en ese momento MP confirma el pago solo, terminaría creando una
+        // segunda venta duplicada para el mismo cobro. Al sacarlo del store ya,
+        // el próximo tick del poll no encuentra nada pendiente para esta venta.
+        cancelarPagoMp(venta.id)
+        // Best-effort: liberar la terminal (para posnet; QR no requiere cancelación real).
+        await cancelarOrdenMpAction(pendiente.orderId, pendiente.tipo).catch(() => {})
+      }
+
+      const result = await crearVentaAction({
+        lineas: carrito.map((l) => ({
+          productId: l.productId,
+          cantidad: l.cantidad,
+          ...(l.esPesable && { gramos: l.gramos ?? 0 }),
+        })),
+        pagos: [
+          {
+            paymentMethodId: medioPagoId,
+            montoCentavos,
+            referencia: comprobante || undefined,
+          },
+        ],
+      })
+
+      if (!result.ok) {
+        toast.error(result.error)
+        return
+      }
+
+      onVentaConfirmada()
+      setSuccessInfo({
+        ventaId: result.id,
+        totalCentavos: montoCentavos,
+        nombreMedioPago: medioPagoSeleccionado?.nombre ?? "",
+      })
+      qc.invalidateQueries({ queryKey: ["resumen"] })
+      qc.invalidateQueries({ queryKey: ["productos"] })
+      qc.invalidateQueries({ queryKey: ["cajas-panel"] })
+      onSuccess?.(result.id)
+      setManualDialogOpen(false)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "No se pudo registrar el cobro manual")
+    } finally {
+      setManualLoading(false)
+    }
+  }
+
   return {
     venta, carrito, medioPagoId, mediosPago, medioPagoSeleccionado,
     subtotal, totalCentavos, comisionCentavos, recargoTotalCentavos, totalACobrarCentavos, faltaPeso,
     loading, successInfo, setSuccessInfo, confirmVaciar, setConfirmVaciar,
+    manualDialogOpen, setManualDialogOpen, manualLoading, confirmarCobroManual,
     cambiarCantidad, setGramos, eliminarLinea, vaciarCarrito, setMedioPago,
     confirmar,
     cancelarPagoMp: async () => {
