@@ -1,0 +1,3 @@
+# App de escritorio (Tauri) — no la usa el build de Next.js, y src-tauri/target/
+# pesa varios GB de artefactos compilados de Rust que no hace falta subir.
+/src-tauri
