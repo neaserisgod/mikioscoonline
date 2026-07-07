@@ -15,7 +15,13 @@ export function firmaValida(xSignature: string, xRequestId: string, dataId: stri
 
   const manifest = `id:${dataId};request-id:${xRequestId};ts:${parts.ts};`
   const hash = crypto.createHmac("sha256", secret).update(manifest).digest("hex")
-  return hash === parts.v1
+
+  // Comparación timing-safe — `===` corta en el primer byte distinto, lo que en teoría
+  // permite forjar la firma midiendo tiempos de respuesta byte a byte.
+  const hashBuf = Buffer.from(hash, "hex")
+  const recibidoBuf = Buffer.from(parts.v1, "hex")
+  if (hashBuf.length !== recibidoBuf.length) return false
+  return crypto.timingSafeEqual(hashBuf, recibidoBuf)
 }
 
 export function parseDataId(body: string): string | null {

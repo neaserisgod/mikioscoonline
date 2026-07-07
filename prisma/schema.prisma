@@ -61,17 +61,19 @@ model Organization {
 // ─── Usuarios ────────────────────────────────────────────────────────────────
 
 model User {
-  id             String       @id @default(cuid())
-  email          String       @unique
-  passwordHash   String?      // null si el usuario solo se loguea con Google
-  image          String?      // foto de perfil de Google, opcional
-  nombre         String
-  role           Role         @default(VENDEDOR)
-  activo         Boolean      @default(true)
-  organizationId String
-  organization   Organization @relation(fields: [organizationId], references: [id])
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
+  id                  String       @id @default(cuid())
+  email               String       @unique
+  passwordHash        String?      // null si el usuario solo se loguea con Google
+  image               String?      // foto de perfil de Google, opcional
+  nombre              String
+  role                Role         @default(VENDEDOR)
+  activo              Boolean      @default(true)
+  failedLoginAttempts Int          @default(0) // se resetea en cada login exitoso
+  lockedUntil         DateTime?    // bloqueo temporal por fuerza bruta de contraseña
+  organizationId      String
+  organization        Organization @relation(fields: [organizationId], references: [id])
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
 
   sales            Sale[]
   stockMovements   StockMovement[]

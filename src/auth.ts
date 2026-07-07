@@ -5,6 +5,9 @@ import bcrypt from "bcryptjs"
 import { prisma } from "@/lib/prisma"
 import { authConfig } from "@/auth.config"
 
+const MAX_INTENTOS_FALLIDOS = 5
+const BLOQUEO_MINUTOS = 15
+
 export const { handlers, signIn, signOut, auth } = NextAuth({
   ...authConfig,
   providers: [
@@ -22,11 +25,33 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
 
         if (!user || !user.activo || !user.passwordHash) return null
 
+        // Bloqueo temporal por fuerza bruta — mismo resultado (null → "credenciales
+        // incorrectas") que una contraseña mal tipeada, no revela que está bloqueado.
+        if (user.lockedUntil && user.lockedUntil.getTime() > Date.now()) return null
+
         const passwordOk = await bcrypt.compare(
           credentials.password as string,
           user.passwordHash
         )
-        if (!passwordOk) return null
+
+        if (!passwordOk) {
+          const intentos = user.failedLoginAttempts + 1
+          await prisma.user.update({
+            where: { id: user.id },
+            data:
+              intentos >= MAX_INTENTOS_FALLIDOS
+                ? { failedLoginAttempts: 0, lockedUntil: new Date(Date.now() + BLOQUEO_MINUTOS * 60_000) }
+                : { failedLoginAttempts: intentos },
+          })
+          return null
+        }
+
+        if (user.failedLoginAttempts > 0 || user.lockedUntil) {
+          await prisma.user.update({
+            where: { id: user.id },
+            data: { failedLoginAttempts: 0, lockedUntil: null },
+          })
+        }
 
         return {
           id: user.id,
