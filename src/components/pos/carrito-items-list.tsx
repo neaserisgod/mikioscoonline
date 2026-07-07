@@ -56,26 +56,33 @@ export function CarritoItemsList({ checkout, className }: CarritoItemsListProps)
                 </Button>
               </div>
             </div>
-            {item.esPesable ? (
-              <div className="flex items-center gap-1.5 mt-2">
-                <input
-                  type="number"
-                  min={0}
-                  max={item.stockGramos ?? undefined}
-                  step={1}
-                  value={item.gramos ?? 0}
-                  onChange={(e) => setGramos(item.productId, Number(e.target.value) || 0)}
-                  className={cn(
-                    "h-7 w-24 rounded-md border bg-background px-2 text-xs font-semibold tabular-nums",
-                    (item.gramos ?? 0) <= 0 ? "border-k-loss/40" : "border-border/60"
-                  )}
-                />
-                <span className="text-xs text-muted-foreground">gramos</span>
-                {(item.gramos ?? 0) <= 0 && (
-                  <span className="text-xs text-k-loss">Falta cargar el peso</span>
-                )}
-              </div>
-            ) : (
+            {item.esPesable ? (() => {
+              const gramos = item.gramos ?? 0
+              const superaStock = gramos > (item.stockGramos ?? 0)
+              return (
+                <div className="flex items-center gap-1.5 mt-2">
+                  <input
+                    type="number"
+                    min={0}
+                    step={1}
+                    value={gramos}
+                    onChange={(e) => setGramos(item.productId, Number(e.target.value) || 0)}
+                    className={cn(
+                      "h-7 w-24 rounded-md border bg-background px-2 text-xs font-semibold tabular-nums",
+                      gramos <= 0 || superaStock ? "border-k-loss/40" : "border-border/60"
+                    )}
+                  />
+                  <span className="text-xs text-muted-foreground">gramos</span>
+                  {gramos <= 0 ? (
+                    <span className="text-xs text-k-loss">Falta cargar el peso</span>
+                  ) : superaStock ? (
+                    <span className="text-xs text-k-loss">
+                      Supera el stock cargado ({((item.stockGramos ?? 0) / 1000).toFixed(3)}kg) — re-buscá el producto para refrescarlo
+                    </span>
+                  ) : null}
+                </div>
+              )
+            })() : (
               <div className="flex items-center gap-1.5 mt-2">
                 <Button variant="outline" size="icon-sm" className="size-7 rounded-md border-border/60"
                   onClick={() => cambiarCantidad(item.productId, -1)}>

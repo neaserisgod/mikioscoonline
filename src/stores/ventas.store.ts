@@ -128,8 +128,21 @@ export const useVentasStore = create<VentasState & VentasActions>((set, get) => 
         const existe = activa.carrito.find((l) => l.productId === p.productId)
 
         if (p.esPesable) {
-          // Pesable: una sola línea por producto, el peso se carga a mano en el carrito
-          if (existe) return s
+          // Pesable: una sola línea por producto, el peso se carga a mano en el carrito. Si
+          // ya estaba en el carrito, igual refrescamos el stock cacheado en la línea (re-buscar
+          // o re-escanear el mismo producto es la única señal que tenemos de que el stock
+          // pudo haber cambiado desde que se agregó) — si no, el peso queda clampeado para
+          // siempre contra el valor viejo aunque se reponga stock del lado de Config.
+          if (existe) {
+            const nuevoCarrito = activa.carrito.map((l) =>
+              l.productId === p.productId
+                ? { ...l, stockGramos: p.stockGramos, gramos: Math.min(l.gramos ?? 0, p.stockGramos ?? 0) }
+                : l
+            )
+            return {
+              ventas: s.ventas.map((v) => (v.id === activa.id ? { ...v, carrito: nuevoCarrito } : v)),
+            }
+          }
           if ((p.stockGramos ?? 0) <= 0) return s
           const nuevoCarrito = [...activa.carrito, { ...p, cantidad: 1, gramos: 0 }]
           return {
@@ -139,11 +152,17 @@ export const useVentasStore = create<VentasState & VentasActions>((set, get) => 
 
         let nuevoCarrito: LineaCarrito[]
         if (existe) {
-          // Stock validation is advisory only — server enforces the real constraint
-          if (existe.cantidad >= p.stock) return s
-          nuevoCarrito = activa.carrito.map((l) =>
-            l.productId === p.productId ? { ...l, cantidad: l.cantidad + 1 } : l
-          )
+          // Igual que en pesables: refrescar el stock cacheado en la línea, haya o no lugar
+          // para sumar una unidad más.
+          if (existe.cantidad >= p.stock) {
+            nuevoCarrito = activa.carrito.map((l) =>
+              l.productId === p.productId ? { ...l, stock: p.stock } : l
+            )
+          } else {
+            nuevoCarrito = activa.carrito.map((l) =>
+              l.productId === p.productId ? { ...l, cantidad: l.cantidad + 1, stock: p.stock } : l
+            )
+          }
         } else {
           if (p.stock < 1) return s
           nuevoCarrito = [...activa.carrito, { ...p, cantidad: 1, gramos: null }]
@@ -179,10 +198,13 @@ export const useVentasStore = create<VentasState & VentasActions>((set, get) => 
       set((s) => {
         const activa = ventaActiva(s)
         if (!activa) return s
+        // Sin tope superior acá: el stock cacheado en la línea puede haber quedado
+        // desactualizado (se refresca recién al re-buscar/re-escanear el producto — ver
+        // agregarProducto) y clampear en silencio contra un valor viejo es indistinguible
+        // de un bug para el cajero. El servidor valida el stock real al confirmar la venta
+        // y devuelve un error claro; acá solo se avisa (ver carrito-items-list.tsx).
         const nuevoCarrito = activa.carrito.map((l) =>
-          l.productId === productId
-            ? { ...l, gramos: Math.max(0, Math.min(l.stockGramos ?? 0, Math.round(gramos))) }
-            : l
+          l.productId === productId ? { ...l, gramos: Math.max(0, Math.round(gramos)) } : l
         )
         return {
           ventas: s.ventas.map((v) => (v.id === activa.id ? { ...v, carrito: nuevoCarrito } : v)),
