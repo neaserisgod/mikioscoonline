@@ -74,6 +74,7 @@ export function CarritoResumenPanel({ checkout, mostrarItems = false, expandActi
   const {
     venta, carrito, medioPagoId, mediosPago, medioPagoSeleccionado, subtotal,
     totalCentavos, comisionCentavos, recargoTotalCentavos, totalACobrarCentavos, faltaPeso,
+    descuentoPct, descuentoCentavos, setDescuentoPct,
     loading, successInfo, setSuccessInfo, confirmVaciar, setConfirmVaciar,
     manualDialogOpen, setManualDialogOpen, manualLoading, confirmarCobroManual,
     vaciarCarrito, setMedioPago, confirmar, cancelarPagoMp,
@@ -221,6 +222,27 @@ export function CarritoResumenPanel({ checkout, mostrarItems = false, expandActi
           <div className="flex items-center justify-between text-sm">
             <span className="text-muted-foreground">Subtotal</span>
             <span className="tabular-nums">{formatearARS(totalCentavos)}</span>
+          </div>
+          <div className="flex items-center justify-between gap-2 text-sm">
+            <span className="text-muted-foreground">Descuento</span>
+            <div className="flex items-center gap-2">
+              {descuentoCentavos > 0 && (
+                <span className="text-k-loss tabular-nums">−{formatearARS(descuentoCentavos)}</span>
+              )}
+              <div className="flex items-center gap-1 rounded-lg border border-border/60 bg-background pr-2">
+                <Input
+                  type="number"
+                  inputMode="decimal"
+                  min={0}
+                  max={100}
+                  value={descuentoPct || ""}
+                  onChange={(e) => setDescuentoPct(Number(e.target.value) || 0)}
+                  placeholder="0"
+                  className="h-7 w-12 rounded-lg border-0 px-2 text-right tabular-nums"
+                />
+                <span className="text-xs text-muted-foreground">%</span>
+              </div>
+            </div>
           </div>
           {recargoTotalCentavos > 0 && (
             <div className="flex items-center justify-between text-sm">

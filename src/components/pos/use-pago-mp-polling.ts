@@ -72,6 +72,7 @@ export function usePagoMpPolling() {
                   referencia: pago.orderId,
                 },
               ],
+              descuentoCentavos: pago.descuentoCentavos,
             })
 
             if (result.ok) {

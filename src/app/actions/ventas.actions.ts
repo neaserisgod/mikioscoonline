@@ -21,6 +21,7 @@ const PagoSchema = z.object({
 const CrearVentaSchema = z.object({
   lineas: z.array(LineaSchema).min(1, "La venta debe tener al menos una línea"),
   pagos: z.array(PagoSchema).min(1, "La venta debe tener al menos un pago"),
+  descuentoCentavos: z.number().int().min(0).optional(),
 })
 
 // Devolvemos el error como dato (no lo lanzamos) para que el mensaje real llegue al
@@ -47,13 +48,14 @@ export async function crearVentaAction(input: unknown): Promise<CrearVentaResult
     const session = await auth()
     if (!session?.user?.id || !session.user.organizationId) return { ok: false, error: "No autorizado" }
 
-    const { lineas, pagos } = CrearVentaSchema.parse(input)
+    const { lineas, pagos, descuentoCentavos } = CrearVentaSchema.parse(input)
 
     const venta = await ventaService.crear({
       userId: session.user.id,
       organizationId: session.user.organizationId,
       lineas,
       pagos,
+      descuentoCentavos,
     })
     return { ok: true, id: venta.id }
   } catch (e) {

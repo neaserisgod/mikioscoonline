@@ -21,6 +21,8 @@ export interface PagoMpPendiente {
   tipo: TipoDispositivoMp
   orderId: string
   montoCentavos: number
+  /** Descuento ya restado de montoCentavos — se re-envía tal cual al crear la venta. */
+  descuentoCentavos: number
   iniciadoEn: number
 }
 
@@ -29,6 +31,8 @@ export interface VentaAbierta {
   label: string
   carrito: LineaCarrito[]
   medioPagoId: string
+  /** Descuento manual del cajero, en % (0-100) sobre el subtotal de productos. */
+  descuentoPct: number
   /** Cobro con MercadoPago (QR o posnet) esperando confirmación — null si no hay ninguno en curso. */
   pagoMpPendiente: PagoMpPendiente | null
 }
@@ -55,6 +59,7 @@ interface VentasActions {
   eliminarLinea: (productId: string) => void
   vaciarCarrito: () => void
   setMedioPago: (medioPagoId: string) => void
+  setDescuentoPct: (pct: number) => void
   // Llamar tras confirmar venta exitosa: vacía el carrito de la venta activa, sin cambiar de pestaña
   onVentaConfirmada: () => void
   // Las siguientes tres operan por id (no necesariamente la venta activa) porque el cobro
@@ -70,6 +75,7 @@ function crearVentaVacia(n: number): VentaAbierta {
     label: `Venta ${n}`,
     carrito: [],
     medioPagoId: "",
+    descuentoPct: 0,
     pagoMpPendiente: null,
   }
 }
@@ -222,6 +228,17 @@ export const useVentasStore = create<VentasState & VentasActions>((set, get) => 
       })
     },
 
+    setDescuentoPct(pct) {
+      set((s) => {
+        const activa = ventaActiva(s)
+        if (!activa) return s
+        const clamped = Math.max(0, Math.min(100, pct))
+        return {
+          ventas: s.ventas.map((v) => (v.id === activa.id ? { ...v, descuentoPct: clamped } : v)),
+        }
+      })
+    },
+
     onVentaConfirmada() {
       // La pestaña confirmada se vacía y se queda activa — nunca saltamos
       // a otra venta sin que el usuario la elija explícitamente.
@@ -230,7 +247,7 @@ export const useVentasStore = create<VentasState & VentasActions>((set, get) => 
         if (!activa) return s
         return {
           ventas: s.ventas.map((v) =>
-            v.id === activa.id ? { ...v, carrito: [], medioPagoId: "" } : v
+            v.id === activa.id ? { ...v, carrito: [], medioPagoId: "", descuentoPct: 0 } : v
           ),
         }
       })
@@ -251,7 +268,9 @@ export const useVentasStore = create<VentasState & VentasActions>((set, get) => 
     confirmarPagoMp(ventaId) {
       set((s) => ({
         ventas: s.ventas.map((v) =>
-          v.id === ventaId ? { ...v, carrito: [], medioPagoId: "", pagoMpPendiente: null } : v
+          v.id === ventaId
+            ? { ...v, carrito: [], medioPagoId: "", descuentoPct: 0, pagoMpPendiente: null }
+            : v
         ),
       }))
     },

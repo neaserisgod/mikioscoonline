@@ -29,7 +29,7 @@ export function useCarritoCheckout(onSuccess?: (ventaId: string) => void) {
   const qc = useQueryClient()
   const venta = useVentaActiva()
   const {
-    cambiarCantidad, setGramos, eliminarLinea, vaciarCarrito, setMedioPago, onVentaConfirmada,
+    cambiarCantidad, setGramos, eliminarLinea, vaciarCarrito, setMedioPago, setDescuentoPct, onVentaConfirmada,
     iniciarPagoMp, cancelarPagoMp,
   } = useVentasStore()
   const [loading, setLoading] = useState(false)
@@ -68,17 +68,25 @@ export function useCarritoCheckout(onSuccess?: (ventaId: string) => void) {
     subtotalLinea({ esPesable: l.esPesable, precioUnitarioCentavos: l.precioUnitarioCentavos, cantidad: l.cantidad, gramos: l.gramos })
   const totalCentavos = carrito.reduce((s, l) => s + subtotal(l), 0)
   const medioPagoSeleccionado = mediosPago?.find((m) => m.id === medioPagoId)
-  const comisionCentavos = medioPagoSeleccionado
-    ? Math.round((totalCentavos * medioPagoSeleccionado.comisionBp) / 10_000)
-    : 0
   const faltaPeso = carrito.some((l) => l.esPesable && (l.gramos ?? 0) <= 0)
+
+  // Descuento manual del cajero — % libre sobre el subtotal de productos, elegido en el
+  // panel de checkout. Todo lo que sigue (recargo, comisión estimada, total a cobrar) se
+  // calcula sobre el monto YA descontado, no sobre el precio de lista.
+  const descuentoPct = venta?.descuentoPct ?? 0
+  const descuentoCentavos = Math.round((totalCentavos * descuentoPct) / 100)
+  const totalConDescuentoCentavos = totalCentavos - descuentoCentavos
+
+  const comisionCentavos = medioPagoSeleccionado
+    ? Math.round((totalConDescuentoCentavos * medioPagoSeleccionado.comisionBp) / 10_000)
+    : 0
 
   // Recargo virtual por pago no-efectivo — se configura por medio de pago (Config > Medios de pago)
   const recargoTotalCentavos =
     medioPagoSeleccionado && !medioPagoSeleccionado.esEfectivo
-      ? calcularRecargo(medioPagoSeleccionado, totalCentavos)
+      ? calcularRecargo(medioPagoSeleccionado, totalConDescuentoCentavos)
       : 0
-  const totalACobrarCentavos = totalCentavos + recargoTotalCentavos
+  const totalACobrarCentavos = totalConDescuentoCentavos + recargoTotalCentavos
 
   async function confirmar() {
     if (!medioPagoId) { toast.error("Seleccioná un medio de pago"); return }
@@ -101,6 +109,7 @@ export function useCarritoCheckout(onSuccess?: (ventaId: string) => void) {
           tipo: result.tipo,
           orderId: result.orderId,
           montoCentavos: totalACobrarCentavos,
+          descuentoCentavos,
           iniciadoEn: Date.now(),
         })
       } catch (e) {
@@ -120,6 +129,7 @@ export function useCarritoCheckout(onSuccess?: (ventaId: string) => void) {
           ...(l.esPesable && { gramos: l.gramos ?? 0 }),
         })),
         pagos: [{ paymentMethodId: medioPagoId, montoCentavos: totalACobrarCentavos }],
+        descuentoCentavos,
       })
 
       if (!result.ok) {
@@ -158,6 +168,7 @@ export function useCarritoCheckout(onSuccess?: (ventaId: string) => void) {
     if (!venta) return
     const pendiente = venta.pagoMpPendiente
     const montoCentavos = pendiente?.montoCentavos ?? totalACobrarCentavos
+    const descuentoAplicado = pendiente?.descuentoCentavos ?? descuentoCentavos
     setManualLoading(true)
     try {
       if (pendiente) {
@@ -184,6 +195,7 @@ export function useCarritoCheckout(onSuccess?: (ventaId: string) => void) {
             referencia: comprobante || undefined,
           },
         ],
+        descuentoCentavos: descuentoAplicado,
       })
 
       if (!result.ok) {
@@ -212,6 +224,7 @@ export function useCarritoCheckout(onSuccess?: (ventaId: string) => void) {
   return {
     venta, carrito, medioPagoId, mediosPago, medioPagoSeleccionado,
     subtotal, totalCentavos, comisionCentavos, recargoTotalCentavos, totalACobrarCentavos, faltaPeso,
+    descuentoPct, descuentoCentavos, totalConDescuentoCentavos, setDescuentoPct,
     loading, successInfo, setSuccessInfo, confirmVaciar, setConfirmVaciar,
     manualDialogOpen, setManualDialogOpen, manualLoading, confirmarCobroManual,
     cambiarCantidad, setGramos, eliminarLinea, vaciarCarrito, setMedioPago,

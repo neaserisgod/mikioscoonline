@@ -17,7 +17,7 @@ export async function GET(req: NextRequest) {
   const ventas = await ventaService.listar(result.user.organizationId, { fechaDesde: desde, fechaHasta: hasta })
 
   const rows = [
-    ["id", "fecha", "usuario", "items", "medioPago", "totalPesos", "costoPesos", "gananciaPesos"],
+    ["id", "fecha", "usuario", "items", "medioPago", "totalPesos", "costoPesos", "gananciaPesos", "descuentoPesos"],
     ...ventas.map((v) => {
       const gananciaCentavos = v.totalCentavos - v.costoTotalCentavos
       const medios = v.payments.map((p) => p.paymentMethod.nombre).join(" + ")
@@ -30,6 +30,7 @@ export async function GET(req: NextRequest) {
         (v.totalCentavos / 100).toFixed(2),
         (v.costoTotalCentavos / 100).toFixed(2),
         (gananciaCentavos / 100).toFixed(2),
+        (v.descuentoCentavos / 100).toFixed(2),
       ]
     }),
   ]

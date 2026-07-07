@@ -24,6 +24,8 @@ export interface CrearVentaInput {
   organizationId: string
   lineas: LineaVentaInput[]
   pagos: PagoInput[]
+  /** Descuento manual del cajero, en centavos, sobre el subtotal de productos. */
+  descuentoCentavos?: number
 }
 
 // ─── Servicio ─────────────────────────────────────────────────────────────────
@@ -92,6 +94,16 @@ export const ventaService = {
         }
       })
 
+      // 3.5. Descuento manual del cajero sobre el subtotal de productos — se resta acá y
+      // de ahí en más "totalConDescuentoCentavos" es el monto real a cobrar (el recargo
+      // virtual y el reparto por caja se calculan sobre este, no sobre el precio de lista).
+      const descuentoCentavos = input.descuentoCentavos ?? 0
+      if (descuentoCentavos < 0 || descuentoCentavos > totalCentavos) {
+        throw new Error("El descuento no puede ser negativo ni mayor al total de la venta")
+      }
+      const totalConDescuentoCentavos = totalCentavos - descuentoCentavos
+      const factorDescuento = totalCentavos > 0 ? totalConDescuentoCentavos / totalCentavos : 1
+
       // 4. Split por categoría (atribución BASE, antes de overrides por medio de pago)
       const montoPorCajaCategoria = new Map<string, number>()
       for (const linea of input.lineas) {
@@ -149,7 +161,7 @@ export const ventaService = {
       for (const pago of input.pagos) {
         const medio = medios.find((m) => m.id === pago.paymentMethodId)!
         const fraccion = totalPagado > 0 ? pago.montoCentavos / totalPagado : 0
-        const ingresoPago = Math.round(totalCentavos * fraccion)
+        const ingresoPago = Math.round(totalConDescuentoCentavos * fraccion)
         const recargoPago = medio.esEfectivo ? 0 : calcularRecargo(medio, ingresoPago)
 
         if (medio.cajaId) {
@@ -159,10 +171,14 @@ export const ventaService = {
           }
         } else {
           for (const [cajaId, montoCategoria] of montoPorCajaCategoria) {
-            const porcion = Math.round(montoCategoria * fraccion)
+            // La categoría se calculó sobre precio de lista — se escala por el mismo
+            // factor del descuento antes de repartir, así la suma entre cajas coincide
+            // con la plata realmente cobrada, no con el precio de lista.
+            const montoCategoriaDescontado = montoCategoria * factorDescuento
+            const porcion = Math.round(montoCategoriaDescontado * fraccion)
             montoPorCaja.set(cajaId, (montoPorCaja.get(cajaId) ?? 0) + porcion)
-            if (recargoPago > 0 && totalCentavos > 0) {
-              const recargoPorcion = Math.round((recargoPago * montoCategoria) / totalCentavos)
+            if (recargoPago > 0 && totalConDescuentoCentavos > 0) {
+              const recargoPorcion = Math.round((recargoPago * montoCategoriaDescontado) / totalConDescuentoCentavos)
               recargoPorCaja.set(cajaId, (recargoPorCaja.get(cajaId) ?? 0) + recargoPorcion)
             }
           }
@@ -186,10 +202,10 @@ export const ventaService = {
         }
       }
 
-      // 8. Validar pago suficiente (productos + recargo virtual)
-      if (totalPagado < totalCentavos + recargoCentavosTotal) {
+      // 8. Validar pago suficiente (productos con descuento + recargo virtual)
+      if (totalPagado < totalConDescuentoCentavos + recargoCentavosTotal) {
         throw new Error(
-          `Pago insuficiente: total a cobrar $${(totalCentavos + recargoCentavosTotal) / 100}, pagado $${totalPagado / 100}`
+          `Pago insuficiente: total a cobrar $${(totalConDescuentoCentavos + recargoCentavosTotal) / 100}, pagado $${totalPagado / 100}`
         )
       }
 
@@ -198,9 +214,10 @@ export const ventaService = {
         data: {
           userId: input.userId,
           organizationId: input.organizationId,
-          totalCentavos,
+          totalCentavos: totalConDescuentoCentavos,
           costoTotalCentavos,
           recargoCentavos: recargoCentavosTotal,
+          descuentoCentavos,
           lines: { create: lineasConFoto },
           payments: { create: pagosConComision },
         },
@@ -332,6 +349,7 @@ export const ventaService = {
         fecha: true,
         totalCentavos: true,
         costoTotalCentavos: true,
+        descuentoCentavos: true,
         _count: { select: { lines: true } },
         payments: { select: { paymentMethod: { select: { nombre: true } } } },
         user: { select: { nombre: true } },

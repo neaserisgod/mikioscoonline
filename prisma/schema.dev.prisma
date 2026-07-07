@@ -317,6 +317,7 @@ model Sale {
   totalCentavos      Int
   costoTotalCentavos Int
   recargoCentavos    Int          @default(0) // Fase 5: recargo total por pago virtual
+  descuentoCentavos  Int          @default(0) // descuento manual aplicado por el cajero, ya restado de totalCentavos
   organizationId     String
   organization       Organization @relation(fields: [organizationId], references: [id])
   createdAt          DateTime     @default(now())
