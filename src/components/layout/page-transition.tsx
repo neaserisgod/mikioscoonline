@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef } from "react"
+import { useState } from "react"
 import { usePathname } from "next/navigation"
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion"
 import { NAV_ITEMS } from "./nav-drawer"
@@ -30,12 +30,17 @@ export function PageTransition({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const reduceMotion = useReducedMotion()
   const currentIndex = tabIndex(pathname)
-  const prevIndexRef = useRef(currentIndex)
-  const direction = currentIndex >= prevIndexRef.current ? 1 : -1
 
-  useEffect(() => {
-    prevIndexRef.current = currentIndex
-  }, [currentIndex])
+  // Deriva la dirección del deslizamiento comparando contra el índice previo,
+  // ajustando el estado durante el render (patrón recomendado por React para
+  // esto: https://react.dev/learn/you-might-not-need-an-effect#adjusting-some-state-when-a-prop-changes)
+  // en vez de leer un ref durante el render.
+  const [prevIndex, setPrevIndex] = useState(currentIndex)
+  const [direction, setDirection] = useState(1)
+  if (currentIndex !== prevIndex) {
+    setDirection(currentIndex > prevIndex ? 1 : -1)
+    setPrevIndex(currentIndex)
+  }
 
   if (reduceMotion) {
     return <div className="h-full">{children}</div>
