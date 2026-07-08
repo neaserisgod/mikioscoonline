@@ -1,7 +1,8 @@
-# Arranca el servidor local (si no está corriendo) y abre la app en una
-# ventana de Edge en modo "app" (sin barra de direcciones — se siente nativa,
-# no depende de instalar la PWA a mano). Pensado para correr solo al prender
-# la PC del kiosco (ver start-kiosco.vbs + carpeta de Inicio de Windows).
+# Arranca el servidor local (si no está corriendo) contra los datos REALES
+# de producción (Neon Postgres, ver start-kiosco-server.mjs) y abre la app en
+# una ventana de Edge en modo "app" — sin barra de direcciones, se siente
+# nativa, no depende de instalar la PWA a mano. Pensado para correr solo al
+# prender la PC del kiosco (ver start-kiosco.vbs + carpeta de Inicio de Windows).
 
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
@@ -12,7 +13,7 @@ New-Item -ItemType Directory -Force -Path "$root\logs" | Out-Null
 $puertoEnUso = Get-NetTCPConnection -LocalPort 3000 -State Listen -ErrorAction SilentlyContinue
 if (-not $puertoEnUso) {
     Start-Process -FilePath "node" `
-        -ArgumentList "scripts/start-local-server.mjs" `
+        -ArgumentList "scripts/start-kiosco-server.mjs" `
         -WorkingDirectory $root `
         -WindowStyle Hidden `
         -RedirectStandardOutput "$root\logs\server.log" `
