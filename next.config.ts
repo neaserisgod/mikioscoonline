@@ -4,7 +4,12 @@ const nextConfig: NextConfig = {
   output: "standalone",
   // El file tracing no detecta el require dinámico del client de SQLite solo — hay que incluirlo a mano.
   outputFileTracingIncludes: {
-    "/*": ["node_modules/.prisma/client-sqlite/**/*"],
+    "/*": [
+      "node_modules/.prisma/client-sqlite/**/*",
+      "node_modules/@prisma/adapter-better-sqlite3/**/*",
+      "node_modules/@prisma/driver-adapter-utils/**/*",
+      "node_modules/@prisma/debug/**/*",
+    ],
   },
   // Cache de navegación del router (RSC payload) — default es 0s para páginas
   // dinámicas (nuestro caso, todas ƒ). Valor conservador: ayuda en

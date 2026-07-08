@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { auth } from "@/auth"
+import { requireSessionApi } from "@/lib/api-auth"
 import { stockService } from "@/services/stock.service"
 import { Prisma } from "@prisma/client"
 import { z } from "zod"
@@ -15,12 +15,10 @@ function mensajeError(e: unknown): string {
 }
 
 export async function GET(req: NextRequest) {
-  const session = await auth()
-  if (!session?.user?.organizationId) {
-    return NextResponse.json({ error: "No autorizado" }, { status: 401 })
-  }
+  const result = await requireSessionApi()
+  if ("error" in result) return result.error
   const limit = req.nextUrl.searchParams.get("limit")
-  const data = await stockService.listarTodos(session.user.organizationId, {
+  const data = await stockService.listarTodos(result.user.organizationId, {
     limit: limit ? parseInt(limit) : undefined,
   })
   return NextResponse.json(data)
@@ -34,10 +32,8 @@ const MovimientoSchema = z.object({
 })
 
 export async function POST(req: NextRequest) {
-  const session = await auth()
-  if (!session?.user?.id || !session.user.organizationId) {
-    return NextResponse.json({ error: "No autorizado" }, { status: 401 })
-  }
+  const sesion = await requireSessionApi()
+  if ("error" in sesion) return sesion.error
 
   const body = await req.json()
   const parsed = MovimientoSchema.safeParse(body)
@@ -47,15 +43,15 @@ export async function POST(req: NextRequest) {
 
   // Mismo chequeo que ajusteStockAction — sin esto, un VENDEDOR podía ajustar stock
   // pegándole directo a esta API aunque la acción del formulario se lo impida.
-  if (parsed.data.tipo === "AJUSTE" && session.user.role !== "ADMIN") {
+  if (parsed.data.tipo === "AJUSTE" && sesion.user.role !== "ADMIN") {
     return NextResponse.json({ error: "Solo ADMIN puede hacer ajustes de stock" }, { status: 403 })
   }
 
   try {
     const result = await stockService.registrarMovimiento({
       ...parsed.data,
-      userId: session.user.id,
-      organizationId: session.user.organizationId,
+      userId: sesion.user.id,
+      organizationId: sesion.user.organizationId,
     })
     return NextResponse.json(result)
   } catch (e) {

@@ -150,7 +150,13 @@ pub fn run() {
             let handle = app.handle().clone();
             std::thread::spawn(move || {
                 if wait_for_server(PORT, Duration::from_secs(30)) {
-                    let url = format!("http://127.0.0.1:{PORT}").parse().unwrap();
+                    // Auth.js/Next construyen internamente el origin de las requests
+                    // (redirect_uri de OAuth, cookies de csrf/pkce) como "localhost",
+                    // no como "127.0.0.1" — si la ventana navega a 127.0.0.1, las
+                    // cookies de PKCE quedan en un origin distinto al que usa el
+                    // callback de Google y el login con Google falla. Navegamos
+                    // directo a localhost para que todo quede bajo el mismo origin.
+                    let url = format!("http://localhost:{PORT}").parse().unwrap();
                     window.navigate(url).ok();
                 } else {
                     log::error!("El servidor local no respondió después de 30s");

@@ -1,0 +1,34 @@
+import { NextRequest, NextResponse } from "next/server"
+import { z } from "zod"
+import { requireSessionApi } from "@/lib/api-auth"
+import { cajaSesionService } from "@/services/cajaSesion.service"
+
+const CerrarSchema = z.object({
+  efectivoContadoCentavos: z.number().int().min(0),
+  nota: z.string().optional(),
+})
+
+export async function POST(req: NextRequest, { params }: { params: Promise<{ cajaSesionId: string }> }) {
+  const result = await requireSessionApi()
+  if ("error" in result) return result.error
+
+  const body = await req.json().catch(() => null)
+  const parsed = CerrarSchema.safeParse(body)
+  if (!parsed.success) {
+    return NextResponse.json({ error: "Datos inválidos", details: parsed.error.flatten() }, { status: 400 })
+  }
+
+  const { cajaSesionId } = await params
+  try {
+    const sesion = await cajaSesionService.cerrarCaja(
+      cajaSesionId,
+      result.user.organizationId,
+      result.user.id,
+      parsed.data.efectivoContadoCentavos,
+      parsed.data.nota
+    )
+    return NextResponse.json(sesion)
+  } catch (e) {
+    return NextResponse.json({ error: e instanceof Error ? e.message : "No se pudo cerrar la caja" }, { status: 400 })
+  }
+}
