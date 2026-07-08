@@ -234,6 +234,17 @@ export const productoService = {
     })
   },
 
+  /** Sync incremental de catálogo para el cliente offline (Flutter): trae también
+   * los productos desactivados desde `since` para que el cache local los saque de
+   * circulación, no solo los que siguen activos. */
+  async listarDesde(organizationId: string, since: Date) {
+    return prisma.product.findMany({
+      where: { organizationId, updatedAt: { gt: since } },
+      include: incluirRelaciones,
+      orderBy: { updatedAt: "asc" },
+    })
+  },
+
   async buscar(organizationId: string, query: string) {
     // Filtro en JS (no `mode: "insensitive"`, exclusivo del conector Postgres/MongoDB
     // de Prisma) para funcionar igual en SQLite y Postgres. El catálogo es chico

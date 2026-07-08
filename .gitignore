@@ -39,6 +39,9 @@ yarn-error.log*
 *.db-journal
 *.db-wal
 
+# kiosco (logs del server local)
+/logs
+
 # vercel
 .vercel
 

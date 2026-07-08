@@ -13,10 +13,20 @@ export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl
   const q = searchParams.get("q")
   const stockBajo = searchParams.get("stockBajo") === "1"
+  const since = searchParams.get("since")
 
   if (stockBajo) {
     const data = await productoService.stockBajo(organizationId)
     return NextResponse.json(data)
+  }
+
+  if (since) {
+    const desde = new Date(since)
+    if (Number.isNaN(desde.getTime())) {
+      return NextResponse.json({ error: "Parámetro 'since' inválido" }, { status: 400 })
+    }
+    const data = await productoService.listarDesde(organizationId, desde)
+    return NextResponse.json(sanitizarProductos(data, role))
   }
 
   const data = q

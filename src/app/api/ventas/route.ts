@@ -17,6 +17,10 @@ const PagoSchema = z.object({
 })
 
 const CrearVentaSchema = z.object({
+  // Id generado por el cliente (uuid v4 en Flutter) para permitir reintentos
+  // idempotentes desde una cola offline sin duplicar la venta. No es un cuid
+  // (esos los genera el servidor para el resto de las entidades).
+  id: z.string().min(8).max(64).optional(),
   lineas: z.array(LineaSchema).min(1, "La venta debe tener al menos una línea"),
   pagos: z.array(PagoSchema).min(1, "La venta debe tener al menos un pago"),
   descuentoCentavos: z.number().int().min(0).optional(),
@@ -39,9 +43,10 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json()
-    const { lineas, pagos, descuentoCentavos } = CrearVentaSchema.parse(body)
+    const { id, lineas, pagos, descuentoCentavos } = CrearVentaSchema.parse(body)
 
     const venta = await ventaService.crear({
+      id,
       userId: result.user.id,
       organizationId: result.user.organizationId,
       lineas,

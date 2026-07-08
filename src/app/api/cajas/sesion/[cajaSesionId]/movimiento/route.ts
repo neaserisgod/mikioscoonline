@@ -4,6 +4,8 @@ import { requireSessionApi } from "@/lib/api-auth"
 import { cajaSesionService } from "@/services/cajaSesion.service"
 
 const MovimientoSchema = z.object({
+  // Id generado por el cliente (uuid v4) para reintentos idempotentes desde la cola offline.
+  id: z.string().min(8).max(64).optional(),
   tipo: z.enum(["INGRESO", "EGRESO"]),
   montoCentavos: z.number().int().min(1, "El monto debe ser mayor a 0"),
   medioPagoId: z.string().optional(),
@@ -22,10 +24,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ caj
 
   const { cajaSesionId } = await params
   try {
+    const { id, ...data } = parsed.data
     const movimiento = await cajaSesionService.registrarMovimiento(
       cajaSesionId,
       result.user.organizationId,
-      parsed.data
+      data,
+      id
     )
     return NextResponse.json(movimiento)
   } catch (e) {

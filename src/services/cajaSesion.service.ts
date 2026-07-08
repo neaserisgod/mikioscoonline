@@ -53,8 +53,15 @@ function calcEfectivoEsperado(fondoInicialCentavos: number, movimientos: Array<{
 }
 
 export const cajaSesionService = {
-  async abrirCaja(organizationId: string, cajaId: string, userId: string, fondoInicialCentavos: number) {
+  async abrirCaja(organizationId: string, cajaId: string, userId: string, fondoInicialCentavos: number, id?: string) {
     return prisma.$transaction(async (tx) => {
+      // Replay idempotente: reintento de la cola offline de Flutter tras perder la
+      // respuesta de un "abrir caja" que sí se proceso.
+      if (id) {
+        const existente = await tx.cajaSesion.findUnique({ where: { id }, include: SESION_INCLUDE })
+        if (existente) return existente
+      }
+
       const caja = await tx.caja.findFirstOrThrow({ where: { id: cajaId, organizationId } })
 
       const sesionAbierta = await tx.cajaSesion.findFirst({
@@ -66,6 +73,7 @@ export const cajaSesionService = {
 
       return tx.cajaSesion.create({
         data: {
+          ...(id ? { id } : {}),
           cajaId,
           abiertaPorUserId: userId,
           fondoInicialCentavos,
@@ -80,8 +88,14 @@ export const cajaSesionService = {
   async cerrarCaja(cajaSesionId: string, organizationId: string, userId: string, efectivoContadoCentavos: number, nota?: string) {
     return prisma.$transaction(async (tx) => {
       const sesion = await tx.cajaSesion.findFirstOrThrow({
-        where: { id: cajaSesionId, organizationId, estado: "ABIERTA" },
+        where: { id: cajaSesionId, organizationId },
       })
+
+      // Idempotente: si un reintento de la cola offline llega después de que el
+      // cierre ya se proceso, devolvemos la sesión tal cual en vez de tirar error.
+      if (sesion.estado === "CERRADA") {
+        return tx.cajaSesion.findFirstOrThrow({ where: { id: cajaSesionId }, include: SESION_INCLUDE })
+      }
 
       const movimientos = await tx.movimientoCaja.findMany({
         where: { cajaSesionId },
@@ -107,25 +121,33 @@ export const cajaSesionService = {
     })
   },
 
-  async registrarMovimiento(cajaSesionId: string, organizationId: string, data: RegistrarMovimientoInput) {
-    const sesion = await prisma.cajaSesion.findFirstOrThrow({
-      where: { id: cajaSesionId, organizationId, estado: "ABIERTA" },
-      select: { cajaId: true, caja: { select: { nombre: true } } },
-    })
-    if (data.medioPagoId) {
-      await prisma.paymentMethod.findFirstOrThrow({ where: { id: data.medioPagoId, organizationId } })
-    }
+  async registrarMovimiento(cajaSesionId: string, organizationId: string, data: RegistrarMovimientoInput, id?: string) {
+    return prisma.$transaction(async (tx) => {
+      if (id) {
+        const existente = await tx.movimientoCaja.findUnique({ where: { id } })
+        if (existente) return existente
+      }
 
-    return prisma.movimientoCaja.create({
-      data: {
-        cajaSesionId,
-        cajaId: sesion.cajaId,
-        tipo: data.tipo,
-        montoCentavos: data.montoCentavos,
-        medioPagoId: data.medioPagoId ?? null,
-        nota: data.nota ?? null,
-        organizationId,
-      },
+      const sesion = await tx.cajaSesion.findFirstOrThrow({
+        where: { id: cajaSesionId, organizationId, estado: "ABIERTA" },
+        select: { cajaId: true, caja: { select: { nombre: true } } },
+      })
+      if (data.medioPagoId) {
+        await tx.paymentMethod.findFirstOrThrow({ where: { id: data.medioPagoId, organizationId } })
+      }
+
+      return tx.movimientoCaja.create({
+        data: {
+          ...(id ? { id } : {}),
+          cajaSesionId,
+          cajaId: sesion.cajaId,
+          tipo: data.tipo,
+          montoCentavos: data.montoCentavos,
+          medioPagoId: data.medioPagoId ?? null,
+          nota: data.nota ?? null,
+          organizationId,
+        },
+      })
     })
   },
 

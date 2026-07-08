@@ -9,7 +9,7 @@
     "postbuild": "node scripts/prepare-standalone.mjs",
     "build:standalone": "next build --webpack && node scripts/prepare-standalone.mjs",
     "start": "next start",
-    "start:local": "cross-env LOCAL_DEV=1 DATABASE_URL=file:./dev.db node .next/standalone/server.js",
+    "start:local": "node scripts/start-local-server.mjs",
     "lint": "eslint",
     "postinstall": "prisma generate && cross-env LOCAL_DEV=1 prisma generate",
     "test": "vitest run",

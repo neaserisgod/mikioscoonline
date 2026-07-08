@@ -20,6 +20,8 @@ export interface PagoInput {
 }
 
 export interface CrearVentaInput {
+  /** Id generado por el cliente (uuid v4) para reintentos idempotentes desde una cola offline. */
+  id?: string
   userId: string
   organizationId: string
   lineas: LineaVentaInput[]
@@ -33,6 +35,20 @@ export interface CrearVentaInput {
 export const ventaService = {
   async crear(input: CrearVentaInput) {
     return prisma.$transaction(async (tx) => {
+      // 0. Replay idempotente: si el cliente ya mandó este id antes (reintento de la
+      // cola offline de Flutter tras perder la respuesta), devolvemos la venta ya
+      // creada tal cual en vez de reprocesar y duplicar stock/movimientos de caja.
+      if (input.id) {
+        const existente = await tx.sale.findUnique({
+          where: { id: input.id },
+          include: {
+            lines: { include: { product: true } },
+            payments: { include: { paymentMethod: true } },
+          },
+        })
+        if (existente) return existente
+      }
+
       // 1. Cargar productos con categoría (necesaria para resolver cajaId)
       const productIds = input.lineas.map((l) => l.productId)
       const productos = await tx.product.findMany({
@@ -212,6 +228,7 @@ export const ventaService = {
       // 9. Crear venta con líneas y pagos
       const venta = await tx.sale.create({
         data: {
+          ...(input.id ? { id: input.id } : {}),
           userId: input.userId,
           organizationId: input.organizationId,
           totalCentavos: totalConDescuentoCentavos,

@@ -12,6 +12,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ cajaId:
 }
 
 const AbrirSchema = z.object({
+  // Id generado por el cliente (uuid v4) para reintentos idempotentes desde la cola offline.
+  id: z.string().min(8).max(64).optional(),
   fondoInicialCentavos: z.number().int().min(0),
 })
 
@@ -31,7 +33,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ caj
       result.user.organizationId,
       cajaId,
       result.user.id,
-      parsed.data.fondoInicialCentavos
+      parsed.data.fondoInicialCentavos,
+      parsed.data.id
     )
     return NextResponse.json(sesion)
   } catch (e) {
