@@ -15,7 +15,7 @@ function getSecretKey() {
 
 export type MobileTokenClaims = {
   sub: string // userId
-  email: string
+  email: string | null
   nombre: string
   role: "ADMIN" | "VENDEDOR"
   organizationId: string

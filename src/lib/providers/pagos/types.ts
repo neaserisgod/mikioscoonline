@@ -50,6 +50,11 @@ export interface PagosProvider {
   enviarMontoAPosnet(datos: DatosOrdenPosnet): Promise<ResultadoOrdenMp>
   /** Consulta si una orden de posnet ya fue pagada o dejó de esperar. */
   consultarEstadoOrdenPosnet(orderId: string): Promise<EstadoOrdenMp>
-  /** Solo posnet necesita cancelar de verdad en MercadoPago — libera la terminal física. */
+  /** Cancela una orden de posnet — libera la terminal física, que si no queda
+   * esperando la tarjeta indefinidamente. */
   cancelarOrdenPosnet(orderId: string): Promise<void>
+  /** Cancela una orden de QR. Necesario cuando el `external_pos_id` está
+   * atado a una terminal Point real (no un POS suelto sin dispositivo) — esa
+   * terminal también queda mostrando algo en pantalla hasta que se cancela. */
+  cancelarOrdenQr(orderId: string): Promise<void>
 }

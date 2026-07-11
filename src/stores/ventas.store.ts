@@ -15,6 +15,10 @@ export interface LineaCarrito {
   stock: number
   /** Solo pesables: gramos disponibles. null en productos por unidad. */
   stockGramos: number | null
+  /** Categoría Cigarrillos — determina el recargo escalonado por QR/Posnet. */
+  esCigarrillo: boolean
+  /** Cigarrillo suelto (no atado) — recargo distinto al de atados. */
+  esCigarroSuelto: boolean
 }
 
 export interface PagoMpPendiente {
@@ -33,13 +37,16 @@ export interface VentaAbierta {
   medioPagoId: string
   /** Descuento manual del cajero, en % (0-100) sobre el subtotal de productos. */
   descuentoPct: number
+  /** Consumo de personal o del dueño — no es una venta real, se cobra $0 (fuerza descuentoPct a 100). */
+  esConsumoInterno: boolean
   /** Cobro con MercadoPago (QR o posnet) esperando confirmación — null si no hay ninguno en curso. */
   pagoMpPendiente: PagoMpPendiente | null
 }
 
 export type ProductoParaCarrito = Pick<
   LineaCarrito,
-  "productId" | "nombre" | "sku" | "precioUnitarioCentavos" | "stock" | "esPesable" | "stockGramos"
+  | "productId" | "nombre" | "sku" | "precioUnitarioCentavos" | "stock" | "esPesable" | "stockGramos"
+  | "esCigarrillo" | "esCigarroSuelto"
 >
 
 interface VentasState {
@@ -60,6 +67,7 @@ interface VentasActions {
   vaciarCarrito: () => void
   setMedioPago: (medioPagoId: string) => void
   setDescuentoPct: (pct: number) => void
+  setConsumoInterno: (activo: boolean) => void
   // Llamar tras confirmar venta exitosa: vacía el carrito de la venta activa, sin cambiar de pestaña
   onVentaConfirmada: () => void
   // Las siguientes tres operan por id (no necesariamente la venta activa) porque el cobro
@@ -76,6 +84,7 @@ function crearVentaVacia(n: number): VentaAbierta {
     carrito: [],
     medioPagoId: "",
     descuentoPct: 0,
+    esConsumoInterno: false,
     pagoMpPendiente: null,
   }
 }
@@ -261,6 +270,18 @@ export const useVentasStore = create<VentasState & VentasActions>((set, get) => 
       })
     },
 
+    setConsumoInterno(activo) {
+      set((s) => {
+        const activa = ventaActiva(s)
+        if (!activa) return s
+        return {
+          ventas: s.ventas.map((v) =>
+            v.id === activa.id ? { ...v, esConsumoInterno: activo, descuentoPct: activo ? 100 : 0 } : v
+          ),
+        }
+      })
+    },
+
     onVentaConfirmada() {
       // La pestaña confirmada se vacía y se queda activa — nunca saltamos
       // a otra venta sin que el usuario la elija explícitamente.
@@ -269,7 +290,9 @@ export const useVentasStore = create<VentasState & VentasActions>((set, get) => 
         if (!activa) return s
         return {
           ventas: s.ventas.map((v) =>
-            v.id === activa.id ? { ...v, carrito: [], medioPagoId: "", descuentoPct: 0 } : v
+            v.id === activa.id
+              ? { ...v, carrito: [], medioPagoId: "", descuentoPct: 0, esConsumoInterno: false }
+              : v
           ),
         }
       })

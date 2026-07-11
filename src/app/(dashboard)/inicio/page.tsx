@@ -5,10 +5,22 @@ import { resumenService } from "@/services/resumen.service"
 import { productoService } from "@/services/producto.service"
 import { rentabilidadService } from "@/services/rentabilidad.service"
 import { cajaService } from "@/services/caja.service"
+import { finDia } from "@/domain/dinero"
 import DashboardClient from "./dashboard-client"
 
+// Fecha LOCAL, no UTC — toISOString() corre el día para atrás en husos
+// horarios negativos (ej. Argentina) cerca de la medianoche (mismo bug ya
+// corregido en dashboard-client.tsx y /api/rentabilidad/route.ts).
 function getToday() {
-  return new Date().toISOString().slice(0, 10)
+  const d = new Date()
+  const pad = (n: number) => String(n).padStart(2, "0")
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+}
+
+function inicioDiaLocal(): Date {
+  const d = new Date()
+  d.setHours(0, 0, 0, 0)
+  return d
 }
 
 // Prefetchea las 3 queries que dashboard-client.tsx pide sin condición al montar
@@ -34,7 +46,6 @@ export default async function HomePage() {
         return serializable({
           hoy,
           mes: real?.mesActual ?? null,
-          saldoMp: real?.saldoMp ?? null,
           cajas: real?.cajas ?? null,
           disponibleRealCentavos: real?.disponibleRealCentavos ?? null,
           equilibrio: real?.equilibrio ?? null,
@@ -51,8 +62,8 @@ export default async function HomePage() {
                 await rentabilidadService.porAgrupador({
                   organizationId: orgId,
                   agrupador: "proveedor",
-                  fechaDesde: new Date(today),
-                  fechaHasta: new Date(today),
+                  fechaDesde: inicioDiaLocal(),
+                  fechaHasta: finDia(),
                 })
               ),
           }),

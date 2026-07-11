@@ -31,7 +31,7 @@ export const stockService = {
           const gramosPosterior = actualizado.stockGramos ?? 0
           const gramosAnterior = gramosPosterior - input.cantidad
 
-          return tx.stockMovement.create({
+          const movimiento = await tx.stockMovement.create({
             data: {
               productId: input.productId,
               userId: input.userId,
@@ -45,6 +45,20 @@ export const stockService = {
               motivo: input.motivo,
             },
           })
+
+          // Esta entrada es la compra real al proveedor — descuenta del fondo de
+          // reposición lo que ya se había apartado para reponer este producto.
+          if (producto.providerId) {
+            const costoRecibidoCentavos = Math.round(
+              ((producto.costoPorKgCentavos ?? 0) * input.cantidad) / 1000
+            )
+            await tx.provider.update({
+              where: { id: producto.providerId },
+              data: { saldoReposicionCentavos: { decrement: costoRecibidoCentavos } },
+            })
+          }
+
+          return movimiento
         })
       }
 
@@ -89,7 +103,7 @@ export const stockService = {
         const stockPosterior = actualizado.stock
         const stockAnterior = stockPosterior - input.cantidad
 
-        return tx.stockMovement.create({
+        const movimiento = await tx.stockMovement.create({
           data: {
             productId: input.productId,
             userId: input.userId,
@@ -100,6 +114,18 @@ export const stockService = {
             motivo: input.motivo,
           },
         })
+
+        // Esta entrada es la compra real al proveedor — descuenta del fondo de
+        // reposición lo que ya se había apartado para reponer este producto.
+        if (producto.providerId) {
+          const costoRecibidoCentavos = producto.costoCentavos * input.cantidad
+          await tx.provider.update({
+            where: { id: producto.providerId },
+            data: { saldoReposicionCentavos: { decrement: costoRecibidoCentavos } },
+          })
+        }
+
+        return movimiento
       })
     }
 

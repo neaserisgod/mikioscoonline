@@ -1,4 +1,4 @@
-import { prisma } from "@/lib/prisma"
+import { prisma } from "@/lib/prisma-auth"
 import type { UsuarioAutenticado } from "@/lib/verificar-credenciales"
 
 /**

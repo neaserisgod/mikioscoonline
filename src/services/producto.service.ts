@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma"
 import { resolverTriangulo } from "@/domain/markup"
+import { gananciaPotencial, valoresInventario } from "@/domain/pesables"
 import { normalizarTexto } from "@/lib/utils"
 import Papa from "papaparse"
 
@@ -272,6 +273,95 @@ export const productoService = {
     })
   },
 
+  /** Cards de nivel 1 en Productos (Proveedores). Trae todo y agrupa en memoria
+   * (mismo criterio que rentabilidad.service.ts: catálogo chico, cientos de
+   * productos por organización como mucho). "Sin proveedor" usa el mismo
+   * sentinel que ya usa rentabilidad.service.ts para consistencia. */
+  async resumenProveedores(organizationId: string) {
+    const productos = await prisma.product.findMany({
+      where: { organizationId, activo: true },
+      select: {
+        providerId: true,
+        provider: { select: { nombre: true } },
+        stock: true,
+        stockGramos: true,
+        esPesable: true,
+        precioCentavos: true,
+        costoCentavos: true,
+        precioPorKgCentavos: true,
+        costoPorKgCentavos: true,
+      },
+    })
+
+    const mapa = new Map<string, {
+      id: string; nombre: string; totalProductos: number; sinStock: number
+      gananciaPotencialCentavos: number; valorCostoCentavos: number; valorVentaCentavos: number
+    }>()
+    for (const p of productos) {
+      const id = p.providerId ?? "__sin_proveedor__"
+      const nombre = p.provider?.nombre ?? "Sin proveedor"
+      const fila = mapa.get(id) ?? {
+        id, nombre, totalProductos: 0, sinStock: 0,
+        gananciaPotencialCentavos: 0, valorCostoCentavos: 0, valorVentaCentavos: 0,
+      }
+      fila.totalProductos++
+      const sinStock = p.esPesable ? (p.stockGramos ?? 0) === 0 : p.stock === 0
+      if (sinStock) fila.sinStock++
+      fila.gananciaPotencialCentavos += gananciaPotencial(p)
+      const v = valoresInventario(p)
+      fila.valorCostoCentavos += v.valorCostoCentavos
+      fila.valorVentaCentavos += v.valorVentaCentavos
+      mapa.set(id, fila)
+    }
+
+    return Array.from(mapa.values()).sort((a, b) => a.nombre.localeCompare(b.nombre))
+  },
+
+  /** Cards de nivel 2 en Productos (Categorías dentro de un proveedor).
+   * `providerId: null` = bucket "Sin proveedor" del nivel 1. */
+  async resumenCategorias(organizationId: string, providerId: string | null) {
+    const productos = await prisma.product.findMany({
+      where: { organizationId, activo: true, providerId },
+      select: {
+        categoryId: true,
+        category: { select: { nombre: true } },
+        stock: true,
+        stockGramos: true,
+        esPesable: true,
+        precioCentavos: true,
+        costoCentavos: true,
+        precioPorKgCentavos: true,
+        costoPorKgCentavos: true,
+      },
+    })
+
+    const mapa = new Map<string, { id: string; nombre: string; totalProductos: number; gananciaPotencialCentavos: number }>()
+    for (const p of productos) {
+      const fila = mapa.get(p.categoryId) ?? { id: p.categoryId, nombre: p.category.nombre, totalProductos: 0, gananciaPotencialCentavos: 0 }
+      fila.totalProductos++
+      fila.gananciaPotencialCentavos += gananciaPotencial(p)
+      mapa.set(p.categoryId, fila)
+    }
+
+    return Array.from(mapa.values()).sort((a, b) => a.nombre.localeCompare(b.nombre))
+  },
+
+  /** Nivel 3 en Productos (lista filtrada por proveedor y/o categoría). */
+  async listarFiltrado(organizationId: string, opts?: { providerId?: string; categoryId?: string }) {
+    return prisma.product.findMany({
+      where: {
+        organizationId,
+        activo: true,
+        ...(opts?.providerId !== undefined && {
+          providerId: opts.providerId === "__sin_proveedor__" ? null : opts.providerId,
+        }),
+        ...(opts?.categoryId !== undefined && { categoryId: opts.categoryId }),
+      },
+      include: incluirRelaciones,
+      orderBy: { nombre: "asc" },
+    })
+  },
+
   async stockBajo(organizationId: string) {
     // Prisma no soporta comparar dos columnas en where → raw query
     return prisma.$queryRaw<
@@ -284,6 +374,29 @@ export const productoService = {
         AND stock <= "stockMinimo"
       ORDER BY nombre
     `
+  },
+
+  /** Valor total del stock activo — a costo (lo que se pagó, "plata invertida
+   * en estantería") y a precio de lista, para completar el panorama junto al
+   * efectivo disponible (ver resumenService.reparto). Filtrable por proveedor
+   * para mostrar el mismo desglose al configurar su piso de reinversión. */
+  async valorInventario(organizationId: string, providerId?: string) {
+    const productos = await prisma.product.findMany({
+      where: { organizationId, activo: true, ...(providerId ? { providerId } : {}) },
+      select: {
+        stock: true, stockGramos: true, esPesable: true,
+        precioCentavos: true, costoCentavos: true,
+        precioPorKgCentavos: true, costoPorKgCentavos: true,
+      },
+    })
+    let valorCostoCentavos = 0
+    let valorVentaCentavos = 0
+    for (const p of productos) {
+      const v = valoresInventario(p)
+      valorCostoCentavos += v.valorCostoCentavos
+      valorVentaCentavos += v.valorVentaCentavos
+    }
+    return { valorCostoCentavos, valorVentaCentavos }
   },
 
   async desactivar(id: string, organizationId: string) {

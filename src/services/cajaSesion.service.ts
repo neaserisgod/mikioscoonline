@@ -158,6 +158,43 @@ export const cajaSesionService = {
     })
   },
 
+  /** Historial plano de movimientos (ventas, ingresos, egresos, ajustes) de
+   * todas las cajas o de una en particular, para auditar sin tener que abrir
+   * sesión por sesión. Filtrable por caja y rango de fechas. */
+  async listarMovimientos(
+    organizationId: string,
+    filtros: { cajaId?: string; desde?: Date; hasta?: Date } = {}
+  ) {
+    return prisma.movimientoCaja.findMany({
+      where: {
+        organizationId,
+        ...(filtros.cajaId ? { cajaId: filtros.cajaId } : {}),
+        ...(filtros.desde || filtros.hasta
+          ? {
+              fecha: {
+                ...(filtros.desde ? { gte: filtros.desde } : {}),
+                ...(filtros.hasta ? { lte: filtros.hasta } : {}),
+              },
+            }
+          : {}),
+      },
+      select: {
+        id: true,
+        tipo: true,
+        montoCentavos: true,
+        recargoCentavos: true,
+        nota: true,
+        fecha: true,
+        caja: { select: { nombre: true } },
+        medioPago: { select: { nombre: true, esEfectivo: true } },
+        fixedExpense: { select: { nombre: true } },
+        sale: { select: { id: true, esConsumoInterno: true } },
+      },
+      orderBy: { fecha: "desc" },
+      take: 500,
+    })
+  },
+
   async listarHistorial(cajaId: string, organizationId: string, take = 20) {
     return prisma.cajaSesion.findMany({
       where: { cajaId, organizationId },
@@ -176,5 +213,16 @@ export const cajaSesionService = {
       where: { id: cajaSesionId, organizationId },
       include: SESION_INCLUDE,
     })
+  },
+
+  /** Cajas de efectivo (manejaEfectivo=true) con una sesión ABIERTA — el
+   * cambio de perfil en el kiosco las bloquea hasta que se cierren (arqueo de
+   * entrega de turno). Las cajas 100% digitales (ej. MercadoPago) no cuentan. */
+  async listarCajasEfectivoAbiertas(organizationId: string) {
+    const sesiones = await prisma.cajaSesion.findMany({
+      where: { organizationId, estado: "ABIERTA", caja: { manejaEfectivo: true } },
+      select: { caja: { select: { nombre: true } } },
+    })
+    return sesiones.map((s) => s.caja.nombre)
   },
 }

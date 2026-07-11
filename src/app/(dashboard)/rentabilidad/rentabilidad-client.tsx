@@ -21,6 +21,7 @@ interface FilaRentabilidad {
   costoCentavos: number
   gananciaBrutaCentavos: number
   markupBp: number
+  saldoReposicionCentavos?: number
 }
 
 const AGRUPADORES: { value: Agrupador; label: string }[] = [
@@ -70,6 +71,8 @@ export default function RentabilidadClient() {
   const totalUnidades = filas?.reduce((s, f) => s + f.unidadesVendidas, 0) ?? 0
   const totalCosto = filas?.reduce((s, f) => s + f.costoCentavos, 0) ?? 0
   const markupPromBp = totalCosto > 0 ? Math.round((totalGanancia / totalCosto) * 10_000) : 0
+  const totalFondoReposicion =
+    agrupador === "proveedor" ? filas?.reduce((s, f) => s + (f.saldoReposicionCentavos ?? 0), 0) ?? 0 : null
 
   return (
     <div className="space-y-5">
@@ -100,8 +103,8 @@ export default function RentabilidadClient() {
         </div>
       </div>
 
-      {/* Totales — 2 cols mobile, 4 cols desktop */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      {/* Totales — 2 cols mobile, 4 (o 5 en proveedor) cols desktop */}
+      <div className={cn("grid grid-cols-2 gap-3", agrupador === "proveedor" ? "lg:grid-cols-5" : "lg:grid-cols-4")}>
         <div className="rounded-2xl border border-border/60 bg-card p-4">
           <p className="text-xs text-muted-foreground">
             {periodo === "mes" ? "Ventas del mes" : "Ventas totales"}
@@ -126,6 +129,17 @@ export default function RentabilidadClient() {
             {totalCosto > 0 ? `${(markupPromBp / 100).toFixed(1)}%` : "—"}
           </p>
         </div>
+        {totalFondoReposicion !== null && (
+          <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-4">
+            <p className="text-xs text-muted-foreground">Fondo de reposición</p>
+            <p className={cn(
+              "text-xl font-semibold tabular-nums mt-1",
+              totalFondoReposicion < 0 ? "text-k-loss" : "text-amber-600 dark:text-amber-400"
+            )}>
+              {formatearARS(totalFondoReposicion)}
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Selector de agrupador */}
@@ -190,6 +204,14 @@ export default function RentabilidadClient() {
                   <p className="text-xs text-muted-foreground lg:hidden">
                     {fila.unidadesVendidas} unidades
                   </p>
+                  {agrupador === "proveedor" && (
+                    <p className={cn(
+                      "text-xs mt-0.5",
+                      (fila.saldoReposicionCentavos ?? 0) < 0 ? "text-k-loss" : "text-amber-600 dark:text-amber-400"
+                    )}>
+                      Fondo repos.: {formatearARS(fila.saldoReposicionCentavos ?? 0)}
+                    </p>
+                  )}
                 </div>
                 <p className="hidden lg:block text-sm tabular-nums text-right text-muted-foreground">
                   {fila.unidadesVendidas.toLocaleString("es-AR")}

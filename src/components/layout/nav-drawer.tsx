@@ -1,13 +1,15 @@
 "use client"
 
+import { useState } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { motion } from "framer-motion"
-import { Home, ShoppingCart, TrendingUp, Package, Settings, LogOut, Pin, PinOff } from "lucide-react"
+import { Home, ShoppingCart, TrendingUp, Package, Settings, LogOut, Pin, PinOff, UserRoundCog } from "lucide-react"
 import { signOut, useSession } from "next-auth/react"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Button } from "@/components/ui/button"
 import { ThemeToggle } from "./theme-toggle"
+import { PerfilSwitcher } from "./perfil-switcher"
 import { cn } from "@/lib/utils"
 import { useTabsStore } from "./tabs-bar"
 
@@ -30,6 +32,7 @@ export function NavDrawer({ open, onClose }: NavDrawerProps) {
   const { tabs, addTab, removeTab } = useTabsStore()
   const esAdmin = session?.user?.role === "ADMIN"
   const navItems = NAV_ITEMS.filter((item) => !item.adminOnly || esAdmin)
+  const [switcherOpen, setSwitcherOpen] = useState(false)
 
   return (
     <Sheet open={open} onOpenChange={(v) => !v && onClose()}>
@@ -102,6 +105,15 @@ export function NavDrawer({ open, onClose }: NavDrawerProps) {
             variant="ghost"
             size="sm"
             className="w-full justify-start gap-2 text-muted-foreground hover:text-foreground -ml-1 px-2"
+            onClick={() => { onClose(); setSwitcherOpen(true) }}
+          >
+            <UserRoundCog className="size-3.5" />
+            Cambiar de perfil
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="w-full justify-start gap-2 text-muted-foreground hover:text-foreground -ml-1 px-2"
             onClick={() => signOut({ callbackUrl: "/login" })}
           >
             <LogOut className="size-3.5" />
@@ -109,6 +121,7 @@ export function NavDrawer({ open, onClose }: NavDrawerProps) {
           </Button>
         </div>
       </SheetContent>
+      <PerfilSwitcher open={switcherOpen} onClose={() => setSwitcherOpen(false)} />
     </Sheet>
   )
 }

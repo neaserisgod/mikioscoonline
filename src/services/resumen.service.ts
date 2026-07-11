@@ -31,7 +31,7 @@ export const resumenService = {
     const hasta = finDia(ahora)
 
     const ventas = await prisma.sale.findMany({
-      where: { organizationId, fecha: { gte: desde, lte: hasta } },
+      where: { organizationId, fecha: { gte: desde, lte: hasta }, esConsumoInterno: false },
       select: {
         totalCentavos: true,
         costoTotalCentavos: true,
@@ -76,10 +76,10 @@ export const resumenService = {
     const desde = inicioMes(ref)
     const hasta = finMes(ref)
 
-    // Ventas del mes y gastos fijos son independientes — se piden en paralelo
-    const [ventas, gastosFijos] = await Promise.all([
+    // Ventas del mes, gastos fijos y lo ya pagado de cada uno son independientes — en paralelo
+    const [ventas, gastosFijos, pagosGastosFijos] = await Promise.all([
       prisma.sale.findMany({
-        where: { organizationId, fecha: { gte: desde, lte: hasta } },
+        where: { organizationId, fecha: { gte: desde, lte: hasta }, esConsumoInterno: false },
         select: {
           totalCentavos: true,
           costoTotalCentavos: true,
@@ -89,13 +89,23 @@ export const resumenService = {
       prisma.fixedExpense.findMany({
         where: { organizationId, activo: true },
         select: {
+          id: true,
           montos: {
             select: { mesAnio: true, montoCentavos: true },
             orderBy: { mesAnio: "desc" },
           },
         },
       }),
+      // EGRESOs de caja ya vinculados a un gasto fijo dentro del mes — se
+      // descuentan del monto presupuestado para no contar dos veces la misma
+      // plata (ya salió de la caja Y seguiría figurando como "a pagar").
+      prisma.movimientoCaja.groupBy({
+        by: ["fixedExpenseId"],
+        where: { organizationId, tipo: "EGRESO", fixedExpenseId: { not: null }, fecha: { gte: desde, lte: hasta } },
+        _sum: { montoCentavos: true },
+      }),
     ])
+    const pagadoPorGasto = new Map(pagosGastosFijos.map((p) => [p.fixedExpenseId, p._sum.montoCentavos ?? 0]))
 
     let ventasCentavos = 0
     let costoTotalCentavos = 0
@@ -118,7 +128,8 @@ export const resumenService = {
         gasto.montos.find((m) => m.mesAnio === mesAnio) ??
         gasto.montos.find((m) => m.mesAnio <= mesAnio)
       if (montoMes) {
-        gastosFijosCentavos += montoMes.montoCentavos
+        const pagado = pagadoPorGasto.get(gasto.id) ?? 0
+        gastosFijosCentavos += Math.max(0, montoMes.montoCentavos - pagado)
       }
     }
 
@@ -142,47 +153,50 @@ export const resumenService = {
   },
 
   /**
-   * No hay API de saldo para esta integración de Mercado Pago (ver mercadopago.ts) ni
-   * forma confiable de estimar el efectivo real de cada caja solo con las ventas — el
-   * dueño carga a mano lo que tiene HOY en la cuenta de MP y en cada caja, y eso (no
-   * una ganancia estimada) es lo que se contrasta contra los gastos fijos a pagar
-   * este mes para saber si alcanza.
+   * "Disponible real" = efectivo/saldo en cada caja relevante, calculado en vivo
+   * desde los movimientos de su sesión abierta (fondo + ventas + ingresos −
+   * egresos) — nada de esto se carga a mano. "Ventas QR/Posnet" ES el saldo de
+   * Mercado Pago (su fondo inicial se ajustó una vez al saldo real de la cuenta;
+   * de ahí en más solo sube o baja con ventas reales o con ingresos/egresos
+   * manuales, igual que cualquier otra caja — no existe más un "checkpoint"
+   * separado que sumar aparte, eso duplicaba la plata). "Caja Cigarrillos" sigue
+   * afuera: esa plata está comprometida para pagarle en efectivo al proveedor
+   * (ver el traspaso automático), no es plata disponible de verdad para cubrir
+   * gastos del mes.
    */
   async equilibrioReal(
     organizationId: string,
     fecha?: Date
   ): Promise<{
     mesActual: ResumenMes
-    saldoMp: { montoCentavos: number; actualizadoEn: Date | null }
     cajas: { id: string; nombre: string; montoCentavos: number; actualizadoEn: Date | null }[]
     disponibleRealCentavos: number
     equilibrio: ResultadoEquilibrio
   }> {
-    const [mesActual, organization, cajas] = await Promise.all([
+    const [mesActual, cajas] = await Promise.all([
       resumenService.mes(organizationId, fecha),
-      prisma.organization.findUniqueOrThrow({
-        where: { id: organizationId },
-        select: { saldoMpCentavos: true, saldoMpActualizadoEn: true },
-      }),
       prisma.caja.findMany({
-        where: { organizationId, activo: true },
-        select: { id: true, nombre: true, saldoManualCentavos: true, saldoManualActualizadoEn: true },
+        where: { organizationId, activo: true, nombre: { not: "Caja Cigarrillos" } },
+        select: { id: true, nombre: true },
         orderBy: [{ esPrincipal: "desc" }, { orden: "asc" }],
       }),
     ])
 
-    const saldoMp = {
-      montoCentavos: organization.saldoMpCentavos ?? 0,
-      actualizadoEn: organization.saldoMpActualizadoEn,
-    }
-    const cajasConSaldo = cajas.map((c) => ({
-      id: c.id,
-      nombre: c.nombre,
-      montoCentavos: c.saldoManualCentavos ?? 0,
-      actualizadoEn: c.saldoManualActualizadoEn,
-    }))
-    const disponibleRealCentavos =
-      saldoMp.montoCentavos + cajasConSaldo.reduce((sum, c) => sum + c.montoCentavos, 0)
+    const cajasConSaldo = await Promise.all(
+      cajas.map(async (c) => {
+        const sesion = await prisma.cajaSesion.findFirst({
+          where: { cajaId: c.id, estado: "ABIERTA" },
+          select: {
+            fondoInicialCentavos: true,
+            movimientos: { select: { tipo: true, montoCentavos: true } },
+          },
+        })
+        const montoCentavos = sesion ? calcularTotalEnCaja(sesion.fondoInicialCentavos, sesion.movimientos) : 0
+        return { id: c.id, nombre: c.nombre, montoCentavos, actualizadoEn: null }
+      })
+    )
+
+    const disponibleRealCentavos = cajasConSaldo.reduce((sum, c) => sum + c.montoCentavos, 0)
 
     // Reutiliza calcularEquilibrio pasando el disponible real como "ganancia bruta" y
     // comisiones en 0 — ya es el neto contado a mano, no hay nada más que restarle.
@@ -192,6 +206,98 @@ export const resumenService = {
       comisionesTotalesCentavos: 0,
     })
 
-    return { mesActual, saldoMp, cajas: cajasConSaldo, disponibleRealCentavos, equilibrio }
+    return { mesActual, cajas: cajasConSaldo, disponibleRealCentavos, equilibrio }
   },
+
+  /**
+   * Cascada de reparto del efectivo disponible, en orden de prioridad:
+   *   1. Gastos fijos pendientes del mes — se cubren primero, sin excepción.
+   *   2. Piso de reinversión de cada proveedor (colchón fijo cargado a mano,
+   *      no se resetea cada mes — ver Provider.pisoReposicionCentavos).
+   *   3. Ganancia limpia — lo que sobra después de 1 y 2, recién ahí es
+   *      "plata propia" que se puede transferir/retirar sin arriesgar stock
+   *      ni gastos fijos.
+   * Pensado para el caso de poca venta/poco efectivo: si no alcanza para 1,
+   * no hay ni reposición ni ganancia — todo el disponible es "para gastos fijos".
+   */
+  async reparto(organizationId: string, fecha?: Date) {
+    const [equilibrio, proveedores] = await Promise.all([
+      resumenService.equilibrioReal(organizationId, fecha),
+      prisma.provider.findMany({
+        where: { organizationId, activo: true, pisoReposicionCentavos: { gt: 0 } },
+        select: { id: true, nombre: true, pisoReposicionCentavos: true, saldoReposicionCentavos: true },
+        orderBy: { nombre: "asc" },
+      }),
+    ])
+
+    const { disponibleRealCentavos } = equilibrio
+    const gastosFijosPendientesCentavos = equilibrio.mesActual.gastosFijosCentavos
+    const gastosFijosCubiertos = disponibleRealCentavos >= gastosFijosPendientesCentavos
+    const gastosFijosFaltanteCentavos = Math.max(0, gastosFijosPendientesCentavos - disponibleRealCentavos)
+
+    const disponibleTrasGastosCentavos = Math.max(0, disponibleRealCentavos - gastosFijosPendientesCentavos)
+    const reservaReposicionCentavos = proveedores.reduce((s, p) => s + p.pisoReposicionCentavos, 0)
+    const reposicionCubierta = disponibleTrasGastosCentavos >= reservaReposicionCentavos
+    const reposicionFaltanteCentavos = Math.max(0, reservaReposicionCentavos - disponibleTrasGastosCentavos)
+
+    const gananciaDisponibleCentavos = Math.max(0, disponibleTrasGastosCentavos - reservaReposicionCentavos)
+
+    return {
+      disponibleRealCentavos,
+      gastosFijosPendientesCentavos,
+      gastosFijosCubiertos,
+      gastosFijosFaltanteCentavos,
+      reservaReposicionCentavos,
+      reposicionCubierta,
+      reposicionFaltanteCentavos,
+      proveedoresPiso: proveedores,
+      gananciaDisponibleCentavos,
+    }
+  },
+
+  /**
+   * Registra un retiro real de ganancia: crea un EGRESO en la caja elegida,
+   * pero solo hasta lo que `reparto()` diga que es "ganancia limpia
+   * disponible" en este momento — nunca deja tocar lo reservado para gastos
+   * fijos o para el piso de reposición de los proveedores. Recalcula el
+   * reparto en el momento (no confía en un número que el cliente haya
+   * calculado antes) para que no se pueda retirar de más con datos viejos.
+   */
+  async retirarGanancia(organizationId: string, montoCentavos: number, cajaId: string) {
+    const actual = await resumenService.reparto(organizationId)
+    if (montoCentavos > actual.gananciaDisponibleCentavos) {
+      const disponible = (actual.gananciaDisponibleCentavos / 100).toFixed(2)
+      throw new Error(`Solo hay $${disponible} de ganancia limpia disponible para retirar`)
+    }
+
+    return prisma.$transaction(async (tx) => {
+      const caja = await tx.caja.findFirstOrThrow({ where: { id: cajaId, organizationId } })
+      const sesion = await tx.cajaSesion.findFirst({ where: { cajaId, estado: "ABIERTA" } })
+      if (!sesion) throw new Error(`Abrí la ${caja.nombre} antes de retirar`)
+
+      return tx.movimientoCaja.create({
+        data: {
+          cajaSesionId: sesion.id,
+          cajaId,
+          tipo: "EGRESO",
+          montoCentavos,
+          nota: "Retiro de ganancia",
+          organizationId,
+        },
+      })
+    })
+  },
+}
+
+function calcularTotalEnCaja(
+  fondoInicialCentavos: number,
+  movimientos: { tipo: string; montoCentavos: number }[]
+): number {
+  let total = fondoInicialCentavos
+  for (const m of movimientos) {
+    if (m.tipo === "INGRESO") total += m.montoCentavos
+    else if (m.tipo === "EGRESO") total -= m.montoCentavos
+    else if (m.tipo === "VENTA") total += m.montoCentavos
+  }
+  return total
 }

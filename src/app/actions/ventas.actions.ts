@@ -14,7 +14,8 @@ const LineaSchema = z.object({
 
 const PagoSchema = z.object({
   paymentMethodId: z.string().cuid(),
-  montoCentavos: z.number().int().positive(),
+  // min(0), no positive(): un consumo interno cobra $0 (ver esConsumoInterno).
+  montoCentavos: z.number().int().min(0),
   referencia: z.string().optional(),
 })
 
@@ -22,6 +23,8 @@ const CrearVentaSchema = z.object({
   lineas: z.array(LineaSchema).min(1, "La venta debe tener al menos una línea"),
   pagos: z.array(PagoSchema).min(1, "La venta debe tener al menos un pago"),
   descuentoCentavos: z.number().int().min(0).optional(),
+  /** Consumo de personal o del dueño — no es una venta real a un cliente. */
+  esConsumoInterno: z.boolean().optional(),
 })
 
 // Devolvemos el error como dato (no lo lanzamos) para que el mensaje real llegue al
@@ -48,7 +51,7 @@ export async function crearVentaAction(input: unknown): Promise<CrearVentaResult
     const session = await auth()
     if (!session?.user?.id || !session.user.organizationId) return { ok: false, error: "No autorizado" }
 
-    const { lineas, pagos, descuentoCentavos } = CrearVentaSchema.parse(input)
+    const { lineas, pagos, descuentoCentavos, esConsumoInterno } = CrearVentaSchema.parse(input)
 
     const venta = await ventaService.crear({
       userId: session.user.id,
@@ -56,8 +59,23 @@ export async function crearVentaAction(input: unknown): Promise<CrearVentaResult
       lineas,
       pagos,
       descuentoCentavos,
+      esConsumoInterno,
     })
     return { ok: true, id: venta.id }
+  } catch (e) {
+    return { ok: false, error: mensajeError(e) }
+  }
+}
+
+type ConfirmarTraspasoResult = { ok: true } | { ok: false; error: string }
+
+export async function confirmarTraspasoCigarrillosAction(saleId: string): Promise<ConfirmarTraspasoResult> {
+  try {
+    const session = await auth()
+    if (!session?.user?.id || !session.user.organizationId) return { ok: false, error: "No autorizado" }
+
+    await ventaService.confirmarTraspasoCigarrillos(saleId, session.user.organizationId)
+    return { ok: true }
   } catch (e) {
     return { ok: false, error: mensajeError(e) }
   }

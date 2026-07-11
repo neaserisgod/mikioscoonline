@@ -67,14 +67,15 @@ model Organization {
 
 model User {
   id                  String       @id @default(cuid())
-  email               String       @unique
-  passwordHash        String?      // null si el usuario solo se loguea con Google
+  email               String?      @unique // null en perfiles de empleado (solo nombre+PIN, sin login propio)
+  passwordHash        String?      // null si el usuario solo se loguea con Google, o es un perfil PIN-only
+  pinHash             String?      // PIN corto (4 dígitos) para el cambio rápido de perfil en el kiosco
   image               String?      // foto de perfil de Google, opcional
   nombre              String
   role                Role         @default(VENDEDOR)
   activo              Boolean      @default(true)
-  failedLoginAttempts Int          @default(0) // se resetea en cada login exitoso
-  lockedUntil         DateTime?    // bloqueo temporal por fuerza bruta de contraseña
+  failedLoginAttempts Int          @default(0) // se resetea en cada login/PIN exitoso — comparte umbral entre password y PIN
+  lockedUntil         DateTime?    // bloqueo temporal por fuerza bruta de contraseña o PIN
   organizationId      String
   organization        Organization @relation(fields: [organizationId], references: [id])
   createdAt           DateTime     @default(now())
@@ -111,6 +112,9 @@ model Provider {
   id             String       @id @default(cuid())
   nombre         String
   activo         Boolean      @default(true)
+  saldoReposicionCentavos Int @default(0)
+  saldoCuentaCorrienteCentavos Int @default(0)
+  pisoReposicionCentavos Int @default(0)
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id])
   createdAt      DateTime     @default(now())
@@ -172,7 +176,8 @@ model FixedExpense {
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
-  montos FixedExpenseMonto[]
+  montos      FixedExpenseMonto[]
+  movimientos MovimientoCaja[]
 
   @@unique([nombre, organizationId])
 }
@@ -194,6 +199,7 @@ model Caja {
   id                       String       @id @default(cuid())
   nombre                   String
   esPrincipal              Boolean      @default(false) // "Caja general" — una por org, no borrable
+  manejaEfectivo           Boolean      @default(true)  // false = caja 100% digital (ej. MercadoPago/QR) — no exige cierre al cambiar de perfil
   orden                    Int          @default(0)
   activo                   Boolean      @default(true)
   // Saldo real contado a mano (efectivo físico), para el equilibrio de Inicio —
@@ -249,6 +255,8 @@ model MovimientoCaja {
   medioPagoId     String?
   medioPago       PaymentMethod? @relation(fields: [medioPagoId], references: [id])
   nota            String?
+  fixedExpenseId  String?
+  fixedExpense    FixedExpense?  @relation(fields: [fixedExpenseId], references: [id])
   organizationId  String
   organization    Organization   @relation(fields: [organizationId], references: [id])
   fecha           DateTime       @default(now())
@@ -281,6 +289,7 @@ model Product {
   precioPorKgCentavos Int?
   stockGramos        Int?
   stockMinimoGramos  Int?
+  esCigarroSuelto    Boolean   @default(false)
   activo             Boolean   @default(true)
   organizationId     String
   organization       Organization @relation(fields: [organizationId], references: [id])
@@ -326,6 +335,9 @@ model Sale {
   costoTotalCentavos Int
   recargoCentavos    Int          @default(0) // Fase 5: recargo total por pago virtual
   descuentoCentavos  Int          @default(0) // descuento manual aplicado por el cajero, ya restado de totalCentavos
+  traspasoCigarrillosCentavos   Int     @default(0)
+  traspasoCigarrillosConfirmado Boolean @default(false)
+  esConsumoInterno   Boolean      @default(false)
   organizationId     String
   organization       Organization @relation(fields: [organizationId], references: [id])
   createdAt          DateTime     @default(now())

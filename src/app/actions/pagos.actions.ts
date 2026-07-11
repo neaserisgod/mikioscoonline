@@ -85,12 +85,17 @@ export async function cancelarOrdenMpAction(
   const session = await auth()
   if (!session?.user?.organizationId) return { ok: false, error: "No autorizado" }
 
-  // El QR no necesita cancelación real: nada queda pendiente del lado de MercadoPago.
-  // El posnet sí — la terminal física queda esperando la tarjeta hasta cancelar.
-  if (tipo !== "posnet") return { ok: true }
-
+  // Tanto QR como posnet pueden estar atados a una terminal Point real (no
+  // solo posnet) — cancelar de verdad libera lo que esa terminal esté
+  // mostrando en pantalla. Nunca relanzar: si MP ya expiró la orden sola,
+  // cancelarla de nuevo tira error pero no hay nada más que hacer del lado
+  // de la app.
   try {
-    await getPagosProvider().cancelarOrdenPosnet(orderId)
+    if (tipo === "posnet") {
+      await getPagosProvider().cancelarOrdenPosnet(orderId)
+    } else {
+      await getPagosProvider().cancelarOrdenQr(orderId)
+    }
     return { ok: true }
   } catch (e) {
     return { ok: false, error: mensajeError(e) }

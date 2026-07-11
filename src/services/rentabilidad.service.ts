@@ -12,6 +12,8 @@ export interface FilaRentabilidad {
   costoCentavos: number
   gananciaBrutaCentavos: number
   markupBp: number // basis points promedio ponderado
+  /** Solo cuando agrupador="proveedor": saldo actual del fondo de reposición. */
+  saldoReposicionCentavos?: number
 }
 
 export interface QueryRentabilidadInput {
@@ -45,6 +47,7 @@ export const rentabilidadService = {
       where: {
         sale: {
           organizationId,
+          esConsumoInterno: false,
           ...((fechaDesde || fechaHasta) && {
             fecha: {
               ...(fechaDesde && { gte: fechaDesde }),
@@ -126,6 +129,21 @@ export const rentabilidadService = {
       mapa.set(agrupadorId, fila)
     }
 
+    // Fondo de reposición: solo tiene sentido para el agrupador "proveedor" — se trae
+    // aparte porque es un saldo acumulado histórico, no algo que se calcule sobre las
+    // líneas de venta del período filtrado.
+    const saldoPorProveedorId =
+      agrupador === "proveedor"
+        ? new Map(
+            (
+              await prisma.provider.findMany({
+                where: { organizationId },
+                select: { id: true, saldoReposicionCentavos: true },
+              })
+            ).map((p) => [p.id, p.saldoReposicionCentavos])
+          )
+        : null
+
     return Array.from(mapa.values())
       .map((fila) => ({
         ...fila,
@@ -136,6 +154,7 @@ export const rentabilidadService = {
             : Math.round(
                 ((fila.ventasCentavos - fila.costoCentavos) / fila.costoCentavos) * 10_000
               ),
+        ...(saldoPorProveedorId && { saldoReposicionCentavos: saldoPorProveedorId.get(fila.id) ?? 0 }),
       }))
       .sort((a, b) => b.gananciaBrutaCentavos - a.gananciaBrutaCentavos)
   },

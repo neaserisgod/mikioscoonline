@@ -23,6 +23,8 @@ interface Producto {
   esPesable: boolean
   precioPorKgCentavos: number | null
   stockGramos: number | null
+  esCigarroSuelto: boolean
+  category: { nombre: string }
 }
 
 /**
@@ -83,6 +85,7 @@ export function useBarcodeHandler() {
     }
 
     // ── Caso: código ENCONTRADO, cualquier pantalla → agregar al carrito ──────
+    const esCigarrillo = producto.category.nombre === "Cigarrillos"
     if (producto.esPesable) {
       agregarProducto({
         productId: producto.id,
@@ -92,6 +95,8 @@ export function useBarcodeHandler() {
         stock: 0,
         stockGramos: producto.stockGramos,
         esPesable: true,
+        esCigarrillo,
+        esCigarroSuelto: producto.esCigarroSuelto,
       })
       // El carrito ya está visible en /vender — abrir el overlay ahí sería redundante
       if (!inVender) setOverlay(true)
@@ -107,6 +112,8 @@ export function useBarcodeHandler() {
       stock: producto.stock,
       stockGramos: null,
       esPesable: false,
+      esCigarrillo,
+      esCigarroSuelto: producto.esCigarroSuelto,
     })
     if (!inVender) setOverlay(true)
     toast.success(`${producto.nombre} agregado`, { duration: 1500 })

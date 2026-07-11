@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
-import { calcularRecargo } from "@/domain/comisiones"
+import { calcularRecargoCigarrillos } from "@/domain/recargo-cigarrillos"
 import { subtotalLinea } from "@/domain/pesables"
 import { crearVentaAction } from "@/app/actions/ventas.actions"
 import { cancelarOrdenMpAction, enviarMontoMpAction } from "@/app/actions/pagos.actions"
@@ -15,9 +15,6 @@ export interface MedioPago {
   comisionBp: number
   esMercadoPago: boolean
   esEfectivo: boolean
-  recargoTipo: string
-  recargoVirtualBp: number
-  recargoVirtualFijoCentavos: number
 }
 
 /**
@@ -29,8 +26,8 @@ export function useCarritoCheckout(onSuccess?: (ventaId: string) => void) {
   const qc = useQueryClient()
   const venta = useVentaActiva()
   const {
-    cambiarCantidad, setGramos, eliminarLinea, vaciarCarrito, setMedioPago, setDescuentoPct, onVentaConfirmada,
-    iniciarPagoMp, cancelarPagoMp,
+    cambiarCantidad, setGramos, eliminarLinea, vaciarCarrito, setMedioPago, setDescuentoPct, setConsumoInterno,
+    onVentaConfirmada, iniciarPagoMp, cancelarPagoMp,
   } = useVentasStore()
   const [loading, setLoading] = useState(false)
   const [confirmVaciar, setConfirmVaciar] = useState(false)
@@ -76,16 +73,18 @@ export function useCarritoCheckout(onSuccess?: (ventaId: string) => void) {
   const descuentoPct = venta?.descuentoPct ?? 0
   const descuentoCentavos = Math.round((totalCentavos * descuentoPct) / 100)
   const totalConDescuentoCentavos = totalCentavos - descuentoCentavos
+  const esConsumoInterno = venta?.esConsumoInterno ?? false
 
   const comisionCentavos = medioPagoSeleccionado
     ? Math.round((totalConDescuentoCentavos * medioPagoSeleccionado.comisionBp) / 10_000)
     : 0
 
-  // Recargo virtual por pago no-efectivo — se configura por medio de pago (Config > Medios de pago)
-  const recargoTotalCentavos =
-    medioPagoSeleccionado && !medioPagoSeleccionado.esEfectivo
-      ? calcularRecargo(medioPagoSeleccionado, totalConDescuentoCentavos)
-      : 0
+  // Recargo por cigarrillos pagados con QR/Posnet — escalonado por cantidad (atados/sueltos),
+  // no por % ni fijo del medio de pago (ver domain/recargo-cigarrillos.ts). No aplica a
+  // consumo interno: no es una venta real, no hay nada que trasladar al proveedor.
+  const recargoTotalCentavos = medioPagoSeleccionado?.esMercadoPago && !esConsumoInterno
+    ? calcularRecargoCigarrillos(carrito)
+    : 0
   const totalACobrarCentavos = totalConDescuentoCentavos + recargoTotalCentavos
 
   async function confirmar() {
@@ -97,7 +96,9 @@ export function useCarritoCheckout(onSuccess?: (ventaId: string) => void) {
     // Cobro con MercadoPago (QR o posnet): no se registra la venta todavía — se manda
     // el monto al dispositivo y se espera la confirmación real del pago (ver
     // use-pago-mp-polling.ts, que corre en background y recién ahí crea la venta).
-    if (medioPagoSeleccionado?.esMercadoPago) {
+    // Consumo interno nunca pasa por acá aunque el medio elegido sea QR/Posnet: es
+    // $0, no tiene sentido mandarlo al dispositivo.
+    if (medioPagoSeleccionado?.esMercadoPago && !esConsumoInterno) {
       setLoading(true)
       try {
         const result = await enviarMontoMpAction(medioPagoId, totalACobrarCentavos)
@@ -130,6 +131,7 @@ export function useCarritoCheckout(onSuccess?: (ventaId: string) => void) {
         })),
         pagos: [{ paymentMethodId: medioPagoId, montoCentavos: totalACobrarCentavos }],
         descuentoCentavos,
+        esConsumoInterno,
       })
 
       if (!result.ok) {
@@ -225,6 +227,7 @@ export function useCarritoCheckout(onSuccess?: (ventaId: string) => void) {
     venta, carrito, medioPagoId, mediosPago, medioPagoSeleccionado,
     subtotal, totalCentavos, comisionCentavos, recargoTotalCentavos, totalACobrarCentavos, faltaPeso,
     descuentoPct, descuentoCentavos, totalConDescuentoCentavos, setDescuentoPct,
+    esConsumoInterno, setConsumoInterno,
     loading, successInfo, setSuccessInfo, confirmVaciar, setConfirmVaciar,
     manualDialogOpen, setManualDialogOpen, manualLoading, confirmarCobroManual,
     cambiarCantidad, setGramos, eliminarLinea, vaciarCarrito, setMedioPago,

@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "@/components/ui/dialog"
@@ -74,7 +75,7 @@ export function CarritoResumenPanel({ checkout, mostrarItems = false, expandActi
   const {
     venta, carrito, medioPagoId, mediosPago, medioPagoSeleccionado, subtotal,
     totalCentavos, comisionCentavos, recargoTotalCentavos, totalACobrarCentavos, faltaPeso,
-    descuentoPct, descuentoCentavos, setDescuentoPct,
+    descuentoPct, descuentoCentavos, setDescuentoPct, esConsumoInterno, setConsumoInterno,
     loading, successInfo, setSuccessInfo, confirmVaciar, setConfirmVaciar,
     manualDialogOpen, setManualDialogOpen, manualLoading, confirmarCobroManual,
     vaciarCarrito, setMedioPago, confirmar, cancelarPagoMp,
@@ -237,16 +238,21 @@ export function CarritoResumenPanel({ checkout, mostrarItems = false, expandActi
                   max={100}
                   value={descuentoPct || ""}
                   onChange={(e) => setDescuentoPct(Number(e.target.value) || 0)}
+                  disabled={esConsumoInterno}
                   placeholder="0"
-                  className="h-7 w-12 rounded-lg border-0 px-2 text-right tabular-nums"
+                  className="h-7 w-14 rounded-lg border-0 px-2 text-right tabular-nums disabled:opacity-60"
                 />
                 <span className="text-xs text-muted-foreground">%</span>
               </div>
             </div>
           </div>
+          <label className="flex items-center gap-2 text-sm cursor-pointer">
+            <Checkbox checked={esConsumoInterno} onCheckedChange={(c) => setConsumoInterno(c === true)} />
+            <span className="text-muted-foreground">Consumo interno / uso propio (gratis)</span>
+          </label>
           {recargoTotalCentavos > 0 && (
             <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">Recargo virtual</span>
+              <span className="text-muted-foreground">Recargo cigarrillos</span>
               <span className="tabular-nums">+{formatearARS(recargoTotalCentavos)}</span>
             </div>
           )}

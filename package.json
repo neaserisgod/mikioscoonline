@@ -19,7 +19,10 @@
     "db:seed": "tsx prisma/seed.ts",
     "db:reset": "prisma migrate reset --force && tsx prisma/seed.ts",
     "db:push:local": "cross-env LOCAL_DEV=1 prisma db push",
-    "db:seed:local": "cross-env LOCAL_DEV=1 tsx prisma/seed.ts"
+    "db:seed:local": "cross-env LOCAL_DEV=1 tsx prisma/seed.ts",
+    "db:push:kiosco": "cross-env LOCAL_DEV=1 DATABASE_URL=file:./kiosco.db prisma db push",
+    "kiosco:download-data": "tsx scripts/kiosco-download-data.ts",
+    "kiosco:backup-once": "tsx scripts/kiosco-backup-once.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",

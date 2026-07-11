@@ -66,14 +66,15 @@ model Organization {
 
 model User {
   id                  String       @id @default(cuid())
-  email               String       @unique
-  passwordHash        String?      // null si el usuario solo se loguea con Google
+  email               String?      @unique // null en perfiles de empleado (solo nombre+PIN, sin login propio)
+  passwordHash        String?      // null si el usuario solo se loguea con Google, o es un perfil PIN-only
+  pinHash             String?      // PIN corto (4 dígitos) para el cambio rápido de perfil en el kiosco
   image               String?      // foto de perfil de Google, opcional
   nombre              String
   role                Role         @default(VENDEDOR)
   activo              Boolean      @default(true)
-  failedLoginAttempts Int          @default(0) // se resetea en cada login exitoso
-  lockedUntil         DateTime?    // bloqueo temporal por fuerza bruta de contraseña
+  failedLoginAttempts Int          @default(0) // se resetea en cada login/PIN exitoso — comparte umbral entre password y PIN
+  lockedUntil         DateTime?    // bloqueo temporal por fuerza bruta de contraseña o PIN
   organizationId      String
   organization        Organization @relation(fields: [organizationId], references: [id])
   createdAt           DateTime     @default(now())
@@ -110,6 +111,24 @@ model Provider {
   id             String       @id @default(cuid())
   nombre         String
   activo         Boolean      @default(true)
+  // Fondo de reposición: se acumula con cada venta (100% del costo + 60% de la
+  // ganancia de las líneas cuando este proveedor tiene algún producto en stock bajo)
+  // y se descuenta cuando se registra una ENTRADA de stock (compra real al proveedor).
+  // Puede ir negativo si se compró más de lo que el fondo cubría — es informativo,
+  // no un límite duro.
+  saldoReposicionCentavos Int @default(0)
+  // Cuenta corriente: cuánto le debemos a este proveedor. Se carga a mano — no
+  // hay modelo de "compra"/orden de compra en el sistema. Sube al registrar una
+  // compra a crédito, baja al registrar un pago (que además crea un EGRESO real
+  // en la caja elegida). Puede ir negativo si se pagó de más — informativo.
+  saldoCuentaCorrienteCentavos Int @default(0)
+  // Piso de reinversión: colchón en pesos que SIEMPRE debe quedar reservado
+  // para reponerle stock a este proveedor antes de considerar "ganancia
+  // limpia" disponible — ver resumenService.reparto. A diferencia de
+  // saldoReposicionCentavos (que se acumula solo con las ventas), este es un
+  // monto fijo que carga el dueño a mano y NO se resetea cada mes: una vez
+  // alcanzado, deja de restar hasta que se gaste comprando stock.
+  pisoReposicionCentavos Int @default(0)
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id])
   createdAt      DateTime     @default(now())
@@ -171,7 +190,8 @@ model FixedExpense {
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
-  montos FixedExpenseMonto[]
+  montos      FixedExpenseMonto[]
+  movimientos MovimientoCaja[]
 
   @@unique([nombre, organizationId])
 }
@@ -193,6 +213,7 @@ model Caja {
   id                       String       @id @default(cuid())
   nombre                   String
   esPrincipal              Boolean      @default(false) // "Caja general" — una por org, no borrable
+  manejaEfectivo           Boolean      @default(true)  // false = caja 100% digital (ej. MercadoPago/QR) — no exige cierre al cambiar de perfil
   orden                    Int          @default(0)
   activo                   Boolean      @default(true)
   // Saldo real contado a mano (efectivo físico), para el equilibrio de Inicio —
@@ -248,6 +269,11 @@ model MovimientoCaja {
   medioPagoId     String?
   medioPago       PaymentMethod? @relation(fields: [medioPagoId], references: [id])
   nota            String?
+  // Liga este EGRESO al gasto fijo que paga (ej. "Alquiler + Gastos") — así el
+  // equilibrio de Inicio puede descontar del total a pagar del mes lo que ya
+  // salió de caja, en vez de comparar contra el monto bruto configurado.
+  fixedExpenseId  String?
+  fixedExpense    FixedExpense?  @relation(fields: [fixedExpenseId], references: [id])
   organizationId  String
   organization    Organization   @relation(fields: [organizationId], references: [id])
   fecha           DateTime       @default(now())
@@ -280,6 +306,9 @@ model Product {
   precioPorKgCentavos Int?
   stockGramos        Int?
   stockMinimoGramos  Int?
+  // Cigarrillo vendido suelto (no en atado) — recargo distinto al de atados
+  // cuando se paga con QR/Posnet (ver domain/recargo-cigarrillos.ts).
+  esCigarroSuelto    Boolean   @default(false)
   activo             Boolean   @default(true)
   organizationId     String
   organization       Organization @relation(fields: [organizationId], references: [id])
@@ -325,6 +354,18 @@ model Sale {
   costoTotalCentavos Int
   recargoCentavos    Int          @default(0) // Fase 5: recargo total por pago virtual
   descuentoCentavos  Int          @default(0) // descuento manual aplicado por el cajero, ya restado de totalCentavos
+  // Traspaso de cigarrillos vendidos por QR/Posnet: el proveedor de cigarrillos
+  // solo acepta efectivo, así que el monto (0 = no aplica) se calcula al crear
+  // la venta pero el movimiento de caja (EGRESO Caja general + INGRESO Caja
+  // Cigarrillos) recién se crea cuando alguien confirma que hizo el traspaso
+  // físico — ver ventaService.confirmarTraspasoCigarrillos.
+  traspasoCigarrillosCentavos   Int     @default(0)
+  traspasoCigarrillosConfirmado Boolean @default(false)
+  // Consumo de personal o del dueño (no es una venta real a un cliente): se
+  // cobra $0 (vía el mismo descuento manual del 100%) pero descuenta stock
+  // igual que cualquier venta. Se excluye de las cifras de ganancia y del
+  // fondo de reposición por proveedor — ver ventaService.crear.
+  esConsumoInterno   Boolean      @default(false)
   organizationId     String
   organization       Organization @relation(fields: [organizationId], references: [id])
   createdAt          DateTime     @default(now())

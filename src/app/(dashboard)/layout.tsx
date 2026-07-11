@@ -7,6 +7,7 @@ import { BottomNav } from "@/components/layout/bottom-nav"
 import { PageTransition } from "@/components/layout/page-transition"
 import { VentaOverlay } from "@/components/pos/venta-overlay"
 import { PagoMpPollingMount } from "@/components/pos/pago-mp-polling-mount"
+import { TraspasoCigarrillosGate } from "@/components/pos/traspaso-cigarrillos-gate"
 import { GlobalScannerMount } from "@/components/scanner/global-scanner-mount"
 import { QueryWarmup } from "@/components/providers/query-warmup"
 
@@ -38,6 +39,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
       <BottomNav />
       <VentaOverlay />
       <PagoMpPollingMount />
+      <TraspasoCigarrillosGate />
       <GlobalScannerMount />
       <QueryWarmup />
     </div>

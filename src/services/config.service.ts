@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma"
-import { mesAnioActual } from "@/domain/dinero"
+import { prisma as prismaAuth } from "@/lib/prisma-auth"
+import { mesAnioActual, inicioMes, finMes } from "@/domain/dinero"
 import { calcularTrialTerminaEl } from "@/lib/suscripcion"
 import bcrypt from "bcryptjs"
 
@@ -86,6 +87,55 @@ export const proveedorService = {
     const productos = await prisma.product.count({ where: { providerId: id } })
     if (productos > 0) throw new Error(`No se puede eliminar: tiene ${productos} producto(s) asociado(s)`)
     return prisma.provider.delete({ where: { id } })
+  },
+
+  /** Piso de reinversión: colchón fijo en pesos que se reserva para este
+   * proveedor antes de considerar "ganancia limpia" disponible — ver
+   * resumenService.reparto. Se carga a mano, no se resetea. */
+  async actualizarPisoReposicion(id: string, organizationId: string, montoCentavos: number) {
+    await prisma.provider.findFirstOrThrow({ where: { id, organizationId } })
+    return prisma.provider.update({ where: { id }, data: { pisoReposicionCentavos: montoCentavos } })
+  },
+
+  /** Cuenta corriente: compra a crédito — sube lo que le debemos, cargado a mano. */
+  async registrarCompraCuentaCorriente(id: string, organizationId: string, montoCentavos: number) {
+    await prisma.provider.findFirstOrThrow({ where: { id, organizationId } })
+    return prisma.provider.update({
+      where: { id },
+      data: { saldoCuentaCorrienteCentavos: { increment: montoCentavos } },
+    })
+  },
+
+  /** Cuenta corriente: pago al proveedor — baja lo que le debemos Y crea un
+   * EGRESO real en la caja elegida (plata que efectivamente salió). */
+  async registrarPagoCuentaCorriente(
+    id: string,
+    organizationId: string,
+    montoCentavos: number,
+    cajaId: string
+  ) {
+    return prisma.$transaction(async (tx) => {
+      const provider = await tx.provider.findFirstOrThrow({ where: { id, organizationId } })
+      const caja = await tx.caja.findFirstOrThrow({ where: { id: cajaId, organizationId } })
+      const sesion = await tx.cajaSesion.findFirst({ where: { cajaId, estado: "ABIERTA" } })
+      if (!sesion) throw new Error(`Abrí la ${caja.nombre} antes de registrar el pago`)
+
+      await tx.movimientoCaja.create({
+        data: {
+          cajaSesionId: sesion.id,
+          cajaId,
+          tipo: "EGRESO",
+          montoCentavos,
+          nota: `Pago a proveedor: ${provider.nombre}`,
+          organizationId,
+        },
+      })
+
+      return tx.provider.update({
+        where: { id },
+        data: { saldoCuentaCorrienteCentavos: { decrement: montoCentavos } },
+      })
+    })
   },
 }
 
@@ -246,14 +296,32 @@ export const medioPagoService = {
 // ─── Gastos fijos ─────────────────────────────────────────────────────────────
 
 export const gastoFijoService = {
+  // Incluye cuánto se pagó YA este mes (suma de EGRESOs de caja vinculados,
+  // ver `pagar` más abajo) para que la UI pueda mostrar pagado/pendiente por
+  // gasto fijo, no solo el monto presupuestado.
   async listar(organizationId: string) {
-    return prisma.fixedExpense.findMany({
-      where: { organizationId },
-      include: {
-        montos: { orderBy: { mesAnio: "desc" }, take: 12 },
-      },
-      orderBy: { nombre: "asc" },
-    })
+    const [gastos, pagosDelMes] = await Promise.all([
+      prisma.fixedExpense.findMany({
+        where: { organizationId },
+        include: {
+          montos: { orderBy: { mesAnio: "desc" }, take: 12 },
+        },
+        orderBy: { nombre: "asc" },
+      }),
+      prisma.movimientoCaja.groupBy({
+        by: ["fixedExpenseId"],
+        where: {
+          organizationId,
+          tipo: "EGRESO",
+          fixedExpenseId: { not: null },
+          fecha: { gte: inicioMes(), lte: finMes() },
+        },
+        _sum: { montoCentavos: true },
+      }),
+    ])
+
+    const pagadoPorGasto = new Map(pagosDelMes.map((p) => [p.fixedExpenseId, p._sum.montoCentavos ?? 0]))
+    return gastos.map((g) => ({ ...g, pagadoMesActualCentavos: pagadoPorGasto.get(g.id) ?? 0 }))
   },
 
   async crear(
@@ -300,6 +368,31 @@ export const gastoFijoService = {
     await prisma.fixedExpense.findFirstOrThrow({ where: { id, organizationId } })
     return prisma.fixedExpense.update({ where: { id }, data: { activo: true } })
   },
+
+  /** Registra el pago de un gasto fijo: crea un EGRESO real en la caja
+   * elegida, vinculado a este gasto fijo (`fixedExpenseId`) para que el
+   * equilibrio de Inicio pueda descontarlo de "a pagar" en vez de contarlo
+   * dos veces (la plata ya salió de la caja Y seguía figurando como pendiente). */
+  async pagar(id: string, organizationId: string, montoCentavos: number, cajaId: string) {
+    return prisma.$transaction(async (tx) => {
+      const gasto = await tx.fixedExpense.findFirstOrThrow({ where: { id, organizationId } })
+      const caja = await tx.caja.findFirstOrThrow({ where: { id: cajaId, organizationId } })
+      const sesion = await tx.cajaSesion.findFirst({ where: { cajaId, estado: "ABIERTA" } })
+      if (!sesion) throw new Error(`Abrí la ${caja.nombre} antes de registrar el pago`)
+
+      return tx.movimientoCaja.create({
+        data: {
+          cajaSesionId: sesion.id,
+          cajaId,
+          tipo: "EGRESO",
+          montoCentavos,
+          nota: `Pago de gasto fijo: ${gasto.nombre}`,
+          fixedExpenseId: id,
+          organizationId,
+        },
+      })
+    })
+  },
 }
 
 // ─── Organización ─────────────────────────────────────────────────────────────
@@ -344,53 +437,112 @@ export const organizacionService = {
     })
   },
 
-  /** Saldo real de la cuenta de Mercado Pago, cargado a mano (ver equilibrioReal en resumen.service.ts). */
-  async actualizarSaldoMp(organizationId: string, montoCentavos: number) {
-    return prisma.organization.update({
-      where: { id: organizationId },
-      data: { saldoMpCentavos: montoCentavos, saldoMpActualizadoEn: new Date() },
-    })
-  },
 }
 
 // ─── Usuarios ────────────────────────────────────────────────────────────────
 
 export const usuarioService = {
   async listar(organizationId: string) {
-    return prisma.user.findMany({
+    const usuarios = await prisma.user.findMany({
       where: { organizationId },
-      select: { id: true, nombre: true, email: true, role: true, activo: true, createdAt: true },
+      select: { id: true, nombre: true, email: true, role: true, activo: true, createdAt: true, pinHash: true },
       orderBy: { nombre: "asc" },
     })
+    // No exponemos el hash del PIN al cliente, solo si tiene uno configurado.
+    return usuarios.map(({ pinHash, ...u }) => ({ ...u, tienePin: pinHash !== null }))
   },
 
+  // Altas/bajas de usuarios escriben SIEMPRE contra Neon (además de local): el
+  // login valida siempre contra Neon (ver @/lib/prisma-auth), así que si esto
+  // solo tocara la base local del kiosco, un vendedor desactivado seguiría
+  // pudiendo loguearse hasta el próximo backup nocturno — hueco de acceso real,
+  // no solo demora cosmética. Son operaciones de baja frecuencia (altas/bajas
+  // de empleados), no afectan la velocidad del POS.
+  //
+  // Fuera del kiosco (Vercel, o dev normal) `prisma` y `prismaAuth` son el
+  // mismo Neon — NEON_DATABASE_URL solo la setea el arranque del kiosco. Ahí
+  // escribir dos veces duplicaría el insert/update contra la misma fila, así
+  // que la escritura a `prismaAuth` se salta cuando no es una base distinta.
   async crear(
     organizationId: string,
     data: { nombre: string; email: string; password: string; role: "ADMIN" | "VENDEDOR" }
   ) {
-    const existing = await prisma.user.findUnique({ where: { email: data.email } })
-    if (existing) throw new Error("Ya existe un usuario con ese email")
+    const esKioscoLocal = !!process.env.NEON_DATABASE_URL
+    const existenteNeon = await prismaAuth.user.findUnique({ where: { email: data.email } })
+    if (existenteNeon) throw new Error("Ya existe un usuario con ese email")
     const passwordHash = await bcrypt.hash(data.password, 10)
-    return prisma.user.create({
-      data: { nombre: data.nombre, email: data.email, passwordHash, role: data.role, organizationId },
-      select: { id: true, nombre: true, email: true, role: true, activo: true, createdAt: true },
-    })
+    // Mismo id explícito en las dos bases — si cada una generara el suyo, el
+    // backup nocturno (que hace upsert por id) crearía un segundo usuario
+    // duplicado en Neon con el mismo email (choca con el @unique de User.email).
+    const id = crypto.randomUUID()
+    const datosUsuario = { id, nombre: data.nombre, email: data.email, passwordHash, role: data.role, organizationId }
+    const select = { id: true, nombre: true, email: true, role: true, activo: true, createdAt: true } as const
+    if (esKioscoLocal) await prismaAuth.user.create({ data: datosUsuario, select })
+    return prisma.user.create({ data: datosUsuario, select })
   },
 
   async desactivar(id: string, organizationId: string, currentUserId: string) {
     if (id === currentUserId) throw new Error("No podés desactivar tu propio usuario")
     await prisma.user.findFirstOrThrow({ where: { id, organizationId } })
+    if (process.env.NEON_DATABASE_URL) await prismaAuth.user.update({ where: { id }, data: { activo: false } })
     return prisma.user.update({ where: { id }, data: { activo: false } })
   },
 
   async reactivar(id: string, organizationId: string) {
     await prisma.user.findFirstOrThrow({ where: { id, organizationId } })
+    if (process.env.NEON_DATABASE_URL) await prismaAuth.user.update({ where: { id }, data: { activo: true } })
     return prisma.user.update({ where: { id }, data: { activo: true } })
   },
 
   async cambiarRol(id: string, organizationId: string, role: "ADMIN" | "VENDEDOR", currentUserId: string) {
     if (id === currentUserId) throw new Error("No podés cambiar tu propio rol")
     await prisma.user.findFirstOrThrow({ where: { id, organizationId } })
+    if (process.env.NEON_DATABASE_URL) await prismaAuth.user.update({ where: { id }, data: { role } })
     return prisma.user.update({ where: { id }, data: { role } })
+  },
+
+  /** Perfiles con PIN activos de la organización, para el selector de cambio
+   * rápido de usuario en el kiosco — accesible a cualquier usuario logueado,
+   * no solo al admin (cualquiera puede cambiar a otro perfil). Incluye
+   * cuentas ADMIN con PIN a propósito: decisión consciente del dueño
+   * (2026-07-10) que prioriza la practicidad de acceso rápido sobre el
+   * riesgo — cualquiera con acceso físico al kiosco que sepa ese PIN entra
+   * como admin completo. `role` se expone al cliente para que el switcher
+   * pueda mostrar quién es admin, no para ocultarlo. */
+  async listarPerfilesConPin(organizationId: string) {
+    return prisma.user.findMany({
+      where: { organizationId, activo: true, pinHash: { not: null } },
+      select: { id: true, nombre: true, role: true },
+      orderBy: { nombre: "asc" },
+    })
+  },
+
+  // Perfil de empleado sin login propio (sin email/contraseña) — solo nombre +
+  // PIN de 4 dígitos, pensado para cambio rápido de usuario en el kiosco
+  // físico. Siempre VENDEDOR: un ADMIN ya tiene su propio login con Google o
+  // contraseña. Mismo dual-write a Neon que `crear` — ver comentario ahí.
+  async crearPerfilPin(organizationId: string, data: { nombre: string; pin: string }) {
+    const esKioscoLocal = !!process.env.NEON_DATABASE_URL
+    const pinHash = await bcrypt.hash(data.pin, 10)
+    const id = crypto.randomUUID()
+    const datosUsuario = {
+      id, nombre: data.nombre, email: null, pinHash, role: "VENDEDOR" as const, organizationId,
+    }
+    const select = { id: true, nombre: true, role: true, activo: true, createdAt: true } as const
+    if (esKioscoLocal) await prismaAuth.user.create({ data: datosUsuario, select })
+    return prisma.user.create({ data: datosUsuario, select })
+  },
+
+  /** Setea/cambia el PIN de un perfil existente (limpia el bloqueo por
+   * fuerza bruta de paso, como un reseteo de contraseña). Permitido también
+   * sobre cuentas ADMIN — el dueño decidió priorizar la practicidad de
+   * acceso rápido en el kiosco sobre el riesgo de que un PIN de 4 dígitos
+   * habilite sesión de administrador completa (2026-07-10). */
+  async resetearPin(id: string, organizationId: string, pin: string) {
+    await prisma.user.findFirstOrThrow({ where: { id, organizationId } })
+    const pinHash = await bcrypt.hash(pin, 10)
+    const data = { pinHash, failedLoginAttempts: 0, lockedUntil: null }
+    if (process.env.NEON_DATABASE_URL) await prismaAuth.user.update({ where: { id }, data })
+    return prisma.user.update({ where: { id }, data })
   },
 }

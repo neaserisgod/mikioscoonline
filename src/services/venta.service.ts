@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma"
-import { calcularComision, calcularRecargo } from "@/domain/comisiones"
+import { calcularComision } from "@/domain/comisiones"
+import { calcularRecargoCigarrillos } from "@/domain/recargo-cigarrillos"
 import { resolverCajaId } from "@/domain/cajas"
 import { precioUnitarioEfectivo, costoUnitarioEfectivo, subtotalLinea } from "@/domain/pesables"
 
@@ -28,9 +29,42 @@ export interface CrearVentaInput {
   pagos: PagoInput[]
   /** Descuento manual del cajero, en centavos, sobre el subtotal de productos. */
   descuentoCentavos?: number
+  /** Consumo de personal o del dueño — no es una venta real a un cliente: no
+   * suma al fondo de reposición del proveedor ni a las cifras de ganancia. */
+  esConsumoInterno?: boolean
 }
 
 // ─── Servicio ─────────────────────────────────────────────────────────────────
+
+/** Efectivo físico disponible en la sesión abierta de la Caja principal —
+ * mismo cálculo que `calcEfectivoEsperado` de cajaSesion.service.ts (solo
+ * ventas en efectivo, a diferencia del "total en caja" que usa el equilibrio
+ * de Inicio, que sí suma ventas digitales). Es el número que importa acá:
+ * cuánta plata física hay para hacer el traspaso a mano. */
+async function efectivoDisponibleCajaPrincipal(organizationId: string): Promise<number> {
+  const cajaPrincipal = await prisma.caja.findFirst({
+    where: { organizationId, esPrincipal: true },
+    select: { id: true },
+  })
+  if (!cajaPrincipal) return 0
+
+  const sesion = await prisma.cajaSesion.findFirst({
+    where: { cajaId: cajaPrincipal.id, estado: "ABIERTA" },
+    select: {
+      fondoInicialCentavos: true,
+      movimientos: { select: { tipo: true, montoCentavos: true, medioPago: { select: { esEfectivo: true } } } },
+    },
+  })
+  if (!sesion) return 0
+
+  let total = sesion.fondoInicialCentavos
+  for (const m of sesion.movimientos) {
+    if (m.tipo === "INGRESO") total += m.montoCentavos
+    else if (m.tipo === "EGRESO") total -= m.montoCentavos
+    else if (m.tipo === "VENTA" && m.medioPago?.esEfectivo) total += m.montoCentavos
+  }
+  return total
+}
 
 export const ventaService = {
   async crear(input: CrearVentaInput) {
@@ -166,10 +200,31 @@ export const ventaService = {
       })
       const cajaPorId = new Map(cajasDetalle.map((c) => [c.id, c]))
 
+      // 6.5. Recargo por cigarrillos pagados con QR/Posnet (ver domain/recargo-cigarrillos.ts).
+      // Ya no es un % ni un fijo por medio de pago: solo aplica a unidades de la
+      // categoría Cigarrillos, escalonado por cantidad (atados vs. sueltos). Se
+      // calcula una sola vez para toda la venta y se prorratea por pago más abajo.
+      const categoriaCigarrillos = await tx.category.findFirst({
+        where: { organizationId: input.organizationId, nombre: "Cigarrillos" },
+        select: { id: true },
+      })
+      const recargoCigarrillosTotalCentavos = categoriaCigarrillos
+        ? calcularRecargoCigarrillos(
+            input.lineas.map((linea) => {
+              const producto = productos.find((p) => p.id === linea.productId)!
+              return {
+                esCigarrillo: producto.categoryId === categoriaCigarrillos.id,
+                esCigarroSuelto: producto.esCigarroSuelto,
+                cantidad: linea.cantidad,
+              }
+            })
+          )
+        : 0
+
       // 7. Atribución final por caja: si el medio de pago tiene caja propia, esa porción va
       // entera ahí (override); si no, se reparte proporcional al split por categoría. El recargo
-      // se calcula por medio de pago (no por caja — ver PaymentMethod) y se prorratea junto con
-      // el ingreso que le corresponde a cada caja.
+      // de cigarrillos se prorratea por pago (solo QR/Posnet) junto con el ingreso que le
+      // corresponde a cada caja.
       const totalPagado = input.pagos.reduce((sum, p) => sum + p.montoCentavos, 0)
       const montoPorCaja = new Map<string, number>()
       const recargoPorCaja = new Map<string, number>()
@@ -178,7 +233,7 @@ export const ventaService = {
         const medio = medios.find((m) => m.id === pago.paymentMethodId)!
         const fraccion = totalPagado > 0 ? pago.montoCentavos / totalPagado : 0
         const ingresoPago = Math.round(totalConDescuentoCentavos * fraccion)
-        const recargoPago = medio.esEfectivo ? 0 : calcularRecargo(medio, ingresoPago)
+        const recargoPago = medio.esMercadoPago ? Math.round(recargoCigarrillosTotalCentavos * fraccion) : 0
 
         if (medio.cajaId) {
           montoPorCaja.set(medio.cajaId, (montoPorCaja.get(medio.cajaId) ?? 0) + ingresoPago)
@@ -235,6 +290,7 @@ export const ventaService = {
           costoTotalCentavos,
           recargoCentavos: recargoCentavosTotal,
           descuentoCentavos,
+          esConsumoInterno: input.esConsumoInterno ?? false,
           lines: { create: lineasConFoto },
           payments: { create: pagosConComision },
         },
@@ -313,6 +369,70 @@ export const ventaService = {
         }
       }
 
+      // 10.5. Fondo de reposición por proveedor: el 100% del costo de cada línea (escalado por
+      // el mismo factorDescuento que ya reparte la plata real cobrada entre cajas) se acumula
+      // siempre para reponer stock; si el proveedor tiene algún producto en stock bajo tras esta
+      // venta, se suma además el 60% de la ganancia de línea (también escalada) — así se prioriza
+      // reponer productos que se están por agotar aunque implique reinvertir parte de la ganancia.
+      // No aplica a consumo interno: no entró plata real que financie la reposición.
+      const providerIdsInvolucrados = input.esConsumoInterno
+        ? []
+        : [...new Set(productos.map((p) => p.providerId).filter((id): id is string => !!id))]
+
+      if (providerIdsInvolucrados.length > 0) {
+        const productosDeProveedores = await tx.product.findMany({
+          where: { providerId: { in: providerIdsInvolucrados }, organizationId: input.organizationId, activo: true },
+          select: { providerId: true, esPesable: true, stock: true, stockMinimo: true, stockGramos: true, stockMinimoGramos: true },
+        })
+        const proveedoresConStockBajo = new Set(
+          productosDeProveedores
+            .filter((p) =>
+              p.esPesable ? (p.stockGramos ?? 0) <= (p.stockMinimoGramos ?? 0) : p.stock <= p.stockMinimo
+            )
+            .map((p) => p.providerId!)
+        )
+
+        const aportePorProveedor = new Map<string, number>()
+        for (const linea of lineasConFoto) {
+          const producto = productos.find((p) => p.id === linea.productId)!
+          if (!producto.providerId) continue
+
+          const costoLinea = subtotalLinea({
+            esPesable: producto.esPesable,
+            precioUnitarioCentavos: linea.costoUnitarioCentavos,
+            cantidad: linea.cantidad,
+            gramos: linea.gramos,
+          })
+          const precioLinea = subtotalLinea({
+            esPesable: producto.esPesable,
+            precioUnitarioCentavos: linea.precioUnitarioCentavos,
+            cantidad: linea.cantidad,
+            gramos: linea.gramos,
+          })
+          const costoLineaCobrado = Math.round(costoLinea * factorDescuento)
+          const precioLineaCobrado = Math.round(precioLinea * factorDescuento)
+          const gananciaLineaCobrada = precioLineaCobrado - costoLineaCobrado
+
+          let aporte = costoLineaCobrado
+          if (proveedoresConStockBajo.has(producto.providerId)) {
+            aporte += Math.round(gananciaLineaCobrada * 0.6)
+          }
+
+          aportePorProveedor.set(
+            producto.providerId,
+            (aportePorProveedor.get(producto.providerId) ?? 0) + aporte
+          )
+        }
+
+        for (const [providerId, montoCentavos] of aportePorProveedor) {
+          if (montoCentavos === 0) continue
+          await tx.provider.update({
+            where: { id: providerId },
+            data: { saldoReposicionCentavos: { increment: montoCentavos } },
+          })
+        }
+      }
+
       // 11. Atribuir venta a cajas (un MovimientoCaja por caja involucrada)
       const medioPagoId = input.pagos[0].paymentMethodId
       for (const [cajaId, montoCentavos] of montoPorCaja) {
@@ -333,8 +453,140 @@ export const ventaService = {
         })
       }
 
+      // 11.5. Traspaso de cigarrillos por QR/Posnet: el proveedor de cigarrillos
+      // solo acepta efectivo. La venta por un medio no-efectivo (QR/Posnet) ya
+      // va entera a la caja que tenga configurada ese medio (ver paso 7) y no
+      // deja nada de efectivo en Caja Cigarrillos — así que hace falta un
+      // traspaso real de billetes desde Caja general. Ese traspaso lo hace una
+      // persona a mano, así que acá SOLO se calcula y guarda el monto — el
+      // movimiento de caja (EGRESO + INGRESO) recién se crea cuando alguien
+      // confirma que ya lo hizo físicamente (ver confirmarTraspasoCigarrillos).
+      let traspasoCigarrillosCentavos = 0
+      if (categoriaCigarrillos) {
+        let montoCigarrillosLista = 0
+        for (const linea of input.lineas) {
+          const producto = productos.find((p) => p.id === linea.productId)!
+          if (producto.categoryId !== categoriaCigarrillos.id) continue
+          const precioUnitarioCentavos = precioUnitarioEfectivo(producto)
+          const gramos = producto.esPesable ? linea.gramos ?? 0 : null
+          montoCigarrillosLista += subtotalLinea({ esPesable: producto.esPesable, precioUnitarioCentavos, cantidad: linea.cantidad, gramos })
+        }
+        const montoCigarrillosDescontado = Math.round(montoCigarrillosLista * factorDescuento)
+
+        if (montoCigarrillosDescontado > 0 || recargoCigarrillosTotalCentavos > 0) {
+          for (const pago of input.pagos) {
+            const medio = medios.find((m) => m.id === pago.paymentMethodId)!
+            if (medio.esEfectivo) continue
+
+            const fraccion = totalPagado > 0 ? pago.montoCentavos / totalPagado : 0
+            const montoBase = Math.round(montoCigarrillosDescontado * fraccion)
+            // El recargo ya es 100% cigarrillos (ver paso 6.5) — a diferencia de antes,
+            // no hace falta volver a prorratearlo por el peso de los cigarrillos dentro
+            // de la venta: la porción de este pago YA es el recargo que le corresponde.
+            const recargoBase = medio.esMercadoPago ? Math.round(recargoCigarrillosTotalCentavos * fraccion) : 0
+
+            traspasoCigarrillosCentavos += montoBase + recargoBase
+          }
+        }
+      }
+
+      if (traspasoCigarrillosCentavos > 0) {
+        await tx.sale.update({
+          where: { id: venta.id },
+          data: { traspasoCigarrillosCentavos },
+        })
+        // El objeto ya creado en el paso 9 quedaría desactualizado (traspasoCigarrillosCentavos: 0)
+        // si no se refleja acá — nada lo consume hoy, pero que el valor devuelto sea real.
+        venta.traspasoCigarrillosCentavos = traspasoCigarrillosCentavos
+      }
+
       return venta
     })
+  },
+
+  /**
+   * Confirma que el traspaso físico de efectivo (Caja general → Caja
+   * Cigarrillos) ya se hizo, y recién ahí crea el movimiento de caja
+   * correspondiente. Idempotente: si ya estaba confirmado, no hace nada.
+   */
+  async confirmarTraspasoCigarrillos(saleId: string, organizationId: string) {
+    return prisma.$transaction(async (tx) => {
+      const venta = await tx.sale.findFirstOrThrow({ where: { id: saleId, organizationId } })
+      if (venta.traspasoCigarrillosCentavos === 0 || venta.traspasoCigarrillosConfirmado) {
+        return venta
+      }
+
+      const cajaPrincipal = await tx.caja.findFirstOrThrow({
+        where: { organizationId, esPrincipal: true },
+        select: { id: true, nombre: true },
+      })
+      const categoriaCigarrillos = await tx.category.findFirstOrThrow({
+        where: { organizationId, nombre: "Cigarrillos" },
+        select: { cajaId: true },
+      })
+      const cajaCigarrillosId = resolverCajaId(categoriaCigarrillos.cajaId, cajaPrincipal.id)
+      const cajaCigarrillos = await tx.caja.findFirstOrThrow({
+        where: { id: cajaCigarrillosId, organizationId },
+        select: { id: true, nombre: true },
+      })
+
+      const [sesionPrincipal, sesionCigarrillos] = await Promise.all([
+        tx.cajaSesion.findFirst({ where: { cajaId: cajaPrincipal.id, estado: "ABIERTA" } }),
+        tx.cajaSesion.findFirst({ where: { cajaId: cajaCigarrillos.id, estado: "ABIERTA" } }),
+      ])
+      if (!sesionPrincipal) throw new Error(`Abrí la ${cajaPrincipal.nombre} antes de confirmar el traspaso`)
+      if (!sesionCigarrillos) throw new Error(`Abrí la ${cajaCigarrillos.nombre} antes de confirmar el traspaso`)
+
+      const nota = "Traspaso cigarrillos QR/Posnet"
+      await tx.movimientoCaja.create({
+        data: {
+          cajaSesionId: sesionPrincipal.id,
+          cajaId: cajaPrincipal.id,
+          saleId: venta.id,
+          tipo: "EGRESO",
+          montoCentavos: venta.traspasoCigarrillosCentavos,
+          nota,
+          organizationId,
+        },
+      })
+      await tx.movimientoCaja.create({
+        data: {
+          cajaSesionId: sesionCigarrillos.id,
+          cajaId: cajaCigarrillos.id,
+          saleId: venta.id,
+          tipo: "INGRESO",
+          montoCentavos: venta.traspasoCigarrillosCentavos,
+          nota,
+          organizationId,
+        },
+      })
+
+      return tx.sale.update({
+        where: { id: venta.id },
+        data: { traspasoCigarrillosConfirmado: true },
+      })
+    })
+  },
+
+  /**
+   * Traspasos de cigarrillos sin confirmar, más si hay efectivo físico
+   * suficiente en la Caja principal para hacerlos AHORA. Si no lo hay, el
+   * gate no debe bloquear la pantalla — no tiene sentido forzar a alguien a
+   * mentir que ya hizo un traspaso que no puede hacer porque no hay billetes.
+   * En cuanto entre efectivo suficiente (venta en efectivo o ingreso manual),
+   * `bloqueante` pasa a true solo (el polling del gate se encarga del resto).
+   */
+  async listarTraspasosPendientes(organizationId: string) {
+    const pendientes = await prisma.sale.findMany({
+      where: { organizationId, traspasoCigarrillosCentavos: { gt: 0 }, traspasoCigarrillosConfirmado: false },
+      select: { id: true, fecha: true, traspasoCigarrillosCentavos: true },
+      orderBy: { fecha: "asc" },
+    })
+    if (pendientes.length === 0) return { pendientes, totalCentavos: 0, bloqueante: false }
+
+    const totalCentavos = pendientes.reduce((sum, p) => sum + p.traspasoCigarrillosCentavos, 0)
+    const efectivoDisponible = await efectivoDisponibleCajaPrincipal(organizationId)
+    return { pendientes, totalCentavos, bloqueante: efectivoDisponible >= totalCentavos }
   },
 
   async obtener(id: string, organizationId: string) {
@@ -367,6 +619,7 @@ export const ventaService = {
         totalCentavos: true,
         costoTotalCentavos: true,
         descuentoCentavos: true,
+        esConsumoInterno: true,
         _count: { select: { lines: true } },
         payments: { select: { paymentMethod: { select: { nombre: true } } } },
         user: { select: { nombre: true } },

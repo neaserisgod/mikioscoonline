@@ -49,3 +49,28 @@ export function subtotalLinea(input: {
 export function stockDisponible(producto: { esPesable: boolean; stock: number; stockGramos: number | null }): number {
   return producto.esPesable ? (producto.stockGramos ?? 0) : producto.stock
 }
+
+/** Valor del stock disponible de un producto, a precio de lista y a costo —
+ * base compartida por `gananciaPotencial` (valorVenta - valorCosto) y por
+ * el valor de mercadería a costo del negocio completo (ver
+ * productoService.valorInventario). */
+export function valoresInventario(
+  producto: DatosPrecioProducto & { stock: number; stockGramos: number | null }
+): { valorVentaCentavos: number; valorCostoCentavos: number } {
+  const precioUnit = precioUnitarioEfectivo(producto)
+  const costoUnit = costoUnitarioEfectivo(producto)
+  const cantidad = stockDisponible(producto)
+  const gramos = producto.esPesable ? cantidad : null
+  const valorVentaCentavos = subtotalLinea({ esPesable: producto.esPesable, precioUnitarioCentavos: precioUnit, cantidad, gramos })
+  const valorCostoCentavos = subtotalLinea({ esPesable: producto.esPesable, precioUnitarioCentavos: costoUnit, cantidad, gramos })
+  return { valorVentaCentavos, valorCostoCentavos }
+}
+
+/** Ganancia potencial si se vendiera todo el stock actual al precio de lista
+ * (precio − costo, multiplicado por el stock disponible). No es rentabilidad
+ * real (esa se calcula sobre ventas ya hechas, ver rentabilidad.service.ts) —
+ * es una proyección sobre el inventario que hay ahora. */
+export function gananciaPotencial(producto: DatosPrecioProducto & { stock: number; stockGramos: number | null }): number {
+  const { valorVentaCentavos, valorCostoCentavos } = valoresInventario(producto)
+  return valorVentaCentavos - valorCostoCentavos
+}

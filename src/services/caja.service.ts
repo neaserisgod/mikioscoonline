@@ -110,9 +110,14 @@ export const cajaService = {
   /** Obtiene la caja principal de la org. Siempre existe. */
   getPrincipal,
 
-  /** Lista cajas activas con su sesión abierta (para el POS y la home). */
+  /** Lista cajas activas con su sesión abierta (para el POS y la home). Para
+   * las que no tienen sesión abierta, suma cuánto se contó al cerrar la
+   * última — así "Abrir caja" puede sugerir ese monto como fondo inicial en
+   * vez de arrancar en $0 (bug real: "Ventas QR/Posnet" perdió ~$1,38M del
+   * saldo de Mercado Pago porque se reabrió con fondo $0 en vez de arrastrar
+   * lo contado al cierre anterior — ver conversación del 2026-07-10). */
   async listarActivas(organizationId: string) {
-    return prisma.caja.findMany({
+    const cajas = await prisma.caja.findMany({
       where: { organizationId, activo: true },
       include: {
         sesiones: {
@@ -136,5 +141,19 @@ export const cajaService = {
       },
       orderBy: [{ esPrincipal: "desc" }, { orden: "asc" }],
     })
+
+    const sinAbrir = cajas.filter((c) => c.sesiones.length === 0)
+    const ultimosCierres = await Promise.all(
+      sinAbrir.map((c) =>
+        prisma.cajaSesion.findFirst({
+          where: { cajaId: c.id, estado: "CERRADA" },
+          orderBy: { fechaCierre: "desc" },
+          select: { efectivoContadoCentavos: true },
+        })
+      )
+    )
+    const cierrePorCaja = new Map(sinAbrir.map((c, i) => [c.id, ultimosCierres[i]?.efectivoContadoCentavos ?? null]))
+
+    return cajas.map((c) => ({ ...c, ultimoCierreCentavos: cierrePorCaja.get(c.id) ?? null }))
   },
 }

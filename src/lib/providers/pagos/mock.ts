@@ -48,4 +48,8 @@ export class MockPagosProvider implements PagosProvider {
   async cancelarOrdenPosnet(_orderId: string): Promise<void> {
     await new Promise((r) => setTimeout(r, 50))
   }
+
+  async cancelarOrdenQr(_orderId: string): Promise<void> {
+    await new Promise((r) => setTimeout(r, 50))
+  }
 }

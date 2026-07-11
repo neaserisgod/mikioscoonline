@@ -9,8 +9,8 @@ export default async function ProductosPage() {
 
   const queryClient = getQueryClient()
   await queryClient.prefetchQuery({
-    queryKey: ["productos", ""],
-    queryFn: async () => serializable(await productoService.listar(session.user.organizationId)),
+    queryKey: ["productos-resumen-proveedores"],
+    queryFn: async () => serializable(await productoService.resumenProveedores(session.user.organizationId)),
   })
 
   return (

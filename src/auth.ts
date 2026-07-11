@@ -1,9 +1,10 @@
 import NextAuth from "next-auth"
 import Credentials from "next-auth/providers/credentials"
 import Google from "next-auth/providers/google"
+import { getToken } from "next-auth/jwt"
 import { prisma } from "@/lib/prisma"
 import { authConfig } from "@/auth.config"
-import { verificarCredenciales } from "@/lib/verificar-credenciales"
+import { verificarCredenciales, verificarPin } from "@/lib/verificar-credenciales"
 import { resolverUsuarioGoogle } from "@/lib/resolver-usuario-google"
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
@@ -20,6 +21,39 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         const user = await verificarCredenciales(
           credentials.email as string,
           credentials.password as string
+        )
+        if (!user) return null
+
+        return {
+          id: user.id,
+          email: user.email,
+          name: user.nombre,
+          role: user.role,
+          organizationId: user.organizationId,
+        }
+      },
+    }),
+    Credentials({
+      id: "pin",
+      name: "PIN",
+      credentials: {
+        userId: { label: "Perfil" },
+        pin: { label: "PIN", type: "password" },
+      },
+      authorize: async (credentials, request) => {
+        if (!credentials?.userId || !credentials?.pin) return null
+
+        // Cambio de perfil dentro del kiosco: solo puede moverse DENTRO de la
+        // organización de la sesión que ya está activa (la que desbloqueó el
+        // kiosco al arrancar) — se lee del JWT de esa sesión, nunca de un dato
+        // que mande el cliente, para que no se pueda pinear hacia otra org.
+        const tokenActual = await getToken({ req: request, secret: process.env.AUTH_SECRET })
+        if (!tokenActual?.organizationId) return null
+
+        const user = await verificarPin(
+          credentials.userId as string,
+          credentials.pin as string,
+          tokenActual.organizationId as string
         )
         if (!user) return null
 

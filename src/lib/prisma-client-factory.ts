@@ -1,7 +1,6 @@
 import { PrismaClient } from "@prisma/client"
 
-export function createPrismaClient() {
-  const url = process.env.DATABASE_URL!
+export function createPrismaClient(url: string = process.env.DATABASE_URL!) {
   if (url?.startsWith("file:")) {
     // Client generado aparte (ver output en schema.dev.prisma) para que no colisione
     // con el client de Postgres — cada uno queda atado a su propio conector.

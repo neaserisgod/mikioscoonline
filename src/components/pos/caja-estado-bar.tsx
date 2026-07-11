@@ -13,11 +13,12 @@ interface CajaConSesion {
   nombre: string
   esPrincipal: boolean
   sesiones: { id: string }[]
+  ultimoCierreCentavos: number | null
 }
 
 export function CajaEstadoBar({ compact = false }: { compact?: boolean }) {
   const qc = useQueryClient()
-  const [abriendo, setAbriendo] = useState<{ id: string; nombre: string } | null>(null)
+  const [abriendo, setAbriendo] = useState<{ id: string; nombre: string; ultimoCierreCentavos: number | null } | null>(null)
 
   const { data: cajas } = useQuery<CajaConSesion[]>({
     queryKey: ["cajas-panel"],
@@ -56,7 +57,7 @@ export function CajaEstadoBar({ compact = false }: { compact?: boolean }) {
               size="sm"
               variant="outline"
               className="h-7 rounded-lg text-xs shrink-0 border-k-loss/40 text-k-loss hover:text-k-loss"
-              onClick={() => setAbriendo({ id: c.id, nombre: c.nombre })}
+              onClick={() => setAbriendo({ id: c.id, nombre: c.nombre, ultimoCierreCentavos: c.ultimoCierreCentavos })}
             >
               Abrir
             </Button>
@@ -70,6 +71,7 @@ export function CajaEstadoBar({ compact = false }: { compact?: boolean }) {
             <AbrirCajaSheet
               cajaNombre={abriendo.nombre}
               cajaId={abriendo.id}
+              fondoSugerido={abriendo.ultimoCierreCentavos}
               onSuccess={() => {
                 setAbriendo(null)
                 qc.invalidateQueries({ queryKey: ["cajas-panel"] })

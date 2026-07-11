@@ -38,6 +38,25 @@ function estadoDesdeOrden(body: { status?: string; transactions?: { payments?: A
   return { pagado, finalizadoSinPago }
 }
 
+// MercadoPago exige X-Idempotency-Key en este endpoint igual que en la
+// creación de la orden — sin él responde 400 empty_required_header. Además,
+// una vez que la order ya llegó a la terminal física (status "at_terminal" —
+// lo normal para cuando alguien realmente llega a cancelar, porque ya está
+// mostrando "acercar tarjeta") hace falta el header
+// x-allow-cancelable-status: at_terminal; sin él, MP solo cancela orders que
+// todavía están en status "created" (409 cannot_cancel_order en cualquier
+// otro caso) y la cancelación nunca llega al dispositivo. Mandamos el header
+// siempre — no molesta cuando la order sigue en "created".
+async function cancelarOrden(orderId: string): Promise<void> {
+  await mpFetch(`/v1/orders/${orderId}/cancel`, {
+    method: "POST",
+    headers: {
+      "X-Idempotency-Key": crypto.randomUUID(),
+      "x-allow-cancelable-status": "at_terminal",
+    },
+  })
+}
+
 /**
  * Provider MercadoPago — QR dinámico y posnet (Point) vía la API de Orders
  * unificada (POST /v1/orders). Para QR (`type: "qr"`, `config.qr.mode: "hybrid"`)
@@ -132,6 +151,14 @@ export class MercadoPagoProvider implements PagosProvider {
   }
 
   async cancelarOrdenPosnet(orderId: string): Promise<void> {
-    await mpFetch(`/v1/orders/${orderId}/cancel`, { method: "POST" })
+    await cancelarOrden(orderId)
+  }
+
+  // El external_pos_id de QR puede estar atado a una terminal Point real
+  // (compartida con posnet) en vez de a un POS suelto sin dispositivo — en
+  // ese caso la terminal también queda mostrando algo en pantalla hasta que
+  // se cancela de verdad. Mismo endpoint que posnet.
+  async cancelarOrdenQr(orderId: string): Promise<void> {
+    await cancelarOrden(orderId)
   }
 }

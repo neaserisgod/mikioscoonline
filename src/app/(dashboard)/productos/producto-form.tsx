@@ -57,6 +57,9 @@ interface ProductoFormProps {
     stockMinimoGramos?: number | null
   }
   barcodePreset?: string
+  /** Precarga categoría/proveedor al crear (no se usa editando) — viene de en
+   * qué card del drill-down de Productos estaba parado el usuario. */
+  defaultsNuevo?: { categoryId?: string; providerId?: string }
   onSuccess: () => void
 }
 
@@ -71,7 +74,7 @@ interface Categoria {
 interface Proveedor { id: string; nombre: string }
 interface Ubicacion { id: string; nombre: string }
 
-export default function ProductoForm({ producto, barcodePreset, onSuccess }: ProductoFormProps) {
+export default function ProductoForm({ producto, barcodePreset, defaultsNuevo, onSuccess }: ProductoFormProps) {
   const isEditing = !!producto
 
   const { data: categorias } = useQuery<Categoria[]>({
@@ -102,9 +105,9 @@ export default function ProductoForm({ producto, barcodePreset, onSuccess }: Pro
     resolver: zodResolver(schema),
     defaultValues: {
       nombre: producto?.nombre ?? "",
-      categoryId: producto?.categoryId ?? "",
+      categoryId: producto?.categoryId ?? defaultsNuevo?.categoryId ?? "",
       barcode: producto?.barcode ?? barcodePreset ?? "",
-      providerId: producto?.providerId ?? undefined,
+      providerId: producto?.providerId ?? defaultsNuevo?.providerId ?? undefined,
       locationId: producto?.locationId ?? undefined,
       esPesable: producto?.esPesable ?? false,
       precioCentavos: producto

@@ -9,16 +9,16 @@ import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { toast } from "sonner"
-import { EquilibrioBar } from "@/components/ui/equilibrio-bar"
 import { EmptyState } from "@/components/ui/empty-state"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Label } from "@/components/ui/label"
 import { formatearARS } from "@/domain/dinero"
 import { cn } from "@/lib/utils"
 import { cerrarCajaAction, registrarMovimientoAction } from "@/app/actions/cajaSesion.actions"
-import { actualizarSaldoMpAction } from "@/app/actions/config.actions"
-import { actualizarSaldoManualCajaAction } from "@/app/actions/caja.actions"
+import { retirarGananciaAction } from "@/app/actions/config.actions"
 import { AbrirCajaSheet } from "@/components/pos/abrir-caja-sheet"
 
 interface ResumenHoy {
@@ -60,106 +60,51 @@ interface CajaSaldo extends SaldoManual {
   nombre: string
 }
 
+interface Reparto {
+  disponibleRealCentavos: number
+  gastosFijosPendientesCentavos: number
+  gastosFijosCubiertos: boolean
+  gastosFijosFaltanteCentavos: number
+  reservaReposicionCentavos: number
+  reposicionCubierta: boolean
+  reposicionFaltanteCentavos: number
+  proveedoresPiso: { id: string; nombre: string; pisoReposicionCentavos: number; saldoReposicionCentavos: number }[]
+  gananciaDisponibleCentavos: number
+}
+interface ValorInventario {
+  valorCostoCentavos: number
+  valorVentaCentavos: number
+}
 interface ResumenData {
   hoy: ResumenHoy | null // null para VENDEDOR — no ve cifras de ganancia
   mes: ResumenMes | null
-  // Saldo real cargado a mano (MP no tiene API de saldo) — "equilibrio" ya contrasta
-  // saldoMp + cajas contra los gastos fijos de "mes". Ver resumenService.equilibrioReal.
-  saldoMp: SaldoManual | null
   cajas: CajaSaldo[] | null
   disponibleRealCentavos: number | null
   equilibrio: Equilibrio | null
+  reparto: Reparto | null
+  valorInventario: ValorInventario | null
   stockBajo: { id: string; nombre: string; stock: number; stockMinimo: number }[]
+}
+
+function RepartoFila({
+  label, cubierto, monto, faltaLabel, okLabel,
+}: {
+  label: string; cubierto: boolean; monto: number; faltaLabel: string; okLabel: string
+}) {
+  return (
+    <div className="flex items-center justify-between text-sm">
+      <span className="text-muted-foreground">{label}</span>
+      <span className={cn("font-medium tabular-nums", cubierto ? "text-k-gain" : "text-k-loss")}>
+        {cubierto ? okLabel : `${faltaLabel} ${formatearARS(monto)}`}
+      </span>
+    </div>
+  )
 }
 
 function nombreMes(mesAnio: string): string {
   const [y, m] = mesAnio.split("-").map(Number)
   const nombre = new Date(y, m - 1, 1).toLocaleDateString("es-AR", { month: "long" })
   return nombre.charAt(0).toUpperCase() + nombre.slice(1)
-}
-
-/** Carga a mano el saldo real de Mercado Pago y de cada caja — no hay API de saldo
- * para esta integración de MP, y el efectivo real puede diferir de lo calculado por
- * movimientos. Estos valores son los que arma "Disponible real" en el equilibrio. */
-function SaldosRealesEditor({ saldoMp, cajas }: { saldoMp: SaldoManual; cajas: CajaSaldo[] }) {
-  const qc = useQueryClient()
-  const [open, setOpen] = useState(false)
-  const [guardando, setGuardando] = useState<string | null>(null)
-
-  async function guardar(accion: () => Promise<unknown>, id: string) {
-    setGuardando(id)
-    try {
-      await accion()
-      qc.invalidateQueries({ queryKey: ["resumen"] })
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "No se pudo actualizar el saldo")
-    } finally {
-      setGuardando(null)
-    }
-  }
-
-  return (
-    <div className="pt-1">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="text-xs text-muted-foreground underline underline-offset-2"
-      >
-        {open ? "Ocultar saldos" : "Cargar/editar saldos"}
-      </button>
-      {open && (
-        <div className="space-y-2 pt-2">
-          <SaldoInput
-            label="Mercado Pago"
-            montoCentavos={saldoMp.montoCentavos}
-            loading={guardando === "mp"}
-            onGuardar={(centavos) => guardar(() => actualizarSaldoMpAction(centavos), "mp")}
-          />
-          {cajas.map((c) => (
-            <SaldoInput
-              key={c.id}
-              label={c.nombre}
-              montoCentavos={c.montoCentavos}
-              loading={guardando === c.id}
-              onGuardar={(centavos) => guardar(() => actualizarSaldoManualCajaAction(c.id, centavos), c.id)}
-            />
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
-
-function SaldoInput({
-  label, montoCentavos, loading, onGuardar,
-}: {
-  label: string
-  montoCentavos: number
-  loading: boolean
-  onGuardar: (centavos: number) => void
-}) {
-  const [valor, setValor] = useState(String(montoCentavos / 100))
-
-  return (
-    <div className="flex items-center gap-2">
-      <span className="text-xs text-muted-foreground w-28 shrink-0 truncate">{label}</span>
-      <input
-        type="number"
-        inputMode="decimal"
-        min={0}
-        step="0.01"
-        value={valor}
-        onChange={(e) => setValor(e.target.value)}
-        onBlur={() => {
-          const pesos = Number(valor)
-          if (!Number.isFinite(pesos) || pesos < 0) { setValor(String(montoCentavos / 100)); return }
-          onGuardar(Math.round(pesos * 100))
-        }}
-        className="h-7 flex-1 rounded-lg border border-border/60 bg-background px-2 text-xs tabular-nums"
-      />
-      {loading && <Loader2 className="size-3 shrink-0 animate-spin text-muted-foreground" />}
-    </div>
-  )
 }
 
 interface FilaProveedor {
@@ -198,7 +143,9 @@ function computeSessionTotals(movimientos: CajaMovimiento[], fondoInicialCentavo
   const ingresos = movimientos.filter((m) => m.tipo === "INGRESO").reduce((s, m) => s + m.montoCentavos, 0)
   const egresos = movimientos.filter((m) => m.tipo === "EGRESO").reduce((s, m) => s + m.montoCentavos, 0)
   const nVentas = movimientos.filter((m) => m.tipo === "VENTA").length
-  const efectivoEnCaja = fondoInicialCentavos + ventasEfectivo + ingresos - egresos
+  // Incluye ventas digitales — ver el comentario de calcEfectivoEnCaja: una caja
+  // 100% no-efectivo (ej. "Ventas QR/Posnet") si no, siempre quedaría en $0.
+  const efectivoEnCaja = fondoInicialCentavos + ventasEfectivo + ventasDigital + ingresos - egresos
   return { ventasEfectivo, ventasDigital, recargo, ingresos, egresos, nVentas, efectivoEnCaja }
 }
 interface CajaSesionPanel {
@@ -213,14 +160,23 @@ interface CajaPanelItem {
   nombre: string
   esPrincipal: boolean
   sesiones: CajaSesionPanel[]
+  /** Lo contado al cerrar la última sesión — sugerido como fondo inicial al reabrir. */
+  ultimoCierreCentavos: number | null
 }
 
+// Total atribuido a la caja (fondo + ventas + ingresos − egresos), para el
+// panel de un vistazo y el prellenado del cierre. A diferencia de
+// `calcularEquilibrio`/`cajaSesionService.cerrarCaja` (que SOLO cuentan ventas
+// en efectivo — correcto ahí, porque comparan contra billetes contados a
+// mano), acá se suman también las ventas digitales: cajas 100% no-efectivo
+// (ej. "Ventas QR/Posnet") nunca tendrían nada de efectivo y el total mostrado
+// quedaría siempre en $0 pese a tener ventas reales.
 function calcEfectivoEnCaja(s: CajaSesionPanel): number {
   let total = s.fondoInicialCentavos
   for (const m of s.movimientos) {
     if (m.tipo === "INGRESO") total += m.montoCentavos
     else if (m.tipo === "EGRESO") total -= m.montoCentavos
-    else if (m.tipo === "VENTA" && m.medioPago?.esEfectivo) total += m.montoCentavos
+    else if (m.tipo === "VENTA") total += m.montoCentavos
   }
   return total
 }
@@ -245,11 +201,12 @@ function CajasPanel() {
   const [cajaNombre, setCajaNombre] = useState("")
   const [expectedCash, setExpectedCash] = useState(0)
   const [sesionData, setSesionData] = useState<CajaSesionPanel | null>(null)
+  const [fondoSugerido, setFondoSugerido] = useState<number | null>(null)
 
   function invalidar() { qc.invalidateQueries({ queryKey: ["cajas-panel"] }) }
 
   function openAbrir(c: CajaPanelItem) {
-    setCajaId(c.id); setCajaNombre(c.nombre); setMode("abrir")
+    setCajaId(c.id); setCajaNombre(c.nombre); setFondoSugerido(c.ultimoCierreCentavos); setMode("abrir")
   }
   function openCerrar(c: CajaPanelItem, s: CajaSesionPanel) {
     setSesionId(s.id); setCajaNombre(c.nombre); setExpectedCash(calcEfectivoEnCaja(s)); setMode("cerrar")
@@ -375,6 +332,7 @@ function CajasPanel() {
             <AbrirCajaSheet
               cajaNombre={cajaNombre}
               cajaId={cajaId}
+              fondoSugerido={fondoSugerido}
               onSuccess={() => { setMode(null); invalidar() }}
             />
           )}
@@ -615,7 +573,7 @@ function CajaDetalleSheet({ cajaNombre, sesion }: { cajaNombre: string; sesion: 
         </div>
 
         <div className="rounded-xl border border-border/60 bg-muted/5 px-4 py-3 flex items-center justify-between">
-          <span className="text-sm font-medium">Efectivo en caja</span>
+          <span className="text-sm font-medium">Total en caja</span>
           <span className={cn(
             "text-xl font-semibold tabular-nums",
             t.efectivoEnCaja >= 0 ? "text-k-gain" : "text-k-loss"
@@ -708,10 +666,16 @@ const stagger = {
 }
 
 function getToday() {
-  return new Date().toISOString().slice(0, 10)
+  // Fecha LOCAL, no UTC — toISOString() corre el día para atrás en husos
+  // horarios negativos (ej. Argentina) cerca de la medianoche.
+  const d = new Date()
+  const pad = (n: number) => String(n).padStart(2, "0")
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 }
 
 export default function DashboardClient() {
+  const qc = useQueryClient()
+  const [retirandoOpen, setRetirandoOpen] = useState(false)
   const { data, isLoading } = useQuery<ResumenData>({
     queryKey: ["resumen"],
     queryFn: () => fetch("/api/resumen").then((r) => r.json()),
@@ -754,11 +718,11 @@ export default function DashboardClient() {
     )
   }
 
-  if (!data.hoy || !data.mes || !data.saldoMp || !data.cajas || !data.equilibrio) {
+  if (!data.hoy || !data.mes || !data.cajas || !data.equilibrio || !data.reparto || !data.valorInventario) {
     return <InicioVendedor stockBajo={data.stockBajo ?? []} />
   }
 
-  const { hoy, mes, saldoMp, cajas: cajasSaldo, equilibrio } = data
+  const { hoy, mes, reparto, valorInventario } = data
   const stockBajo = data.stockBajo ?? []
   const margenPct =
     hoy.ventasCentavos > 0
@@ -820,58 +784,83 @@ export default function DashboardClient() {
         {/* Columna izquierda */}
         <div className="space-y-4">
 
-          {/* Equilibrio real: contra los gastos fijos a pagar este mes, no se estima con
-              ventas — se contrasta lo que el dueño carga a mano que tiene HOY en Mercado
-              Pago + cada caja (no hay API de saldo de MP, y el efectivo real puede diferir
-              de lo calculado por movimientos). Ver resumenService.equilibrioReal. */}
-          <div className="rounded-2xl border border-border/60 bg-card p-5 space-y-4">
+          {/* Una sola cascada, de arriba a abajo, sin repetir números: efectivo
+              disponible (saldo en vivo de cada caja abierta) → gastos fijos del
+              mes (ya neteados de lo pagado) → piso de reinversión de cada
+              proveedor (colchón fijo, no se resetea) → lo que sobra es ganancia
+              limpia, retirable. Al final, la mercadería en estantería (a costo)
+              se suma aparte para el patrimonio total — es plata, pero no es
+              líquida. Antes esto eran 3 cards separadas repitiendo "disponible
+              real" cada una — se fusionó para bajar el ruido visual (feedback
+              del dueño 2026-07-10: "no lo entiendo ni yo que tuve la idea").
+              Ver resumenService.reparto / equilibrioReal / productoService.valorInventario. */}
+          <div className="rounded-2xl border border-border/60 bg-card p-5 space-y-3">
             <div className="flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <p className="text-sm font-medium truncate">¿Cubro {nombreMes(mes.mesAnio)}?</p>
-                <p className="text-xs text-muted-foreground truncate">
-                  Con lo que tenés cargado hoy en MP y en caja
-                </p>
-              </div>
+              <p className="text-sm font-medium">¿Cómo estamos?</p>
               <span className={cn(
                 "shrink-0 text-xs font-medium px-2 py-0.5 rounded-full",
-                equilibrio.cubierto
-                  ? "bg-k-gain-muted text-k-gain"
-                  : "bg-muted text-muted-foreground"
+                reparto.gastosFijosCubiertos ? "bg-k-gain-muted text-k-gain" : "bg-muted text-muted-foreground"
               )}>
-                {equilibrio.cubierto ? "Cubierto" : "Falta"}
+                {reparto.gastosFijosCubiertos ? "Vas bien" : "Ojo"}
               </span>
             </div>
-            <EquilibrioBar pctAvance={equilibrio.pctAvance} cubierto={equilibrio.cubierto} />
-            <div className="grid grid-cols-3 gap-x-2 pt-1 text-sm">
-              <div className="min-w-0">
-                <p className="text-xs text-muted-foreground truncate">Disponible real</p>
-                <p className="font-semibold tabular-nums text-[13px] text-k-gain truncate">
-                  {formatearARS(equilibrio.gananciaBrutaCentavos)}
-                </p>
-              </div>
-              <div className="min-w-0">
-                <p className="text-xs text-muted-foreground truncate">
-                  A pagar {nombreMes(mes.mesAnio)}
-                </p>
-                <p className="font-semibold tabular-nums text-[13px] truncate">
-                  {formatearARS(equilibrio.gastosFijosCentavos)}
-                </p>
-              </div>
-              <div className="min-w-0">
-                <p className="text-xs text-muted-foreground truncate">
-                  {equilibrio.cubierto ? "Neta" : "Falta"}
-                </p>
-                <p className={cn(
-                  "font-semibold tabular-nums text-[13px] truncate",
-                  equilibrio.cubierto ? "text-k-gain" : "text-k-loss"
-                )}>
-                  {equilibrio.cubierto
-                    ? formatearARS(equilibrio.gananciaNetaCentavos)
-                    : formatearARS(equilibrio.faltanteCentavos)}
-                </p>
-              </div>
+
+            <div>
+              <p className="text-xs text-muted-foreground">Plata que tenés ahora, en la mano</p>
+              <p className="text-2xl font-semibold tabular-nums">{formatearARS(reparto.disponibleRealCentavos)}</p>
             </div>
-            <SaldosRealesEditor saldoMp={saldoMp} cajas={cajasSaldo} />
+
+            <div className="space-y-2 pt-1">
+              <RepartoFila
+                label={`Para pagar este mes (alquiler, luz, etc.)`}
+                cubierto={reparto.gastosFijosCubiertos}
+                monto={reparto.gastosFijosCubiertos ? reparto.gastosFijosPendientesCentavos : reparto.gastosFijosFaltanteCentavos}
+                faltaLabel="Todavía falta"
+                okLabel="Ya lo tenés cubierto"
+              />
+              {reparto.reservaReposicionCentavos > 0 && (
+                <RepartoFila
+                  label="Para reponer mercadería"
+                  cubierto={reparto.reposicionCubierta}
+                  monto={reparto.reposicionCubierta ? reparto.reservaReposicionCentavos : reparto.reposicionFaltanteCentavos}
+                  faltaLabel="Todavía falta"
+                  okLabel="Ya tenés lo necesario"
+                />
+              )}
+            </div>
+
+            <div className="rounded-xl bg-foreground/5 px-3 py-2.5 flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-xs text-muted-foreground">Esto es tuyo, te lo podés llevar</p>
+                <p className={cn(
+                  "text-sm font-semibold tabular-nums",
+                  reparto.gananciaDisponibleCentavos > 0 ? "text-k-gain" : "text-muted-foreground"
+                )}>
+                  {formatearARS(reparto.gananciaDisponibleCentavos)}
+                </p>
+              </div>
+              {reparto.gananciaDisponibleCentavos > 0 && (
+                <Button size="sm" variant="outline" className="shrink-0" onClick={() => setRetirandoOpen(true)}>
+                  Retirar
+                </Button>
+              )}
+            </div>
+            {reparto.reservaReposicionCentavos > 0 && !reparto.reposicionCubierta && (
+              <p className="text-[11px] text-muted-foreground">
+                Te falta juntar para reponer: {reparto.proveedoresPiso.filter((p) => p.pisoReposicionCentavos > 0).map((p) => p.nombre).join(", ")}.
+              </p>
+            )}
+
+            <div className="border-t border-border/60 pt-3 flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">+ Lo que tenés en la estantería</span>
+              <span className="font-medium tabular-nums">{formatearARS(valorInventario.valorCostoCentavos)}</span>
+            </div>
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">= Todo lo que tiene tu negocio</span>
+              <span className="font-semibold tabular-nums">
+                {formatearARS(reparto.disponibleRealCentavos + valorInventario.valorCostoCentavos)}
+              </span>
+            </div>
           </div>
 
           {/* Progreso del mes en curso — esto es lo que se está generando ahora y va a
@@ -1008,6 +997,83 @@ export default function DashboardClient() {
           ) : null}
         </div>
       </motion.div>
+
+      <Sheet open={retirandoOpen} onOpenChange={setRetirandoOpen}>
+        <SheetContent>
+          <RetirarGananciaForm
+            gananciaDisponibleCentavos={reparto.gananciaDisponibleCentavos}
+            cajas={data.cajas ?? []}
+            onSuccess={() => {
+              setRetirandoOpen(false)
+              qc.invalidateQueries({ queryKey: ["resumen"] })
+              qc.invalidateQueries({ queryKey: ["cajas-panel"] })
+            }}
+          />
+        </SheetContent>
+      </Sheet>
     </motion.div>
+  )
+}
+
+function RetirarGananciaForm({
+  gananciaDisponibleCentavos, cajas, onSuccess,
+}: {
+  gananciaDisponibleCentavos: number
+  cajas: CajaSaldo[]
+  onSuccess: () => void
+}) {
+  const [monto, setMonto] = useState(String(gananciaDisponibleCentavos / 100))
+  const [cajaId, setCajaId] = useState("")
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  async function onSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    const montoCentavos = Math.round(parseFloat(monto) * 100)
+    if (!montoCentavos || montoCentavos <= 0) { toast.error("Ingresá un monto válido"); return }
+    if (!cajaId) { toast.error("Elegí de qué caja retirás"); return }
+    setIsSubmitting(true)
+    try {
+      await retirarGananciaAction(montoCentavos, cajaId)
+      toast.success("Retiro registrado")
+      onSuccess()
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Error") }
+    finally { setIsSubmitting(false) }
+  }
+
+  return (
+    <>
+      <SheetHeader><SheetTitle>Llevarte tu plata</SheetTitle></SheetHeader>
+      <div className="mt-4 rounded-xl border border-border/60 bg-card px-4 py-3 flex items-center justify-between">
+        <p className="text-sm text-muted-foreground">Podés llevarte hasta</p>
+        <p className="text-lg font-semibold tabular-nums text-k-gain">{formatearARS(gananciaDisponibleCentavos)}</p>
+      </div>
+      <form onSubmit={onSubmit} className="mt-4 space-y-4">
+        <div className="space-y-1.5">
+          <Label>¿Cuánto te llevás? ($)</Label>
+          <input
+            type="number" step="0.01" min="0"
+            value={monto} onChange={(e) => setMonto(e.target.value)}
+            className="w-full rounded-xl border border-border/60 bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label>¿De qué caja la sacás?</Label>
+          <Select value={cajaId} onValueChange={(v) => setCajaId(v ?? "")}>
+            <SelectTrigger><SelectValue placeholder="Elegí una caja" /></SelectTrigger>
+            <SelectContent>
+              {cajas.map((c) => (
+                <SelectItem key={c.id} value={c.id}>{c.nombre}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <Button type="submit" className="w-full" disabled={isSubmitting}>
+          {isSubmitting ? <Loader2 className="size-4 animate-spin" /> : "Listo, ya la retiré"}
+        </Button>
+        <p className="text-xs text-muted-foreground">
+          Esa caja tiene que estar abierta. Nunca te va a dejar llevar más de lo que es realmente tuyo.
+        </p>
+      </form>
+    </>
   )
 }

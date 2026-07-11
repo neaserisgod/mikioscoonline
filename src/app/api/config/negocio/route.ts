@@ -16,20 +16,14 @@ const NegocioSchema = z.object({
   condicionIva: z.enum(["RESPONSABLE_INSCRIPTO", "MONOTRIBUTO", "EXENTO", "CONSUMIDOR_FINAL"]).optional().nullable(),
   puntoDeVenta: z.number().int().positive().optional().nullable(),
   stockMinimoDefault: z.number().int().min(0).optional(),
-  saldoMpCentavos: z.number().int().min(0).optional(),
 })
 
 export async function PATCH(req: NextRequest) {
   const result = await requireAdminApi()
   if ("error" in result) return result.error
   try {
-    const { saldoMpCentavos, ...resto } = NegocioSchema.parse(await req.json())
-    if (saldoMpCentavos !== undefined) {
-      await organizacionService.actualizarSaldoMp(result.user.organizationId, saldoMpCentavos)
-    }
-    if (Object.keys(resto).length > 0) {
-      await organizacionService.actualizar(result.user.organizationId, resto)
-    }
+    const data = NegocioSchema.parse(await req.json())
+    await organizacionService.actualizar(result.user.organizationId, data)
     return NextResponse.json({ ok: true })
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : "No se pudo guardar" }, { status: 400 })

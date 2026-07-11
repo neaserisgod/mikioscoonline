@@ -14,6 +14,8 @@ export async function GET(req: NextRequest) {
   const q = searchParams.get("q")
   const stockBajo = searchParams.get("stockBajo") === "1"
   const since = searchParams.get("since")
+  const providerId = searchParams.get("providerId") ?? undefined
+  const categoryId = searchParams.get("categoryId") ?? undefined
 
   if (stockBajo) {
     const data = await productoService.stockBajo(organizationId)
@@ -29,10 +31,16 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(sanitizarProductos(data, role))
   }
 
-  const data = q
-    ? await productoService.buscar(organizationId, q)
-    : await productoService.listar(organizationId)
+  if (q) {
+    return NextResponse.json(sanitizarProductos(await productoService.buscar(organizationId, q), role))
+  }
 
+  if (providerId !== undefined || categoryId !== undefined) {
+    const data = await productoService.listarFiltrado(organizationId, { providerId, categoryId })
+    return NextResponse.json(sanitizarProductos(data, role))
+  }
+
+  const data = await productoService.listar(organizationId)
   return NextResponse.json(sanitizarProductos(data, role))
 }
 

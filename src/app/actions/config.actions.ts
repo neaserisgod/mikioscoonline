@@ -10,6 +10,7 @@ import {
   organizacionService,
   usuarioService,
 } from "@/services/config.service"
+import { resumenService } from "@/services/resumen.service"
 import { z } from "zod"
 
 async function requireAdmin() {
@@ -82,6 +83,25 @@ export async function reactivarProveedorAction(id: string) {
 export async function eliminarProveedorAction(id: string) {
   const user = await requireAdmin()
   return proveedorService.eliminar(id, user.organizationId)
+}
+
+export async function actualizarPisoReposicionAction(id: string, montoCentavos: unknown) {
+  const user = await requireAdmin()
+  const monto = z.number().int().min(0).parse(montoCentavos)
+  return proveedorService.actualizarPisoReposicion(id, user.organizationId, monto)
+}
+
+export async function registrarCompraCuentaCorrienteAction(id: string, montoCentavos: unknown) {
+  const user = await requireAdmin()
+  const monto = z.number().int().positive().parse(montoCentavos)
+  return proveedorService.registrarCompraCuentaCorriente(id, user.organizationId, monto)
+}
+
+export async function registrarPagoCuentaCorrienteAction(id: string, montoCentavos: unknown, cajaId: unknown) {
+  const user = await requireAdmin()
+  const monto = z.number().int().positive().parse(montoCentavos)
+  const caja = z.string().min(1).parse(cajaId)
+  return proveedorService.registrarPagoCuentaCorriente(id, user.organizationId, monto, caja)
 }
 
 // ─── Ubicaciones ─────────────────────────────────────────────────────────────
@@ -201,6 +221,20 @@ export async function reactivarGastoFijoAction(id: string) {
   return gastoFijoService.reactivar(id, user.organizationId)
 }
 
+export async function pagarGastoFijoAction(id: string, montoCentavos: unknown, cajaId: unknown) {
+  const user = await requireAdmin()
+  const monto = z.number().int().positive().parse(montoCentavos)
+  const caja = z.string().min(1).parse(cajaId)
+  return gastoFijoService.pagar(id, user.organizationId, monto, caja)
+}
+
+export async function retirarGananciaAction(montoCentavos: unknown, cajaId: unknown) {
+  const user = await requireAdmin()
+  const monto = z.number().int().positive().parse(montoCentavos)
+  const caja = z.string().min(1).parse(cajaId)
+  return resumenService.retirarGanancia(user.organizationId, monto, caja)
+}
+
 // ─── Negocio ──────────────────────────────────────────────────────────────────
 
 const NegocioSchema = z.object({
@@ -215,12 +249,6 @@ export async function actualizarNegocioAction(input: unknown) {
   const user = await requireAdmin()
   const data = NegocioSchema.parse(input)
   return organizacionService.actualizar(user.organizationId, data)
-}
-
-export async function actualizarSaldoMpAction(montoCentavos: unknown) {
-  const user = await requireAdmin()
-  const monto = z.number().int().min(0).parse(montoCentavos)
-  return organizacionService.actualizarSaldoMp(user.organizationId, monto)
 }
 
 // ─── Usuarios ─────────────────────────────────────────────────────────────────
@@ -251,4 +279,21 @@ export async function reactivarUsuarioAction(id: string) {
 export async function cambiarRolUsuarioAction(id: string, role: "ADMIN" | "VENDEDOR") {
   const user = await requireAdmin()
   return usuarioService.cambiarRol(id, user.organizationId, role, user.id)
+}
+
+const CrearPerfilPinSchema = z.object({
+  nombre: z.string().min(1),
+  pin: z.string().regex(/^\d{4}$/, "El PIN debe tener 4 dígitos"),
+})
+
+export async function crearPerfilPinAction(input: unknown) {
+  const user = await requireAdmin()
+  const data = CrearPerfilPinSchema.parse(input)
+  return usuarioService.crearPerfilPin(user.organizationId, data)
+}
+
+export async function resetearPinUsuarioAction(id: string, pin: unknown) {
+  const user = await requireAdmin()
+  const pinValido = z.string().regex(/^\d{4}$/, "El PIN debe tener 4 dígitos").parse(pin)
+  return usuarioService.resetearPin(id, user.organizationId, pinValido)
 }

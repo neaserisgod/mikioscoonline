@@ -7,7 +7,7 @@ import {
   Plus, Pencil, Trash2, EyeOff, Eye, ChevronUp, ChevronDown,
   Star, Tag, Truck, Archive, CreditCard, Receipt,
   Settings2, Check, X, Loader2,
-  Building2, Users, Database, Shield, Download, Wallet,
+  Building2, Users, Database, Shield, Download, Wallet, KeyRound,
 } from "lucide-react"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
@@ -27,15 +27,17 @@ import {
   desactivarCategoriaAction, reactivarCategoriaAction, eliminarCategoriaAction,
   crearProveedorAction, editarProveedorAction,
   desactivarProveedorAction, reactivarProveedorAction, eliminarProveedorAction,
+  registrarCompraCuentaCorrienteAction, registrarPagoCuentaCorrienteAction, actualizarPisoReposicionAction,
   crearUbicacionAction, editarUbicacionAction,
   desactivarUbicacionAction, reactivarUbicacionAction, eliminarUbicacionAction,
   crearMedioPagoAction, editarMedioPagoAction,
   desactivarMedioPagoAction, reactivarMedioPagoAction,
   setDefaultMedioPagoAction, moverOrdenMedioPagoAction,
   crearGastoFijoAction, editarGastoFijoAction,
-  actualizarMontoGastoFijoAction, desactivarGastoFijoAction, reactivarGastoFijoAction,
+  actualizarMontoGastoFijoAction, desactivarGastoFijoAction, reactivarGastoFijoAction, pagarGastoFijoAction,
   actualizarNegocioAction,
   crearUsuarioAction, desactivarUsuarioAction, reactivarUsuarioAction, cambiarRolUsuarioAction,
+  crearPerfilPinAction, resetearPinUsuarioAction,
 } from "@/app/actions/config.actions"
 import {
   crearCajaAction, editarCajaAction,
@@ -49,7 +51,7 @@ type SeccionId =
   | "negocio"
   | "categorias" | "proveedores" | "heladeras"
   | "medios-pago" | "gastos-fijos"
-  | "cajas"
+  | "cajas" | "movimientos"
   | "operacion" | "usuarios" | "datos"
 
 interface Categoria {
@@ -59,6 +61,8 @@ interface Categoria {
 }
 interface Proveedor {
   id: string; nombre: string; activo: boolean
+  saldoCuentaCorrienteCentavos: number
+  pisoReposicionCentavos: number
   _count: { products: number }
 }
 interface Ubicacion {
@@ -107,12 +111,13 @@ interface Organizacion {
   puntoDeVenta: number | null; stockMinimoDefault: number
 }
 interface Usuario {
-  id: string; nombre: string; email: string; role: "ADMIN" | "VENDEDOR"
-  activo: boolean; createdAt: string
+  id: string; nombre: string; email: string | null; role: "ADMIN" | "VENDEDOR"
+  activo: boolean; createdAt: string; tienePin: boolean
 }
 interface GastoFijo {
   id: string; nombre: string; activo: boolean
   montos: { id: string; mesAnio: string; montoCentavos: number }[]
+  pagadoMesActualCentavos: number
 }
 
 // ─── Navegación ───────────────────────────────────────────────────────────────
@@ -120,6 +125,7 @@ interface GastoFijo {
 const SECCIONES: { id: SeccionId; label: string; icon: React.ElementType; group?: string }[] = [
   { id: "negocio",     label: "Negocio",        icon: Building2,  group: "General" },
   { id: "cajas",       label: "Cajas",          icon: Wallet,     group: "General" },
+  { id: "movimientos", label: "Movimientos",    icon: Receipt,    group: "General" },
   { id: "categorias",  label: "Categorías",     icon: Tag,        group: "Catálogo" },
   { id: "proveedores", label: "Proveedores",    icon: Truck,      group: "Catálogo" },
   { id: "heladeras",   label: "Heladeras",      icon: Archive,    group: "Catálogo" },
@@ -263,6 +269,11 @@ function ListCard({ children }: { children: React.ReactNode }) {
 // ─── Página principal ─────────────────────────────────────────────────────────
 
 export function ConfigClient() {
+  // React Compiler memoiza mal el bloque de AnimatePresence + secciones
+  // condicionales: el nav cambiaba de estado pero el panel quedaba pegado
+  // en la sección anterior (o en blanco). Sin esto, cambiar de sección acá
+  // no actualiza el contenido.
+  "use no memo"
   const [seccion, setSeccion] = useState<SeccionId>("negocio")
   const qc = useQueryClient()
 
@@ -340,6 +351,7 @@ export function ConfigClient() {
             >
               {seccion === "negocio"     && <NegocioSection    onMutate={() => invalidate("negocio")} />}
               {seccion === "cajas"       && <CajasSection      onMutate={() => invalidate("cajas")} />}
+              {seccion === "movimientos" && <MovimientosSection />}
               {seccion === "categorias"  && <CategoriasSection  onMutate={() => invalidate("categorias")} />}
               {seccion === "proveedores" && <ProveedoresSection onMutate={() => invalidate("proveedores")} />}
               {seccion === "heladeras"   && <HeladerasSection   onMutate={() => invalidate("ubicaciones")} />}
@@ -541,6 +553,7 @@ function ProveedoresSection({ onMutate }: { onMutate: () => void }) {
   const { data, isLoading } = useConfig<Proveedor[]>("proveedores")
   const [sheetOpen, setSheetOpen] = useState(false)
   const [editing, setEditing] = useState<Proveedor | null>(null)
+  const [cuentaProveedor, setCuentaProveedor] = useState<Proveedor | null>(null)
   const [pending, setPending] = useState<string | null>(null)
 
   const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<{ nombre: string }>({
@@ -594,16 +607,40 @@ function ProveedoresSection({ onMutate }: { onMutate: () => void }) {
         <ListCard>
           {data?.length === 0 && <EmptyRow label="Sin proveedores" />}
           {data?.map((p) => (
-            <ActionRow
-              key={p.id}
-              primary={p.nombre}
-              badge={<StatusBadge activo={p.activo} count={p.activo ? p._count.products : undefined} />}
-              activo={p.activo}
-              onEdit={() => abrirEditar(p)}
-              onToggle={() => toggle(p)}
-              onDelete={p._count.products === 0 ? () => eliminar(p) : undefined}
-              isPending={pending === p.id}
-            />
+            <div key={p.id} className={cn("px-4 py-3 flex items-center gap-3", !p.activo && "opacity-60")}>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <p className="text-sm font-medium truncate">{p.nombre}</p>
+                  <StatusBadge activo={p.activo} count={p.activo ? p._count.products : undefined} />
+                  {p.saldoCuentaCorrienteCentavos > 0 && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-k-loss/10 text-k-loss font-medium">
+                      Debe {formatearARS(p.saldoCuentaCorrienteCentavos)}
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div className="flex items-center gap-1 shrink-0">
+                {pending === p.id && <Loader2 className="size-3.5 animate-spin text-muted-foreground" />}
+                {pending !== p.id && (
+                  <>
+                    <Button variant="ghost" size="icon-sm" onClick={() => setCuentaProveedor(p)} title="Cuenta corriente">
+                      <Wallet className="size-3.5" />
+                    </Button>
+                    <Button variant="ghost" size="icon-sm" onClick={() => abrirEditar(p)}>
+                      <Pencil className="size-3.5" />
+                    </Button>
+                    <Button variant="ghost" size="icon-sm" onClick={() => toggle(p)} title={p.activo ? "Desactivar" : "Reactivar"}>
+                      {p.activo ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
+                    </Button>
+                    {p._count.products === 0 && (
+                      <Button variant="ghost" size="icon-sm" onClick={() => eliminar(p)} title="Eliminar" className="text-k-loss hover:text-k-loss">
+                        <Trash2 className="size-3.5" />
+                      </Button>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
           ))}
         </ListCard>
       )}
@@ -618,7 +655,177 @@ function ProveedoresSection({ onMutate }: { onMutate: () => void }) {
           </form>
         </SheetContent>
       </Sheet>
+      <Sheet open={!!cuentaProveedor} onOpenChange={(v) => !v && setCuentaProveedor(null)}>
+        <SheetContent>
+          {cuentaProveedor && (
+            <CuentaCorrienteForm
+              proveedor={cuentaProveedor}
+              onSuccess={() => { setCuentaProveedor(null); onMutate() }}
+            />
+          )}
+        </SheetContent>
+      </Sheet>
     </SectionShell>
+  )
+}
+
+interface ResumenProveedorStock {
+  id: string
+  valorCostoCentavos: number
+  valorVentaCentavos: number
+}
+interface FilaRentabilidadProveedor {
+  id: string
+  ventasCentavos: number
+}
+
+function mesActualRango() {
+  const d = new Date()
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, "0")
+  const ultimoDia = new Date(y, d.getMonth() + 1, 0).getDate()
+  return { desde: `${y}-${m}-01`, hasta: `${y}-${m}-${String(ultimoDia).padStart(2, "0")}` }
+}
+
+function CuentaCorrienteForm({ proveedor, onSuccess }: { proveedor: Proveedor; onSuccess: () => void }) {
+  const { data: cajas } = useConfig<CajaItem[]>("cajas")
+  const [modo, setModo] = useState<"compra" | "pago">("pago")
+  const [monto, setMonto] = useState("")
+  const [cajaId, setCajaId] = useState<string>("")
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [editandoPiso, setEditandoPiso] = useState(false)
+
+  const cajasActivas = cajas?.filter((c) => c.activo) ?? []
+
+  // Costo/precio de venta del stock actual de este proveedor + lo que
+  // realmente facturó este mes — sin calcular ganancia, el dueño prefiere
+  // ver los números crudos y sacar la cuenta él mismo.
+  const { data: stockProveedores } = useQuery<ResumenProveedorStock[]>({
+    queryKey: ["config-resumen-proveedores-stock"],
+    queryFn: () => fetch("/api/productos/resumen-proveedores").then((r) => r.json()),
+  })
+  const { desde, hasta } = mesActualRango()
+  const { data: ventasProveedores } = useQuery<FilaRentabilidadProveedor[]>({
+    queryKey: ["config-rentabilidad-proveedor-mes", desde, hasta],
+    queryFn: () => fetch(`/api/rentabilidad?por=proveedor&desde=${desde}&hasta=${hasta}`).then((r) => r.json()),
+  })
+  const stockDeEste = stockProveedores?.find((p) => p.id === proveedor.id)
+  const ventasDeEste = ventasProveedores?.find((p) => p.id === proveedor.id)
+
+  async function guardarPiso(pesos: number) {
+    try {
+      await actualizarPisoReposicionAction(proveedor.id, Math.round(pesos * 100))
+      toast.success("Piso de reinversión actualizado")
+      setEditandoPiso(false)
+      onSuccess()
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Error") }
+  }
+
+  async function onSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    const montoCentavos = Math.round(parseFloat(monto) * 100)
+    if (!montoCentavos || montoCentavos <= 0) { toast.error("Ingresá un monto válido"); return }
+    if (modo === "pago" && !cajaId) { toast.error("Elegí de qué caja sale el pago"); return }
+    setIsSubmitting(true)
+    try {
+      if (modo === "compra") {
+        await registrarCompraCuentaCorrienteAction(proveedor.id, montoCentavos)
+        toast.success("Compra a crédito registrada")
+      } else {
+        await registrarPagoCuentaCorrienteAction(proveedor.id, montoCentavos, cajaId)
+        toast.success("Pago registrado")
+      }
+      onSuccess()
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Error") }
+    finally { setIsSubmitting(false) }
+  }
+
+  return (
+    <>
+      <SheetHeader><SheetTitle>Cuenta corriente — {proveedor.nombre}</SheetTitle></SheetHeader>
+      <div className="mt-4 rounded-xl border border-border/60 bg-card px-4 py-3 flex items-center justify-between">
+        <p className="text-sm text-muted-foreground">Le debemos</p>
+        <p className="text-lg font-semibold tabular-nums text-k-loss">{formatearARS(proveedor.saldoCuentaCorrienteCentavos)}</p>
+      </div>
+
+      <div className="mt-2 rounded-xl border border-border/60 bg-card px-4 py-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm text-muted-foreground">Piso de reinversión</p>
+            <p className="text-[11px] text-muted-foreground/70">Colchón reservado antes de contar ganancia limpia</p>
+          </div>
+          {!editandoPiso && (
+            <div className="flex items-center gap-2">
+              <p className="text-sm font-semibold tabular-nums">{formatearARS(proveedor.pisoReposicionCentavos)}</p>
+              <Button type="button" variant="ghost" size="icon-sm" onClick={() => setEditandoPiso(true)}>
+                <Pencil className="size-3.5" />
+              </Button>
+            </div>
+          )}
+        </div>
+        {editandoPiso && (
+          <MontoInlineEdit
+            defaultValue={proveedor.pisoReposicionCentavos / 100}
+            onSave={guardarPiso}
+            onCancel={() => setEditandoPiso(false)}
+          />
+        )}
+      </div>
+
+      <div className="mt-2 rounded-xl border border-border/60 bg-card px-4 py-3 space-y-2">
+        <p className="text-[11px] text-muted-foreground/70">Para decidir el piso: lo que tenés y lo que vendés de este proveedor</p>
+        <div className="flex items-center justify-between text-sm">
+          <span className="text-muted-foreground">Costo del stock que tenés ahora</span>
+          <span className="font-medium tabular-nums">{formatearARS(stockDeEste?.valorCostoCentavos ?? 0)}</span>
+        </div>
+        <div className="flex items-center justify-between text-sm">
+          <span className="text-muted-foreground">Precio de venta de ese mismo stock</span>
+          <span className="font-medium tabular-nums">{formatearARS(stockDeEste?.valorVentaCentavos ?? 0)}</span>
+        </div>
+        <div className="flex items-center justify-between text-sm">
+          <span className="text-muted-foreground">Total que facturaste este mes</span>
+          <span className="font-medium tabular-nums">{formatearARS(ventasDeEste?.ventasCentavos ?? 0)}</span>
+        </div>
+      </div>
+
+      <div className="mt-4 grid grid-cols-2 gap-2">
+        <Button type="button" variant={modo === "pago" ? "default" : "outline"} onClick={() => setModo("pago")}>Registrar pago</Button>
+        <Button type="button" variant={modo === "compra" ? "default" : "outline"} onClick={() => setModo("compra")}>Compra a crédito</Button>
+      </div>
+
+      <form onSubmit={onSubmit} className="mt-4 space-y-4">
+        <Field
+          label="Monto ($)"
+          type="number"
+          step="0.01"
+          min="0"
+          value={monto}
+          onChange={(e) => setMonto(e.target.value)}
+        />
+        {modo === "pago" && (
+          <div className="space-y-1.5">
+            <Label>Caja de la que sale el pago</Label>
+            <Select value={cajaId} onValueChange={(v) => setCajaId(v ?? "")}>
+              <SelectTrigger><SelectValue placeholder="Elegí una caja" /></SelectTrigger>
+              <SelectContent>
+                {cajasActivas.map((c) => (
+                  <SelectItem key={c.id} value={c.id}>{c.nombre}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+        <Button type="submit" className="w-full" disabled={isSubmitting}>
+          {isSubmitting ? <Loader2 className="size-4 animate-spin" /> : modo === "pago" ? "Registrar pago" : "Registrar compra"}
+        </Button>
+        {modo === "pago" && (
+          <p className="text-xs text-muted-foreground">Se crea un egreso real en la caja elegida y baja lo que le debemos.</p>
+        )}
+        {modo === "compra" && (
+          <p className="text-xs text-muted-foreground">Solo sube lo que le debemos — no mueve ninguna caja.</p>
+        )}
+      </form>
+    </>
   )
 }
 
@@ -1029,7 +1236,7 @@ function MediosPagoSection({ onMutate }: { onMutate: () => void }) {
 function GastosFijosSection({ onMutate }: { onMutate: () => void }) {
   const { data, isLoading } = useConfig<GastoFijo[]>("gastos-fijos")
   const [sheetOpen, setSheetOpen] = useState(false)
-  const [sheetMode, setSheetMode] = useState<"crear" | "editar" | "historial">("crear")
+  const [sheetMode, setSheetMode] = useState<"crear" | "editar" | "historial" | "pagar">("crear")
   const [selected, setSelected] = useState<GastoFijo | null>(null)
   const [editingMontoId, setEditingMontoId] = useState<string | null>(null)
   const [pending, setPending] = useState<string | null>(null)
@@ -1070,11 +1277,23 @@ function GastosFijosSection({ onMutate }: { onMutate: () => void }) {
             {activosData.length === 0 && <EmptyRow label="Sin gastos fijos activos" />}
             {activosData.map((g) => {
               const montoActual = g.montos.find((m) => m.mesAnio === mesActual) ?? g.montos[0]
+              const pendienteCentavos = Math.max(0, (montoActual?.montoCentavos ?? 0) - g.pagadoMesActualCentavos)
+              const pagadoDelMesQueToca = montoActual?.mesAnio === mesActual && g.pagadoMesActualCentavos > 0
               return (
                 <div key={g.id}>
                   <div className={cn("px-4 py-3 flex items-center gap-3")}>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium">{g.nombre}</p>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="text-sm font-medium">{g.nombre}</p>
+                        {pagadoDelMesQueToca && (
+                          <span className={cn(
+                            "text-[10px] px-1.5 py-0.5 rounded-md font-medium",
+                            pendienteCentavos === 0 ? "bg-k-gain/10 text-k-gain" : "bg-k-loss/10 text-k-loss"
+                          )}>
+                            {pendienteCentavos === 0 ? "Pagado" : `Pagado ${formatearARS(g.pagadoMesActualCentavos)} de ${formatearARS(montoActual?.montoCentavos ?? 0)}`}
+                          </span>
+                        )}
+                      </div>
                       <p className="text-xs text-muted-foreground tabular-nums">
                         {montoActual ? formatearARS(montoActual.montoCentavos) : "Sin monto este mes"}
                         {montoActual && montoActual.mesAnio !== mesActual && (
@@ -1086,6 +1305,15 @@ function GastosFijosSection({ onMutate }: { onMutate: () => void }) {
                       {pending === g.id && <Loader2 className="size-3.5 animate-spin text-muted-foreground" />}
                       {pending !== g.id && (
                         <>
+                          {montoActual?.mesAnio === mesActual && pendienteCentavos > 0 && (
+                            <Button
+                              variant="ghost" size="icon-sm"
+                              onClick={() => { setSelected(g); setSheetMode("pagar"); setSheetOpen(true) }}
+                              title="Pagar"
+                            >
+                              <Wallet className="size-3.5" />
+                            </Button>
+                          )}
                           <Button variant="ghost" size="icon-sm" onClick={() => setEditingMontoId(editingMontoId === g.id ? null : g.id)} title="Editar monto de este mes">
                             <Pencil className="size-3.5" />
                           </Button>
@@ -1156,9 +1384,80 @@ function GastosFijosSection({ onMutate }: { onMutate: () => void }) {
           {sheetMode === "historial" && selected && (
             <GastoFijoHistorial gasto={selected} mesActual={mesActual} />
           )}
+          {sheetMode === "pagar" && selected && (
+            <GastoFijoPagarForm
+              gasto={selected}
+              mesActual={mesActual}
+              onSuccess={() => { setSheetOpen(false); onMutate() }}
+            />
+          )}
         </SheetContent>
       </Sheet>
     </SectionShell>
+  )
+}
+
+function GastoFijoPagarForm({ gasto, mesActual, onSuccess }: { gasto: GastoFijo; mesActual: string; onSuccess: () => void }) {
+  const { data: cajas } = useConfig<CajaItem[]>("cajas")
+  const montoActual = gasto.montos.find((m) => m.mesAnio === mesActual)
+  const pendienteCentavos = Math.max(0, (montoActual?.montoCentavos ?? 0) - gasto.pagadoMesActualCentavos)
+
+  const [monto, setMonto] = useState(String(pendienteCentavos / 100))
+  const [cajaId, setCajaId] = useState<string>("")
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  const cajasActivas = cajas?.filter((c) => c.activo) ?? []
+
+  async function onSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    const montoCentavos = Math.round(parseFloat(monto) * 100)
+    if (!montoCentavos || montoCentavos <= 0) { toast.error("Ingresá un monto válido"); return }
+    if (!cajaId) { toast.error("Elegí de qué caja sale el pago"); return }
+    setIsSubmitting(true)
+    try {
+      await pagarGastoFijoAction(gasto.id, montoCentavos, cajaId)
+      toast.success(`Pago de "${gasto.nombre}" registrado`)
+      onSuccess()
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Error") }
+    finally { setIsSubmitting(false) }
+  }
+
+  return (
+    <>
+      <SheetHeader><SheetTitle>Pagar — {gasto.nombre}</SheetTitle></SheetHeader>
+      <div className="mt-4 rounded-xl border border-border/60 bg-card px-4 py-3 flex items-center justify-between">
+        <p className="text-sm text-muted-foreground">Pendiente este mes</p>
+        <p className="text-lg font-semibold tabular-nums text-k-loss">{formatearARS(pendienteCentavos)}</p>
+      </div>
+
+      <form onSubmit={onSubmit} className="mt-4 space-y-4">
+        <Field
+          label="Monto ($)"
+          type="number"
+          step="0.01"
+          min="0"
+          value={monto}
+          onChange={(e) => setMonto(e.target.value)}
+        />
+        <div className="space-y-1.5">
+          <Label>Caja de la que sale el pago</Label>
+          <Select value={cajaId} onValueChange={(v) => setCajaId(v ?? "")}>
+            <SelectTrigger><SelectValue placeholder="Elegí una caja" /></SelectTrigger>
+            <SelectContent>
+              {cajasActivas.map((c) => (
+                <SelectItem key={c.id} value={c.id}>{c.nombre}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <Button type="submit" className="w-full" disabled={isSubmitting}>
+          {isSubmitting ? <Loader2 className="size-4 animate-spin" /> : "Registrar pago"}
+        </Button>
+        <p className="text-xs text-muted-foreground">
+          Se crea un egreso real en la caja elegida (tiene que estar abierta) y descuenta lo pagado de &ldquo;a pagar&rdquo; en Inicio.
+        </p>
+      </form>
+    </>
   )
 }
 
@@ -1597,6 +1896,143 @@ function CajaCategoriasForm({
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// MOVIMIENTOS (historial)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+interface MovimientoRow {
+  id: string
+  tipo: string
+  montoCentavos: number
+  recargoCentavos: number
+  nota: string | null
+  fecha: string
+  caja: { nombre: string }
+  medioPago: { nombre: string; esEfectivo: boolean } | null
+  fixedExpense: { nombre: string } | null
+  sale: { id: string; esConsumoInterno: boolean } | null
+}
+
+function hoyISO() {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+}
+
+const TIPO_ESTILO: Record<string, string> = {
+  VENTA: "bg-k-gain/10 text-k-gain",
+  INGRESO: "bg-k-gain/10 text-k-gain",
+  EGRESO: "bg-k-loss/10 text-k-loss",
+  AJUSTE: "bg-muted text-muted-foreground",
+}
+
+function MovimientosSection() {
+  const { data: cajas } = useConfig<CajaItem[]>("cajas")
+  const [cajaId, setCajaId] = useState<string>("todas")
+  const [desde, setDesde] = useState(hoyISO())
+  const [hasta, setHasta] = useState(hoyISO())
+
+  const { data, isLoading } = useQuery<MovimientoRow[]>({
+    queryKey: ["movimientos-caja", cajaId, desde, hasta],
+    queryFn: () => {
+      const params = new URLSearchParams({ desde, hasta })
+      if (cajaId !== "todas") params.set("cajaId", cajaId)
+      return fetch(`/api/cajas/movimientos?${params}`).then((r) => r.json())
+    },
+  })
+
+  const totalPorTipo = (data ?? []).reduce<Record<string, number>>((acc, m) => {
+    const signo = m.tipo === "EGRESO" ? -1 : 1
+    acc[m.tipo] = (acc[m.tipo] ?? 0) + signo * (m.montoCentavos + m.recargoCentavos)
+    return acc
+  }, {})
+
+  return (
+    <SectionShell title="Movimientos">
+      <div className="flex flex-wrap items-end gap-2">
+        <div className="space-y-1.5">
+          <Label>Caja</Label>
+          <Select value={cajaId} onValueChange={(v) => setCajaId(v ?? "todas")}>
+            <SelectTrigger className="rounded-xl w-[180px]"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todas">Todas las cajas</SelectItem>
+              {(cajas ?? []).map((c) => (
+                <SelectItem key={c.id} value={c.id}>{c.nombre}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1.5">
+          <Label>Desde</Label>
+          <input
+            type="date" value={desde} onChange={(e) => setDesde(e.target.value)}
+            className="h-9 rounded-xl border border-border/60 bg-background px-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label>Hasta</Label>
+          <input
+            type="date" value={hasta} onChange={(e) => setHasta(e.target.value)}
+            className="h-9 rounded-xl border border-border/60 bg-background px-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+          />
+        </div>
+      </div>
+
+      {!isLoading && data && data.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {Object.entries(totalPorTipo).map(([tipo, total]) => (
+            <div key={tipo} className={cn("text-xs px-2.5 py-1 rounded-lg font-medium", TIPO_ESTILO[tipo])}>
+              {tipo}: {formatearARS(total)}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {isLoading ? <SkeletonList /> : (
+        <ListCard>
+          {(data ?? []).length === 0 && <EmptyRow label="Sin movimientos en este rango" />}
+          {(data ?? []).map((m) => (
+            <div key={m.id} className="px-4 py-3 flex items-center gap-3">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className={cn("text-[10px] px-1.5 py-0.5 rounded-md font-medium", TIPO_ESTILO[m.tipo])}>
+                    {m.tipo}
+                  </span>
+                  <p className="text-sm font-medium truncate">{m.caja.nombre}</p>
+                  {m.medioPago && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-foreground/8 text-muted-foreground font-medium">
+                      {m.medioPago.nombre}
+                    </span>
+                  )}
+                  {m.sale?.esConsumoInterno && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-foreground/8 text-muted-foreground font-medium">
+                      Consumo interno
+                    </span>
+                  )}
+                  {m.fixedExpense && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-foreground/8 text-muted-foreground font-medium">
+                      Gasto fijo: {m.fixedExpense.nombre}
+                    </span>
+                  )}
+                </div>
+                {m.nota && <p className="text-xs text-muted-foreground truncate">{m.nota}</p>}
+                <p className="text-[11px] text-muted-foreground/70">
+                  {new Date(m.fecha).toLocaleString("es-AR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                </p>
+              </div>
+              <p className={cn(
+                "text-sm font-semibold tabular-nums shrink-0",
+                m.tipo === "EGRESO" ? "text-k-loss" : "text-k-gain"
+              )}>
+                {m.tipo === "EGRESO" ? "-" : "+"}{formatearARS(m.montoCentavos + m.recargoCentavos)}
+              </p>
+            </div>
+          ))}
+        </ListCard>
+      )}
+    </SectionShell>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // NEGOCIO
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -1705,16 +2141,28 @@ const crearUsuarioSchema = z.object({
 })
 type CrearUsuarioForm = z.infer<typeof crearUsuarioSchema>
 
+const crearPerfilPinSchema = z.object({
+  nombre: z.string().min(1, "Requerido"),
+  pin: z.string().regex(/^\d{4}$/, "Tiene que tener 4 dígitos"),
+})
+type CrearPerfilPinForm = z.infer<typeof crearPerfilPinSchema>
+
 function UsuariosSection({ onMutate }: { onMutate: () => void }) {
   const { data: session } = useSession()
   const { data, isLoading } = useConfig<Usuario[]>("usuarios")
   const [sheetOpen, setSheetOpen] = useState(false)
+  const [modo, setModo] = useState<"login" | "pin">("login")
   const [pending, setPending] = useState<string | null>(null)
+  const [resetPinUser, setResetPinUser] = useState<Usuario | null>(null)
 
-  const { register, handleSubmit, reset, setValue, watch, formState: { errors, isSubmitting } } = useForm<CrearUsuarioForm>({
+  const { register, handleSubmit, reset, setValue, formState: { errors, isSubmitting } } = useForm<CrearUsuarioForm>({
     resolver: zodResolver(crearUsuarioSchema),
     defaultValues: { role: "VENDEDOR" },
   })
+  const {
+    register: registerPin, handleSubmit: handleSubmitPin, reset: resetPin,
+    formState: { errors: errorsPin, isSubmitting: isSubmittingPin },
+  } = useForm<CrearPerfilPinForm>({ resolver: zodResolver(crearPerfilPinSchema) })
 
   async function onSubmit(formData: CrearUsuarioForm) {
     try {
@@ -1722,6 +2170,18 @@ function UsuariosSection({ onMutate }: { onMutate: () => void }) {
       toast.success("Usuario creado")
       setSheetOpen(false)
       reset()
+      onMutate()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Error")
+    }
+  }
+
+  async function onSubmitPin(formData: CrearPerfilPinForm) {
+    try {
+      await crearPerfilPinAction(formData)
+      toast.success("Perfil creado")
+      setSheetOpen(false)
+      resetPin()
       onMutate()
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Error")
@@ -1768,7 +2228,11 @@ function UsuariosSection({ onMutate }: { onMutate: () => void }) {
     <SectionShell
       title="Usuarios"
       action={
-        <Button size="sm" onClick={() => { reset({ role: "VENDEDOR" }); setSheetOpen(true) }} className="gap-1.5">
+        <Button
+          size="sm"
+          onClick={() => { setModo("login"); reset({ role: "VENDEDOR" }); resetPin(); setSheetOpen(true) }}
+          className="gap-1.5"
+        >
           <Plus className="size-3.5" /> Nuevo
         </Button>
       }
@@ -1790,16 +2254,26 @@ function UsuariosSection({ onMutate }: { onMutate: () => void }) {
                   )}>
                     {u.role === "ADMIN" ? "Admin" : "Vendedor"}
                   </span>
+                  {u.tienePin && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-foreground/8 text-muted-foreground font-medium">PIN</span>
+                  )}
                   {!u.activo && (
                     <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground font-medium">Inactivo</span>
                   )}
                 </div>
-                <p className="text-xs text-muted-foreground">{u.email}</p>
+                {u.email && <p className="text-xs text-muted-foreground">{u.email}</p>}
               </div>
               <div className="flex items-center gap-1 shrink-0">
                 {pending === u.id && <Loader2 className="size-3.5 animate-spin text-muted-foreground" />}
                 {pending !== u.id && (
                   <>
+                    <Button
+                      variant="ghost" size="icon-sm"
+                      onClick={() => setResetPinUser(u)}
+                      title={u.tienePin ? "Resetear PIN" : "Asignar PIN"}
+                    >
+                      <KeyRound className="size-3.5" />
+                    </Button>
                     <Button
                       variant="ghost" size="icon-sm"
                       onClick={() => toggleRol(u)}
@@ -1827,29 +2301,106 @@ function UsuariosSection({ onMutate }: { onMutate: () => void }) {
       <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
         <SheetContent>
           <SheetHeader><SheetTitle>Nuevo usuario</SheetTitle></SheetHeader>
-          <form onSubmit={handleSubmit(onSubmit)} className="mt-6 space-y-4">
-            <Field label="Nombre" {...register("nombre")} error={errors.nombre?.message} />
-            <Field label="Email" type="email" {...register("email")} error={errors.email?.message} />
-            <Field label="Contraseña" type="password" {...register("password")} error={errors.password?.message} />
-            <div className="space-y-1.5">
-              <Label>Rol</Label>
-              <Select defaultValue="VENDEDOR" onValueChange={(v) => setValue("role", v as "ADMIN" | "VENDEDOR")}>
-                <SelectTrigger className="rounded-xl">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="VENDEDOR">Vendedor</SelectItem>
-                  <SelectItem value="ADMIN">Admin</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <Button type="submit" className="w-full" disabled={isSubmitting}>
-              {isSubmitting ? <Loader2 className="size-4 animate-spin" /> : "Crear usuario"}
+          <div className="mt-4 grid grid-cols-2 gap-2">
+            <Button type="button" variant={modo === "login" ? "default" : "outline"} onClick={() => setModo("login")}>
+              Con login
             </Button>
-          </form>
+            <Button type="button" variant={modo === "pin" ? "default" : "outline"} onClick={() => setModo("pin")}>
+              Perfil con PIN
+            </Button>
+          </div>
+
+          {modo === "login" ? (
+            <form onSubmit={handleSubmit(onSubmit)} className="mt-6 space-y-4">
+              <Field label="Nombre" {...register("nombre")} error={errors.nombre?.message} />
+              <Field label="Email" type="email" {...register("email")} error={errors.email?.message} />
+              <Field label="Contraseña" type="password" {...register("password")} error={errors.password?.message} />
+              <div className="space-y-1.5">
+                <Label>Rol</Label>
+                <Select defaultValue="VENDEDOR" onValueChange={(v) => setValue("role", v as "ADMIN" | "VENDEDOR")}>
+                  <SelectTrigger className="rounded-xl">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="VENDEDOR">Vendedor</SelectItem>
+                    <SelectItem value="ADMIN">Admin</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button type="submit" className="w-full" disabled={isSubmitting}>
+                {isSubmitting ? <Loader2 className="size-4 animate-spin" /> : "Crear usuario"}
+              </Button>
+            </form>
+          ) : (
+            <form onSubmit={handleSubmitPin(onSubmitPin)} className="mt-6 space-y-4">
+              <Field label="Nombre" {...registerPin("nombre")} error={errorsPin.nombre?.message} />
+              <Field
+                label="PIN (4 dígitos)" inputMode="numeric" maxLength={4}
+                {...registerPin("pin")} error={errorsPin.pin?.message}
+              />
+              <p className="text-xs text-muted-foreground">
+                Sin email ni contraseña — solo sirve para el cambio rápido de perfil en el kiosco. Siempre
+                se crea como Vendedor.
+              </p>
+              <Button type="submit" className="w-full" disabled={isSubmittingPin}>
+                {isSubmittingPin ? <Loader2 className="size-4 animate-spin" /> : "Crear perfil"}
+              </Button>
+            </form>
+          )}
+        </SheetContent>
+      </Sheet>
+
+      <Sheet open={!!resetPinUser} onOpenChange={(v) => !v && setResetPinUser(null)}>
+        <SheetContent>
+          {resetPinUser && (
+            <ResetearPinForm usuario={resetPinUser} onSuccess={() => { setResetPinUser(null); onMutate() }} />
+          )}
         </SheetContent>
       </Sheet>
     </SectionShell>
+  )
+}
+
+function ResetearPinForm({ usuario, onSuccess }: { usuario: Usuario; onSuccess: () => void }) {
+  const [pin, setPin] = useState("")
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  async function onSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!/^\d{4}$/.test(pin)) { toast.error("El PIN debe tener 4 dígitos"); return }
+    setIsSubmitting(true)
+    try {
+      await resetearPinUsuarioAction(usuario.id, pin)
+      toast.success(`PIN de "${usuario.nombre}" actualizado`)
+      onSuccess()
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Error") }
+    finally { setIsSubmitting(false) }
+  }
+
+  return (
+    <>
+      <SheetHeader>
+        <SheetTitle>{usuario.tienePin ? "Resetear" : "Asignar"} PIN — {usuario.nombre}</SheetTitle>
+      </SheetHeader>
+      {usuario.role === "ADMIN" && (
+        <p className="mt-4 text-xs text-k-loss bg-k-loss/10 rounded-lg px-3 py-2">
+          Esta es una cuenta Admin. Cualquiera con acceso físico al kiosco que sepa este PIN va a poder
+          entrar con sesión de administrador completa (precios, usuarios, configuración, todo).
+        </p>
+      )}
+      <form onSubmit={onSubmit} className="mt-6 space-y-4">
+        <Field
+          label="Nuevo PIN (4 dígitos)"
+          inputMode="numeric"
+          maxLength={4}
+          value={pin}
+          onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 4))}
+        />
+        <Button type="submit" className="w-full" disabled={isSubmitting}>
+          {isSubmitting ? <Loader2 className="size-4 animate-spin" /> : "Guardar"}
+        </Button>
+      </form>
+    </>
   )
 }
 

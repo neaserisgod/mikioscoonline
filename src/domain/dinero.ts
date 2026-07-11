@@ -82,9 +82,21 @@ export function finMes(date: Date = new Date()): Date {
  * Parsea una fecha de query param ("YYYY-MM-DD"). `undefined` = el param no vino
  * (usar el default del caller); `null` = vino pero es un string inválido (el
  * caller debe responder 400, no dejar que un Invalid Date llegue a Prisma).
+ *
+ * Un "YYYY-MM-DD" se arma a mano en horario LOCAL — `new Date("YYYY-MM-DD")`
+ * lo interpreta como medianoche UTC, que en husos horarios negativos (ej.
+ * Argentina, UTC-3) cae a las 21:00 del día anterior en hora local, corriendo
+ * todo el rango un día para atrás (y hasta de mes, en casos límite). Callers
+ * que arman un rango [desde, hasta] todavía necesitan pasar el `hasta` por
+ * `finDia()` — esta función sola solo da el inicio del día indicado.
  */
 export function parseFechaQuery(valor: string | null): Date | undefined | null {
   if (valor == null) return undefined
+  const soloDia = /^(\d{4})-(\d{2})-(\d{2})$/.exec(valor)
+  if (soloDia) {
+    const fecha = new Date(Number(soloDia[1]), Number(soloDia[2]) - 1, Number(soloDia[3]), 0, 0, 0, 0)
+    return isNaN(fecha.getTime()) ? null : fecha
+  }
   const fecha = new Date(valor)
   return isNaN(fecha.getTime()) ? null : fecha
 }

@@ -26,6 +26,8 @@ interface Producto {
   esPesable: boolean
   precioPorKgCentavos: number | null
   stockGramos: number | null
+  esCigarroSuelto: boolean
+  category: { nombre: string }
 }
 
 export default function VenderClient() {
@@ -48,6 +50,7 @@ export default function VenderClient() {
 
   const agregar = useCallback(
     (p: Producto) => {
+      const esCigarrillo = p.category.nombre === "Cigarrillos"
       if (p.esPesable) {
         if ((p.stockGramos ?? 0) <= 0) { toast.warning("Sin stock disponible"); return }
         agregarProducto({
@@ -58,6 +61,8 @@ export default function VenderClient() {
           stock: 0,
           stockGramos: p.stockGramos,
           esPesable: true,
+          esCigarrillo,
+          esCigarroSuelto: p.esCigarroSuelto,
         })
         toast.info(`Cargá el peso de "${p.nombre}" en el carrito`)
       } else {
@@ -70,6 +75,8 @@ export default function VenderClient() {
           stock: p.stock,
           stockGramos: null,
           esPesable: false,
+          esCigarrillo,
+          esCigarroSuelto: p.esCigarroSuelto,
         })
       }
       setQuery("")

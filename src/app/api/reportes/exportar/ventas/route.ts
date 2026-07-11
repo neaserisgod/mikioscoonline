@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireAdminApi } from "@/lib/api-auth"
 import { ventaService } from "@/services/venta.service"
-import { parseFechaQuery } from "@/domain/dinero"
+import { parseFechaQuery, finDia } from "@/domain/dinero"
 
 export async function GET(req: NextRequest) {
   const result = await requireAdminApi()
@@ -9,15 +9,17 @@ export async function GET(req: NextRequest) {
 
   const { searchParams } = req.nextUrl
   const desde = parseFechaQuery(searchParams.get("desde"))
-  const hasta = parseFechaQuery(searchParams.get("hasta"))
-  if (desde === null || hasta === null) {
+  const hastaParam = parseFechaQuery(searchParams.get("hasta"))
+  if (desde === null || hastaParam === null) {
     return NextResponse.json({ error: "Fecha inválida en desde/hasta" }, { status: 400 })
   }
+  // Extendido al fin del día — si no, pedir un solo día (desde === hasta) da 0 resultados.
+  const hasta = hastaParam ? finDia(hastaParam) : hastaParam
 
   const ventas = await ventaService.listar(result.user.organizationId, { fechaDesde: desde, fechaHasta: hasta })
 
   const rows = [
-    ["id", "fecha", "usuario", "items", "medioPago", "totalPesos", "costoPesos", "gananciaPesos", "descuentoPesos"],
+    ["id", "fecha", "usuario", "items", "medioPago", "totalPesos", "costoPesos", "gananciaPesos", "descuentoPesos", "consumoInterno"],
     ...ventas.map((v) => {
       const gananciaCentavos = v.totalCentavos - v.costoTotalCentavos
       const medios = v.payments.map((p) => p.paymentMethod.nombre).join(" + ")
@@ -31,6 +33,7 @@ export async function GET(req: NextRequest) {
         (v.costoTotalCentavos / 100).toFixed(2),
         (gananciaCentavos / 100).toFixed(2),
         (v.descuentoCentavos / 100).toFixed(2),
+        v.esConsumoInterno ? "Sí" : "",
       ]
     }),
   ]
