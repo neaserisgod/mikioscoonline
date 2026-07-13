@@ -78,4 +78,9 @@ if (-not (Test-Path $chrome)) {
     exit 1
 }
 
-Start-Process -FilePath $chrome -ArgumentList "--app=http://localhost:3000/inicio"
+# ?kiosco=1 marca este navegador como "modo kiosco" (ver src/middleware.ts) —
+# fuerza el selector de perfil tipo Netflix al abrir. Si Chrome tiene activado
+# "Seguir ejecutando apps en segundo plano" (chrome://settings/system), el
+# proceso puede no morir al cerrar la ventana y no se volvería a pedir perfil
+# hasta el próximo reinicio real — conviene desactivar esa opción en el kiosco.
+Start-Process -FilePath $chrome -ArgumentList "--app=http://localhost:3000/inicio?kiosco=1"

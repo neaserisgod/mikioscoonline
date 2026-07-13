@@ -21,6 +21,11 @@ export interface LineaCarrito {
   esCigarroSuelto: boolean
 }
 
+export interface LineaPago {
+  medioPagoId: string
+  montoCentavos: number
+}
+
 export interface PagoMpPendiente {
   tipo: TipoDispositivoMp
   orderId: string
@@ -35,6 +40,12 @@ export interface VentaAbierta {
   label: string
   carrito: LineaCarrito[]
   medioPagoId: string
+  /** Cobro dividido: null = modo simple (un solo medio, medioPagoId, por el
+   * total). Array = modo dividido, cada línea con su propio medio y monto —
+   * el cajero arma la suma a mano y debe cubrir el total antes de confirmar.
+   * En modo dividido la venta se crea directo (sin pasar por el flujo de
+   * espera de MercadoPago), igual que el cobro manual de emergencia. */
+  pagosSplit: LineaPago[] | null
   /** Descuento manual del cajero, en % (0-100) sobre el subtotal de productos. */
   descuentoPct: number
   /** Consumo de personal o del dueño — no es una venta real, se cobra $0 (fuerza descuentoPct a 100). */
@@ -66,6 +77,12 @@ interface VentasActions {
   eliminarLinea: (productId: string) => void
   vaciarCarrito: () => void
   setMedioPago: (medioPagoId: string) => void
+  iniciarPagoSplit: (totalCentavos: number) => void
+  iniciarFiadoTotal: () => void
+  cancelarPagoSplit: () => void
+  agregarLineaPagoSplit: () => void
+  actualizarLineaPagoSplit: (index: number, patch: Partial<LineaPago>) => void
+  quitarLineaPagoSplit: (index: number) => void
   setDescuentoPct: (pct: number) => void
   setConsumoInterno: (activo: boolean) => void
   // Llamar tras confirmar venta exitosa: vacía el carrito de la venta activa, sin cambiar de pestaña
@@ -83,6 +100,7 @@ function crearVentaVacia(n: number): VentaAbierta {
     label: `Venta ${n}`,
     carrito: [],
     medioPagoId: "",
+    pagosSplit: null,
     descuentoPct: 0,
     esConsumoInterno: false,
     pagoMpPendiente: null,
@@ -259,6 +277,74 @@ export const useVentasStore = create<VentasState & VentasActions>((set, get) => 
       })
     },
 
+    iniciarPagoSplit(totalCentavos) {
+      set((s) => {
+        const activa = ventaActiva(s)
+        if (!activa) return s
+        const primeraLinea: LineaPago = { medioPagoId: activa.medioPagoId, montoCentavos: totalCentavos }
+        return {
+          ventas: s.ventas.map((v) => (v.id === activa.id ? { ...v, pagosSplit: [primeraLinea, { medioPagoId: "", montoCentavos: 0 }] } : v)),
+        }
+      })
+    },
+
+    // Fiar el 100% de la venta a un cliente, sin cobrar nada por ningún medio —
+    // arranca en 0 líneas de pago (a diferencia de iniciarPagoSplit, que arranca
+    // con 1 línea por el total): el checkout ya sabe mostrar "Resta: $total" y
+    // pedir el cliente cuando pagosSplit no cubre el total.
+    iniciarFiadoTotal() {
+      set((s) => {
+        const activa = ventaActiva(s)
+        if (!activa) return s
+        return {
+          ventas: s.ventas.map((v) => (v.id === activa.id ? { ...v, pagosSplit: [] } : v)),
+        }
+      })
+    },
+
+    cancelarPagoSplit() {
+      set((s) => {
+        const activa = ventaActiva(s)
+        if (!activa) return s
+        return {
+          ventas: s.ventas.map((v) => (v.id === activa.id ? { ...v, pagosSplit: null } : v)),
+        }
+      })
+    },
+
+    agregarLineaPagoSplit() {
+      set((s) => {
+        const activa = ventaActiva(s)
+        if (!activa || !activa.pagosSplit) return s
+        const nuevo = [...activa.pagosSplit, { medioPagoId: "", montoCentavos: 0 }]
+        return {
+          ventas: s.ventas.map((v) => (v.id === activa.id ? { ...v, pagosSplit: nuevo } : v)),
+        }
+      })
+    },
+
+    actualizarLineaPagoSplit(index, patch) {
+      set((s) => {
+        const activa = ventaActiva(s)
+        if (!activa || !activa.pagosSplit) return s
+        const nuevo = activa.pagosSplit.map((l, i) => (i === index ? { ...l, ...patch } : l))
+        return {
+          ventas: s.ventas.map((v) => (v.id === activa.id ? { ...v, pagosSplit: nuevo } : v)),
+        }
+      })
+    },
+
+    quitarLineaPagoSplit(index) {
+      set((s) => {
+        const activa = ventaActiva(s)
+        if (!activa || !activa.pagosSplit) return s
+        const nuevo = activa.pagosSplit.filter((_, i) => i !== index)
+        return {
+          ventas: s.ventas.map((v) => (v.id === activa.id ? { ...v, pagosSplit: nuevo.length > 0 ? nuevo : null } : v)),
+        }
+      })
+    },
+
     setDescuentoPct(pct) {
       set((s) => {
         const activa = ventaActiva(s)
@@ -291,7 +377,7 @@ export const useVentasStore = create<VentasState & VentasActions>((set, get) => 
         return {
           ventas: s.ventas.map((v) =>
             v.id === activa.id
-              ? { ...v, carrito: [], medioPagoId: "", descuentoPct: 0, esConsumoInterno: false }
+              ? { ...v, carrito: [], medioPagoId: "", pagosSplit: null, descuentoPct: 0, esConsumoInterno: false }
               : v
           ),
         }
@@ -314,7 +400,7 @@ export const useVentasStore = create<VentasState & VentasActions>((set, get) => 
       set((s) => ({
         ventas: s.ventas.map((v) =>
           v.id === ventaId
-            ? { ...v, carrito: [], medioPagoId: "", descuentoPct: 0, pagoMpPendiente: null }
+            ? { ...v, carrito: [], medioPagoId: "", pagosSplit: null, descuentoPct: 0, pagoMpPendiente: null }
             : v
         ),
       }))

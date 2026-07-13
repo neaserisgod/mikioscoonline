@@ -21,10 +21,15 @@ const PagoSchema = z.object({
 
 const CrearVentaSchema = z.object({
   lineas: z.array(LineaSchema).min(1, "La venta debe tener al menos una línea"),
-  pagos: z.array(PagoSchema).min(1, "La venta debe tener al menos un pago"),
+  // min(0), no min(1): una venta 100% fiada a un cliente (ver fiadoCentavos)
+  // puede no tener ningún pago real.
+  pagos: z.array(PagoSchema),
   descuentoCentavos: z.number().int().min(0).optional(),
   /** Consumo de personal o del dueño — no es una venta real a un cliente. */
   esConsumoInterno: z.boolean().optional(),
+  /** Cuenta corriente: resto que queda fiado a un cliente en vez de cobrado. */
+  fiadoCentavos: z.number().int().min(0).optional(),
+  customerId: z.string().cuid().optional(),
 })
 
 // Devolvemos el error como dato (no lo lanzamos) para que el mensaje real llegue al
@@ -51,7 +56,7 @@ export async function crearVentaAction(input: unknown): Promise<CrearVentaResult
     const session = await auth()
     if (!session?.user?.id || !session.user.organizationId) return { ok: false, error: "No autorizado" }
 
-    const { lineas, pagos, descuentoCentavos, esConsumoInterno } = CrearVentaSchema.parse(input)
+    const { lineas, pagos, descuentoCentavos, esConsumoInterno, fiadoCentavos, customerId } = CrearVentaSchema.parse(input)
 
     const venta = await ventaService.crear({
       userId: session.user.id,
@@ -60,6 +65,8 @@ export async function crearVentaAction(input: unknown): Promise<CrearVentaResult
       pagos,
       descuentoCentavos,
       esConsumoInterno,
+      fiadoCentavos,
+      customerId,
     })
     return { ok: true, id: venta.id }
   } catch (e) {

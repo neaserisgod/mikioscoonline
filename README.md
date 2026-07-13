@@ -276,12 +276,12 @@ El switch por entorno ya existe en `src/lib/providers/pagos/` (`getPagosProvider
 4. Implementar `MercadoPagoProvider.crearLinkPago()` en `mercadopago.ts` con el SDK oficial.
 5. Crear el endpoint de webhook (ej. `/api/cobros/mp-webhook`) y, al confirmar el pago, completar `Payment.comisionRealCentavos`.
 
-## Integración AFIP/ARCA (TODO)
+## Integración AFIP/ARCA
 
-Mismo patrón en `src/lib/providers/facturacion/` (`getFacturacionProvider()`), con `AfipFacturacionProvider` (`afip.ts`) como stub.
+Mismo patrón en `src/lib/providers/facturacion/` (`getFacturacionProvider()`). `AfipFacturacionProvider` (`afip.ts`) ya está implementado con `@afipsdk/afip.js` y probado contra homologación (CAE real obtenido con el CUIT de prueba `20409378472`) — falta únicamente conectarlo a un flujo real de venta (todavía no hay ningún caller de `getFacturacionProvider()` en la app) y, para producción, el certificado digital propio.
 
-1. Elegir un SDK (ej. `@afipsdk/afip.js` o la API de tusFacturas) e instalarlo.
-2. Completar `AFIP_CUIT`, `AFIP_CERT`, `AFIP_PRIVATE_KEY`, `AFIP_ENVIRONMENT` en `.env.local`.
-3. Cambiar `FACTURACION_PROVIDER="afip"`.
-4. Implementar `AfipFacturacionProvider.emitir()` mapeando `DatosFactura` → formato del SDK y la respuesta → `ResultadoFacturacion`.
-5. Requiere certificado digital de AFIP (https://auth.afip.gob.ar/).
+- **Homologación (ya funciona):** con `AFIP_ACCESS_TOKEN` (gratis en https://app.afipsdk.com) y `AFIP_CUIT=20409378472` alcanza — no hace falta certificado.
+- **Producción:** CUIT real + certificado de https://auth.afip.gob.ar/ codificado en base64 en `AFIP_CERT`/`AFIP_PRIVATE_KEY`, y `AFIP_ENVIRONMENT="production"`.
+- Cambiar `FACTURACION_PROVIDER="afip"` para activar el provider real (usa `"mock"` mientras tanto).
+- Mapeos hardcodeados en `afip.ts` a verificar contra la tabla oficial de ARCA si se agregan más casos: tipos de comprobante (A/B/C), condición de IVA del receptor, alícuotas de IVA.
+- Pendiente: decidir en qué punto del flujo de venta se dispara `emitir()`, y qué hacer con el `cae`/`caeFechaVencimiento` resultante (guardarlo en la `Sale`, mostrarlo/imprimirlo).

@@ -220,6 +220,20 @@ export const productoService = {
     })
   },
 
+  /** Usado al recibir un pedido de proveedor: pisa costo (y opcionalmente precio
+   * de venta) con el valor real de la factura, apagando `costoEsProvisional`. */
+  async actualizarCostoYPrecio(
+    id: string,
+    organizationId: string,
+    data: { costoCentavos: number; precioCentavos: number }
+  ) {
+    await prisma.product.findFirstOrThrow({ where: { id, organizationId } })
+    return prisma.product.update({
+      where: { id },
+      data: { ...data, costoEsProvisional: false },
+    })
+  },
+
   async obtener(id: string, organizationId: string) {
     return prisma.product.findFirst({
       where: { id, organizationId },
@@ -264,6 +278,31 @@ export const productoService = {
         p.barcode === query
       )
       .slice(0, 50)
+  },
+
+  /** Ranking de productos por cantidad de líneas de venta en los últimos
+   * `dias` — para el acceso rápido de "Más vendidos" en el POS, así el
+   * cajero no tiene que buscar los productos que salen todo el tiempo.
+   * Cuenta apariciones en ventas, no unidades (pesables venden "1 línea" con
+   * gramos variables, así que sumar cantidad los subrepresentaría). Excluye
+   * consumo interno: no es una preferencia real de clientes. */
+  async masVendidos(organizationId: string, dias: number, limit: number) {
+    const desde = new Date(Date.now() - dias * 24 * 60 * 60 * 1000)
+    const ranking = await prisma.saleLine.groupBy({
+      by: ["productId"],
+      where: { sale: { organizationId, fecha: { gte: desde }, esConsumoInterno: false } },
+      _count: { productId: true },
+      orderBy: { _count: { productId: "desc" } },
+      take: limit,
+    })
+    if (ranking.length === 0) return []
+
+    const productos = await prisma.product.findMany({
+      where: { id: { in: ranking.map((r) => r.productId) }, organizationId, activo: true },
+      include: incluirRelaciones,
+    })
+    const porId = new Map(productos.map((p) => [p.id, p]))
+    return ranking.map((r) => porId.get(r.productId)).filter((p) => p !== undefined)
   },
 
   async buscarPorCodigo(barcode: string, organizationId: string) {

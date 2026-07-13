@@ -43,3 +43,16 @@ export async function registrarMovimientoAction(cajaSesionId: string, input: unk
   const data = MovimientoSchema.parse(input)
   return cajaSesionService.registrarMovimiento(cajaSesionId, user.organizationId, data)
 }
+
+const ArqueoParcialSchema = z.object({
+  efectivoContadoCentavos: z.number().int().min(0),
+  nota: z.string().optional(),
+})
+
+export async function registrarArqueoParcialAction(cajaSesionId: string, input: unknown) {
+  const user = await requireAuth()
+  const data = ArqueoParcialSchema.parse(input)
+  return cajaSesionService.registrarArqueoParcial(
+    cajaSesionId, user.organizationId, user.id, data.efectivoContadoCentavos, data.nota
+  )
+}

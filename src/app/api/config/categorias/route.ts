@@ -1,13 +1,18 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
-import { requireAdminApi } from "@/lib/api-auth"
+import { requireSessionApi, requireAdminApi } from "@/lib/api-auth"
 import { categoriaService } from "@/services/config.service"
 
+// VENDEDOR necesita la lista de categorías para el selector al agregar/editar
+// productos, pero no el margen default de cada una (markupDefault*) — se
+// resuelve server-side en producto.service.ts sin que el cliente lo mande.
 export async function GET() {
-  const result = await requireAdminApi()
+  const result = await requireSessionApi()
   if ("error" in result) return result.error
   const data = await categoriaService.listar(result.user.organizationId)
-  return NextResponse.json(data)
+  if (result.user.role === "ADMIN") return NextResponse.json(data)
+  const sanitizado = data.map((c) => ({ ...c, markupDefaultBp: 0, markupDefaultFijoCentavos: 0 }))
+  return NextResponse.json(sanitizado)
 }
 
 const CategoriaSchema = z.object({

@@ -3,7 +3,9 @@
 import { useState, useEffect } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { useSession } from "next-auth/react"
 import { motion } from "framer-motion"
+import { stagger } from "@/lib/motion"
 import { Plus, Search, AlertTriangle, Package, Truck, Tag, ChevronRight } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
@@ -54,17 +56,11 @@ interface ResumenCategoria {
   gananciaPotencialCentavos: number
 }
 
-const stagger = {
-  container: { hidden: {}, show: { transition: { staggerChildren: 0.02 } } },
-  item: {
-    hidden: { opacity: 0, y: 4 },
-    show: { opacity: 1, y: 0, transition: { type: "spring" as const, stiffness: 300, damping: 30 } },
-  },
-}
-
 const PROD_COLS = "lg:grid-cols-[2fr_0.9fr_1fr_1fr_auto_auto]"
 
 export default function ProductosClient() {
+  const { data: session } = useSession()
+  const esAdmin = session?.user?.role === "ADMIN"
   const [q, setQ] = useState("")
   const [sheetOpen, setSheetOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -235,7 +231,7 @@ export default function ProductosClient() {
           <span>SKU</span>
           <span>Categoría</span>
           <span className="text-right">Precio</span>
-          <span className="text-center">Markup</span>
+          <span className="text-center">{esAdmin && "Markup"}</span>
           <span className="text-right">Stock</span>
         </div>
         <motion.div
@@ -297,7 +293,7 @@ export default function ProductosClient() {
                     {formatearARS(precioDisplay)}{p.esPesable && "/kg"}
                   </p>
                   <div className="flex items-center justify-end gap-2">
-                    <MarkupBadge markupBp={markupBp} />
+                    {esAdmin && <MarkupBadge markupBp={markupBp} />}
                     <span className={cn(
                       "text-xs tabular-nums",
                       esBajo ? "text-k-loss" : "text-muted-foreground"
@@ -308,7 +304,7 @@ export default function ProductosClient() {
                 </div>
 
                 <div className="hidden lg:flex justify-center items-center">
-                  <MarkupBadge markupBp={markupBp} />
+                  {esAdmin && <MarkupBadge markupBp={markupBp} />}
                 </div>
 
                 <span className={cn(
@@ -384,14 +380,17 @@ export default function ProductosClient() {
         </div>
       )}
 
-      {/* Ganancia potencial: precio − costo del stock actual, no es rentabilidad real */}
-      <div className="rounded-2xl border border-k-gain/20 bg-k-gain-muted/20 p-4 flex items-center justify-between">
-        <div>
-          <p className="text-xs text-muted-foreground">Ganancia potencial</p>
-          <p className="text-[10px] text-muted-foreground">Si se vendiera todo el stock actual a precio de lista</p>
+      {/* Ganancia potencial: precio − costo del stock actual, no es rentabilidad real.
+          Oculto para VENDEDOR — no ve costo/margen. */}
+      {esAdmin && (
+        <div className="rounded-2xl border border-k-gain/20 bg-k-gain-muted/20 p-4 flex items-center justify-between">
+          <div>
+            <p className="text-xs text-muted-foreground">Ganancia potencial</p>
+            <p className="text-[10px] text-muted-foreground">Si se vendiera todo el stock actual a precio de lista</p>
+          </div>
+          <p className="text-xl font-semibold tabular-nums text-k-gain">{formatearARS(gananciaPotencialTotal)}</p>
         </div>
-        <p className="text-xl font-semibold tabular-nums text-k-gain">{formatearARS(gananciaPotencialTotal)}</p>
-      </div>
+      )}
 
       {mostrandoLista ? (
         renderListaProductos(productos, loadingProductos)
@@ -421,9 +420,11 @@ export default function ProductosClient() {
                   onClick={() => irAProveedor(p.id)}
                   badge={
                     <div className="flex flex-col items-end gap-0.5 shrink-0">
-                      <span className="text-xs font-semibold tabular-nums text-k-gain">
-                        {formatearARS(p.gananciaPotencialCentavos)}
-                      </span>
+                      {esAdmin && (
+                        <span className="text-xs font-semibold tabular-nums text-k-gain">
+                          {formatearARS(p.gananciaPotencialCentavos)}
+                        </span>
+                      )}
                       {p.sinStock > 0 && (
                         <span className="flex items-center gap-1 text-xs font-medium text-k-loss">
                           <AlertTriangle className="size-3.5" />
@@ -486,9 +487,11 @@ export default function ProductosClient() {
                     icon={Tag}
                     onClick={() => irACategoria(c.id)}
                     badge={
-                      <span className="text-xs font-semibold tabular-nums text-k-gain shrink-0">
-                        {formatearARS(c.gananciaPotencialCentavos)}
-                      </span>
+                      esAdmin ? (
+                        <span className="text-xs font-semibold tabular-nums text-k-gain shrink-0">
+                          {formatearARS(c.gananciaPotencialCentavos)}
+                        </span>
+                      ) : undefined
                     }
                   />
                 </motion.div>

@@ -1,12 +1,13 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { signIn } from "next-auth/react"
 import { Loader2, Delete, UserRound } from "lucide-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
+import { confirmarPerfilKioscoAction } from "@/app/actions/perfiles.actions"
 
 interface Perfil {
   id: string
@@ -21,6 +22,10 @@ interface PerfilesResponse {
 interface PerfilSwitcherProps {
   open: boolean
   onClose: () => void
+  /** Modo kiosco: no se puede cerrar sin elegir perfil (sin click afuera, sin
+   * Escape, sin botón de cerrar) y al confirmar planta la cookie de sesión
+   * que evita volver a pedirlo hasta que se cierre el navegador del todo. */
+  bloqueante?: boolean
 }
 
 // Función de módulo (fuera del componente) para que el React Compiler no la
@@ -35,7 +40,7 @@ function recargarEn(path: string) {
  * inicial (Google/contraseña) — reusa esa sesión ya autenticada y solo cambia
  * quién queda como usuario activo (ver provider "pin" en src/auth.ts).
  */
-export function PerfilSwitcher({ open, onClose }: PerfilSwitcherProps) {
+export function PerfilSwitcher({ open, onClose, bloqueante }: PerfilSwitcherProps) {
   const [seleccionado, setSeleccionado] = useState<Perfil | null>(null)
   const [pin, setPin] = useState("")
   const [error, setError] = useState<string | null>(null)
@@ -45,6 +50,7 @@ export function PerfilSwitcher({ open, onClose }: PerfilSwitcherProps) {
     queryKey: ["perfiles-switcher"],
     queryFn: () => fetch("/api/perfiles").then((r) => r.json()),
     enabled: open,
+    staleTime: 60_000,
   })
 
   function cerrar() {
@@ -53,6 +59,15 @@ export function PerfilSwitcher({ open, onClose }: PerfilSwitcherProps) {
     setError(null)
     onClose()
   }
+
+  // Salvaguarda: si no hay ningún perfil con PIN configurado, el gate
+  // forzado no tiene nada para ofrecer — bloquear igual dejaría el kiosco
+  // inutilizable. Se confirma solo y sigue, como si ya se hubiera elegido.
+  useEffect(() => {
+    if (bloqueante && !isLoading && (data?.perfiles?.length ?? 0) === 0) {
+      confirmarPerfilKioscoAction().then(() => recargarEn("/inicio"))
+    }
+  }, [bloqueante, isLoading, data?.perfiles?.length])
 
   async function ingresarDigito(d: string) {
     if (pin.length >= 4 || enviando || !seleccionado) return
@@ -64,6 +79,7 @@ export function PerfilSwitcher({ open, onClose }: PerfilSwitcherProps) {
     setEnviando(true)
     const result = await signIn("pin", { userId: seleccionado.id, pin: nuevoPin, redirect: false })
     if (result?.ok) {
+      if (bloqueante) await confirmarPerfilKioscoAction()
       // Recarga completa: el resto de la UI (top bar, drawer, react-query) lee
       // la sesión vieja cacheada en varios lugares — más simple y confiable
       // arrancar de cero que invalidar todo a mano.
@@ -75,11 +91,21 @@ export function PerfilSwitcher({ open, onClose }: PerfilSwitcherProps) {
     setEnviando(false)
   }
 
-  const cajasBloqueando = data?.cajasEfectivoAbiertas ?? []
+  // El chequeo de "cerrá la caja antes de cambiar de perfil" tiene sentido
+  // para el cambio VOLUNTARIO (entregarle el kiosco a otro empleado a mitad
+  // de turno sin cerrar arqueo). En el gate forzado al abrir la app (bloqueante)
+  // no aplica: no es un cambio de manos, es solo reconfirmar quién está
+  // operando — la caja abierta es el estado normal y esperado del día, y
+  // bloquear acá dejaría el kiosco completamente inutilizable sin escape.
+  const cajasBloqueando = bloqueante ? [] : (data?.cajasEfectivoAbiertas ?? [])
 
   return (
-    <Dialog open={open} onOpenChange={(v) => !v && cerrar()}>
-      <DialogContent>
+    <Dialog
+      open={open}
+      onOpenChange={bloqueante ? undefined : (v) => !v && cerrar()}
+      disablePointerDismissal={bloqueante}
+    >
+      <DialogContent showCloseButton={!bloqueante}>
         <DialogHeader>
           <DialogTitle>{seleccionado ? seleccionado.nombre : "Cambiar de perfil"}</DialogTitle>
           {!seleccionado && (

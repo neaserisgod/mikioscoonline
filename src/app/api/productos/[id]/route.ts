@@ -1,20 +1,21 @@
 import { NextRequest, NextResponse } from "next/server"
 import { Prisma } from "@prisma/client"
 import { z, ZodError } from "zod"
-import { requireAdminApi } from "@/lib/api-auth"
+import { requireSessionApi, requireAdminApi } from "@/lib/api-auth"
 import { productoService } from "@/services/producto.service"
+import { sanitizarProducto } from "@/lib/sanitizar-producto"
 
 export async function GET(
   _req: NextRequest,
   ctx: { params: Promise<{ id: string }> }
 ) {
-  const result = await requireAdminApi()
+  const result = await requireSessionApi()
   if ("error" in result) return result.error
 
   const { id } = await ctx.params
   const producto = await productoService.obtener(id, result.user.organizationId)
   if (!producto) return NextResponse.json({ error: "No encontrado" }, { status: 404 })
-  return NextResponse.json(producto)
+  return NextResponse.json(sanitizarProducto(producto, result.user.role))
 }
 
 function mensajeError(e: unknown): string {

@@ -46,6 +46,10 @@ model Organization {
   estadoPago              EstadoPago @default(TRIAL)
   trialTerminaEl          DateTime?  // seteado al completar el onboarding = ahora + 14 días
   mpPreapprovalId         String?    // id de la suscripción en Mercado Pago una vez autorizada
+  // Horarios de arqueo parcial ("HH:mm,HH:mm", ej. "14:00,19:00") — conteos de
+  // control durante el día que NO cierran la caja, para detectar diferencias
+  // antes de que se acumulen muchas horas. Null = usa el default de la app.
+  horariosArqueo          String?
   createdAt               DateTime   @default(now())
   updatedAt               DateTime   @updatedAt
 
@@ -60,6 +64,8 @@ model Organization {
   cajas           Caja[]
   cajaSesiones    CajaSesion[]
   movimientosCaja MovimientoCaja[]
+  arqueosParciales ArqueoParcial[]
+  customers       Customer[]
 }
 
 // ─── Usuarios ────────────────────────────────────────────────────────────────
@@ -84,6 +90,7 @@ model User {
   stockMovements   StockMovement[]
   sesionesAbiertas CajaSesion[] @relation("SesionAbiertaPor")
   sesionesCerradas CajaSesion[] @relation("SesionCerradaPor")
+  arqueosParciales ArqueoParcial[]
 }
 
 // ─── Configuración ──────────────────────────────────────────────────────────
@@ -135,6 +142,27 @@ model Provider {
   updatedAt      DateTime     @updatedAt
 
   products Product[]
+
+  @@unique([nombre, organizationId])
+}
+
+model Customer {
+  id             String       @id @default(cuid())
+  nombre         String
+  telefono       String?
+  direccion      String?
+  activo         Boolean      @default(true)
+  // Cuenta corriente: cuánto nos debe este cliente (inverso de
+  // Provider.saldoCuentaCorrienteCentavos). Sube al dejar un resto fiado en
+  // una venta (Sale.fiadoCentavos), baja al registrar un pago de deuda (que
+  // además crea un INGRESO real en la caja elegida) — ver customerService.
+  saldoCuentaCorrienteCentavos Int @default(0)
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  sales Sale[]
 
   @@unique([nombre, organizationId])
 }
@@ -229,6 +257,7 @@ model Caja {
   sesiones       CajaSesion[]
   movimientos    MovimientoCaja[]
   mediosDePago   PaymentMethod[]
+  arqueosParciales ArqueoParcial[]
 
   @@unique([nombre, organizationId])
 }
@@ -253,6 +282,32 @@ model CajaSesion {
   organization             Organization @relation(fields: [organizationId], references: [id])
 
   movimientos MovimientoCaja[]
+  arqueosParciales ArqueoParcial[]
+}
+
+/**
+ * Conteo de control en un horario fijo (ej. 14:00, 19:00) DENTRO de una
+ * sesión de caja abierta — a diferencia del cierre, no termina la sesión ni
+ * cambia su fondo/estado, solo deja constancia de esperado/contado/diferencia
+ * en ese momento. Pensado para detectar diferencias temprano en vez de
+ * arrastrarlas horas o días (ver el desfasaje real de Mercado Pago del
+ * 2026-07-10 que este feature busca evitar a futuro).
+ */
+model ArqueoParcial {
+  id                       String     @id @default(cuid())
+  cajaSesionId             String
+  cajaSesion               CajaSesion @relation(fields: [cajaSesionId], references: [id])
+  cajaId                   String
+  caja                     Caja       @relation(fields: [cajaId], references: [id])
+  userId                   String
+  user                     User       @relation(fields: [userId], references: [id])
+  efectivoEsperadoCentavos Int
+  efectivoContadoCentavos  Int
+  diferenciaCentavos       Int        // = contado − esperado
+  nota                     String?
+  fecha                    DateTime   @default(now())
+  organizationId           String
+  organization             Organization @relation(fields: [organizationId], references: [id])
 }
 
 model MovimientoCaja {
@@ -366,6 +421,12 @@ model Sale {
   // igual que cualquier venta. Se excluye de las cifras de ganancia y del
   // fondo de reposición por proveedor — ver ventaService.crear.
   esConsumoInterno   Boolean      @default(false)
+  // Cuenta corriente: parte del total que quedó fiada a un cliente en vez de
+  // cobrada (0 = venta cobrada por completo). Requiere customerId. Nunca se
+  // suma a ningún MovimientoCaja — es plata que no entró todavía.
+  fiadoCentavos      Int          @default(0)
+  customerId         String?
+  customer           Customer?    @relation(fields: [customerId], references: [id])
   organizationId     String
   organization       Organization @relation(fields: [organizationId], references: [id])
   createdAt          DateTime     @default(now())

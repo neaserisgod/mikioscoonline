@@ -131,9 +131,13 @@ export const proveedorService = {
         },
       })
 
+      // Nunca por debajo de $0: si no había cuenta corriente (o el pago supera
+      // la deuda), esto es simplemente un pago de un pedido — el EGRESO de
+      // arriba ya lo registra. La cuenta corriente no es "saldo a favor" ni
+      // va en negativo, solo refleja deuda real pendiente.
       return tx.provider.update({
         where: { id },
-        data: { saldoCuentaCorrienteCentavos: { decrement: montoCentavos } },
+        data: { saldoCuentaCorrienteCentavos: Math.max(0, provider.saldoCuentaCorrienteCentavos - montoCentavos) },
       })
     })
   },
@@ -418,6 +422,7 @@ export const organizacionService = {
       condicionIva?: string | null
       puntoDeVenta?: number | null
       stockMinimoDefault?: number
+      horariosArqueo?: string | null
     }
   ) {
     return prisma.organization.update({ where: { id: organizationId }, data })

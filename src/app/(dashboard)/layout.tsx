@@ -1,4 +1,5 @@
 import { auth } from "@/auth"
+import { cookies } from "next/headers"
 import { redirect } from "next/navigation"
 import { organizacionService } from "@/services/config.service"
 import { accesoBloqueado } from "@/lib/suscripcion"
@@ -8,6 +9,8 @@ import { PageTransition } from "@/components/layout/page-transition"
 import { VentaOverlay } from "@/components/pos/venta-overlay"
 import { PagoMpPollingMount } from "@/components/pos/pago-mp-polling-mount"
 import { TraspasoCigarrillosGate } from "@/components/pos/traspaso-cigarrillos-gate"
+import { ArqueoParcialGate } from "@/components/pos/arqueo-parcial-gate"
+import { PerfilGate } from "@/components/pos/perfil-gate"
 import { GlobalScannerMount } from "@/components/scanner/global-scanner-mount"
 import { QueryWarmup } from "@/components/providers/query-warmup"
 
@@ -23,6 +26,12 @@ export default async function DashboardLayout({ children }: { children: React.Re
   }
   if (!org.onboardingCompletadoAt) redirect("/onboarding")
   if (accesoBloqueado(org)) redirect("/suscripcion")
+
+  // Selector de perfil tipo Netflix forzado, solo en el kiosco (cookie
+  // modo_kiosco, plantada por src/proxy.ts) y solo al abrir el navegador
+  // (perfil_confirmado es cookie de sesión, se borra al cerrar Chrome).
+  const store = await cookies()
+  const forzarPerfil = store.get("modo_kiosco")?.value === "1" && !store.get("perfil_confirmado")
 
   return (
     <div className="flex flex-col h-dvh overflow-hidden">
@@ -40,6 +49,8 @@ export default async function DashboardLayout({ children }: { children: React.Re
       <VentaOverlay />
       <PagoMpPollingMount />
       <TraspasoCigarrillosGate />
+      <ArqueoParcialGate />
+      {forzarPerfil && <PerfilGate />}
       <GlobalScannerMount />
       <QueryWarmup />
     </div>

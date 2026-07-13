@@ -32,6 +32,10 @@ export interface CrearVentaInput {
   /** Consumo de personal o del dueño — no es una venta real a un cliente: no
    * suma al fondo de reposición del proveedor ni a las cifras de ganancia. */
   esConsumoInterno?: boolean
+  /** Cuenta corriente: parte del total que queda fiada en vez de cobrada.
+   * Requiere customerId. Nunca se suma a ningún MovimientoCaja. */
+  fiadoCentavos?: number
+  customerId?: string
 }
 
 // ─── Servicio ─────────────────────────────────────────────────────────────────
@@ -154,6 +158,14 @@ export const ventaService = {
       const totalConDescuentoCentavos = totalCentavos - descuentoCentavos
       const factorDescuento = totalCentavos > 0 ? totalConDescuentoCentavos / totalCentavos : 1
 
+      // Cuenta corriente: lo que queda fiado NUNCA se atribuye a ninguna caja —
+      // solo se reparte entre cajas lo que efectivamente se cobró (ver paso 7).
+      // Clamp a 0: si el fiado llegara a superar el total de productos (caso
+      // límite con recargo alto), nunca se reparte un monto negativo a una caja.
+      const fiadoCentavos = input.fiadoCentavos ?? 0
+      const baseAPagarCentavos = Math.max(0, totalConDescuentoCentavos - fiadoCentavos)
+      const factorFiado = totalConDescuentoCentavos > 0 ? baseAPagarCentavos / totalConDescuentoCentavos : 1
+
       // 4. Split por categoría (atribución BASE, antes de overrides por medio de pago)
       const montoPorCajaCategoria = new Map<string, number>()
       for (const linea of input.lineas) {
@@ -232,7 +244,7 @@ export const ventaService = {
       for (const pago of input.pagos) {
         const medio = medios.find((m) => m.id === pago.paymentMethodId)!
         const fraccion = totalPagado > 0 ? pago.montoCentavos / totalPagado : 0
-        const ingresoPago = Math.round(totalConDescuentoCentavos * fraccion)
+        const ingresoPago = Math.round(baseAPagarCentavos * fraccion)
         const recargoPago = medio.esMercadoPago ? Math.round(recargoCigarrillosTotalCentavos * fraccion) : 0
 
         if (medio.cajaId) {
@@ -243,9 +255,10 @@ export const ventaService = {
         } else {
           for (const [cajaId, montoCategoria] of montoPorCajaCategoria) {
             // La categoría se calculó sobre precio de lista — se escala por el mismo
-            // factor del descuento antes de repartir, así la suma entre cajas coincide
-            // con la plata realmente cobrada, no con el precio de lista.
-            const montoCategoriaDescontado = montoCategoria * factorDescuento
+            // factor del descuento (y, si hay fiado, también por factorFiado) antes de
+            // repartir, así la suma entre cajas coincide con la plata realmente
+            // cobrada, no con el precio de lista ni con lo que quedó a cuenta corriente.
+            const montoCategoriaDescontado = montoCategoria * factorDescuento * factorFiado
             const porcion = Math.round(montoCategoriaDescontado * fraccion)
             montoPorCaja.set(cajaId, (montoPorCaja.get(cajaId) ?? 0) + porcion)
             if (recargoPago > 0 && totalConDescuentoCentavos > 0) {
@@ -273,11 +286,18 @@ export const ventaService = {
         }
       }
 
-      // 8. Validar pago suficiente (productos con descuento + recargo virtual)
-      if (totalPagado < totalConDescuentoCentavos + recargoCentavosTotal) {
+      // 8. Validar pago suficiente (productos con descuento + recargo virtual),
+      // salvo el resto que se deja fiado a un cliente (cuenta corriente).
+      if (fiadoCentavos > 0 && !input.customerId) {
+        throw new Error("Elegí un cliente para dejar el resto a cuenta corriente")
+      }
+      if (totalPagado + fiadoCentavos < totalConDescuentoCentavos + recargoCentavosTotal) {
         throw new Error(
           `Pago insuficiente: total a cobrar $${(totalConDescuentoCentavos + recargoCentavosTotal) / 100}, pagado $${totalPagado / 100}`
         )
+      }
+      if (fiadoCentavos > 0) {
+        await tx.customer.findFirstOrThrow({ where: { id: input.customerId, organizationId: input.organizationId } })
       }
 
       // 9. Crear venta con líneas y pagos
@@ -291,6 +311,8 @@ export const ventaService = {
           recargoCentavos: recargoCentavosTotal,
           descuentoCentavos,
           esConsumoInterno: input.esConsumoInterno ?? false,
+          fiadoCentavos,
+          customerId: fiadoCentavos > 0 ? input.customerId : undefined,
           lines: { create: lineasConFoto },
           payments: { create: pagosConComision },
         },
@@ -299,6 +321,15 @@ export const ventaService = {
           payments: { include: { paymentMethod: true } },
         },
       })
+
+      // 9.5. Cuenta corriente: el resto fiado sube lo que nos debe el cliente.
+      // Nunca toca ningún MovimientoCaja — es plata que no entró todavía.
+      if (fiadoCentavos > 0 && input.customerId) {
+        await tx.customer.update({
+          where: { id: input.customerId },
+          data: { saldoCuentaCorrienteCentavos: { increment: fiadoCentavos } },
+        })
+      }
 
       // 10. Descontar stock y crear movimientos (gramos para pesables, unidades para el resto).
       // Decremento atómico condicional (`decrement` + guard `gte` en el where) en vez de restar
@@ -433,8 +464,11 @@ export const ventaService = {
         }
       }
 
-      // 11. Atribuir venta a cajas (un MovimientoCaja por caja involucrada)
-      const medioPagoId = input.pagos[0].paymentMethodId
+      // 11. Atribuir venta a cajas (un MovimientoCaja por caja involucrada) — con
+      // una venta 100% fiada (sin pagos reales) input.pagos puede venir vacío;
+      // montoPorCaja también queda vacío en ese caso, así que este loop no llega
+      // a usar medioPagoId, pero igual evitamos el crash al calcularlo.
+      const medioPagoId = input.pagos[0]?.paymentMethodId
       for (const [cajaId, montoCentavos] of montoPorCaja) {
         const cajaSesionId = sesionPorCaja.get(cajaId)!
         const recargoCentavos = recargoPorCaja.get(cajaId) ?? 0
@@ -627,5 +661,55 @@ export const ventaService = {
       orderBy: { fecha: "desc" },
       take: opts?.limit ?? 100,
     })
+  },
+
+  /**
+   * Historial paginado para la pantalla de revisión — a diferencia de `listar`
+   * (usado por la exportación CSV), trae los `_count` de pagos/movimientos de
+   * caja/stock necesarios para detectar ventas "fantasma" (cargadas sin pasar
+   * por `crear`, ej. a mano en la base) o con plata que nunca llegó a una caja.
+   */
+  async listarPaginado(
+    organizationId: string,
+    opts: { fechaDesde?: Date; fechaHasta?: Date; medioPagoId?: string; page: number; pageSize: number }
+  ) {
+    const where = {
+      organizationId,
+      ...(opts.fechaDesde || opts.fechaHasta
+        ? {
+            fecha: {
+              ...(opts.fechaDesde && { gte: opts.fechaDesde }),
+              ...(opts.fechaHasta && { lte: opts.fechaHasta }),
+            },
+          }
+        : {}),
+      ...(opts.medioPagoId ? { payments: { some: { paymentMethodId: opts.medioPagoId } } } : {}),
+    }
+
+    const [ventas, total] = await Promise.all([
+      prisma.sale.findMany({
+        where,
+        select: {
+          id: true,
+          fecha: true,
+          totalCentavos: true,
+          costoTotalCentavos: true,
+          descuentoCentavos: true,
+          recargoCentavos: true,
+          fiadoCentavos: true,
+          esConsumoInterno: true,
+          customer: { select: { nombre: true } },
+          user: { select: { nombre: true, email: true } },
+          payments: { select: { montoCentavos: true, paymentMethod: { select: { nombre: true } } } },
+          _count: { select: { lines: true, payments: true, movimientosCaja: true, stockMovements: true } },
+        },
+        orderBy: { fecha: "desc" },
+        skip: (opts.page - 1) * opts.pageSize,
+        take: opts.pageSize,
+      }),
+      prisma.sale.count({ where }),
+    ])
+
+    return { ventas, total }
   },
 }

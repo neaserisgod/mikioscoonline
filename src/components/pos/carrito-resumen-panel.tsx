@@ -2,6 +2,8 @@
 
 import { useState } from "react"
 import { motion } from "framer-motion"
+import { useQueryClient } from "@tanstack/react-query"
+import { toast } from "sonner"
 import { Loader2, CheckCircle2, AlertTriangle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
@@ -13,7 +15,75 @@ import {
 } from "@/components/ui/dialog"
 import { formatearARS } from "@/domain/dinero"
 import { cn } from "@/lib/utils"
-import type { CarritoCheckout } from "./use-carrito-checkout"
+import { crearClienteAction } from "@/app/actions/clientes.actions"
+import type { CarritoCheckout, Cliente } from "./use-carrito-checkout"
+
+/** Selector del cliente al que se le deja a cuenta corriente el resto no
+ * cubierto de un cobro dividido — con alta rápida de cliente nuevo (solo
+ * nombre) para no frenar la venta buscando el form completo de Config. */
+function SelectorClienteFiado({ clientes, clienteFiadoId, setClienteFiadoId }: {
+  clientes: Cliente[] | undefined
+  clienteFiadoId: string | null
+  setClienteFiadoId: (id: string | null) => void
+}) {
+  const qc = useQueryClient()
+  const [creando, setCreando] = useState(false)
+  const [nombreNuevo, setNombreNuevo] = useState("")
+  const [loading, setLoading] = useState(false)
+
+  async function crear() {
+    if (!nombreNuevo.trim()) return
+    setLoading(true)
+    try {
+      const cliente = await crearClienteAction({ nombre: nombreNuevo.trim() })
+      qc.invalidateQueries({ queryKey: ["clientes"] })
+      setClienteFiadoId(cliente.id)
+      setCreando(false)
+      setNombreNuevo("")
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "No se pudo crear el cliente")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  if (creando) {
+    return (
+      <div className="flex items-center gap-1.5">
+        <input
+          autoFocus
+          value={nombreNuevo}
+          onChange={(e) => setNombreNuevo(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); crear() } }}
+          placeholder="Nombre del cliente"
+          className="flex-1 min-w-0 rounded-xl border border-border/60 bg-background px-2.5 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+        />
+        <Button size="sm" onClick={crear} disabled={loading || !nombreNuevo.trim()}>
+          {loading ? <Loader2 className="size-4 animate-spin" /> : "Crear"}
+        </Button>
+        <button type="button" onClick={() => setCreando(false)} className="text-xs text-muted-foreground hover:underline shrink-0">
+          Cancelar
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex items-center gap-1.5">
+      <select
+        value={clienteFiadoId ?? ""}
+        onChange={(e) => setClienteFiadoId(e.target.value || null)}
+        className="flex-1 min-w-0 rounded-xl border border-border/60 bg-background px-2.5 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+      >
+        <option value="">Elegir cliente</option>
+        {clientes?.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+      </select>
+      <button type="button" onClick={() => setCreando(true)} className="text-xs text-primary hover:underline shrink-0">
+        + Nuevo
+      </button>
+    </div>
+  )
+}
 
 /** Diálogo compartido por los dos puntos de entrada del cierre manual de
  * emergencia (pantalla de espera y previo a intentar con el dispositivo). */
@@ -79,6 +149,9 @@ export function CarritoResumenPanel({ checkout, mostrarItems = false, expandActi
     loading, successInfo, setSuccessInfo, confirmVaciar, setConfirmVaciar,
     manualDialogOpen, setManualDialogOpen, manualLoading, confirmarCobroManual,
     vaciarCarrito, setMedioPago, confirmar, cancelarPagoMp,
+    pagosSplit, sumaPagosSplit, restanteSplit,
+    iniciarPagoSplit, iniciarFiadoTotal, cancelarPagoSplit, agregarLineaPagoSplit, actualizarLineaPagoSplit, quitarLineaPagoSplit,
+    clientes, clienteFiadoId, setClienteFiadoId,
   } = checkout
 
   if (!venta) return null
@@ -177,29 +250,110 @@ export function CarritoResumenPanel({ checkout, mostrarItems = false, expandActi
 
       {/* Medios de pago */}
       <div className="space-y-2">
-        <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Medio de pago</p>
-        <div className="grid grid-cols-1 gap-1.5">
-          {mediosPago?.map((m) => (
-            <button
-              key={m.id}
-              type="button"
-              onClick={() => setMedioPago(m.id)}
-              className={cn(
-                "flex items-center justify-between px-3 py-2 rounded-xl border text-sm font-medium transition-all",
-                medioPagoId === m.id
-                  ? "border-primary bg-primary/8 text-foreground"
-                  : "border-border/60 bg-background hover:bg-muted/30 text-muted-foreground"
-              )}
-            >
-              <span>{m.nombre}</span>
-              {m.comisionBp > 0 && (
-                <span className="text-xs text-muted-foreground tabular-nums">
-                  {(m.comisionBp / 100).toFixed(2)}%
-                </span>
-              )}
+        <div className="flex items-center justify-between">
+          <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Medio de pago</p>
+          {pagosSplit ? (
+            <button type="button" onClick={cancelarPagoSplit} className="text-xs text-muted-foreground hover:underline">
+              Un solo medio
             </button>
-          ))}
+          ) : (
+            carrito.length > 0 && (
+              <div className="flex items-center gap-3">
+                <button type="button" onClick={iniciarPagoSplit} className="text-xs text-muted-foreground hover:underline">
+                  Dividir pago
+                </button>
+                <button type="button" onClick={iniciarFiadoTotal} className="text-xs text-muted-foreground hover:underline">
+                  Fiar a cliente
+                </button>
+              </div>
+            )
+          )}
         </div>
+
+        {pagosSplit ? (
+          <div className="space-y-1.5">
+            {pagosSplit.map((linea, i) => (
+              <div key={i} className="flex items-center gap-1.5">
+                <select
+                  value={linea.medioPagoId}
+                  onChange={(e) => actualizarLineaPagoSplit(i, { medioPagoId: e.target.value })}
+                  className="flex-1 min-w-0 rounded-xl border border-border/60 bg-background px-2.5 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                >
+                  <option value="">Elegir medio</option>
+                  {mediosPago?.map((m) => (
+                    <option key={m.id} value={m.id}>{m.nombre}</option>
+                  ))}
+                </select>
+                <input
+                  type="number" step="0.01" min="0"
+                  value={linea.montoCentavos ? linea.montoCentavos / 100 : ""}
+                  onChange={(e) => actualizarLineaPagoSplit(i, { montoCentavos: Math.round((Number(e.target.value) || 0) * 100) })}
+                  placeholder="0"
+                  className="w-24 rounded-xl border border-border/60 bg-background px-2.5 py-2 text-sm text-right tabular-nums focus:outline-none focus:ring-1 focus:ring-ring"
+                />
+                {pagosSplit.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => quitarLineaPagoSplit(i)}
+                    className="text-muted-foreground hover:text-k-loss text-xs px-1"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+            ))}
+            <button type="button" onClick={agregarLineaPagoSplit} className="text-xs text-primary hover:underline">
+              + Agregar medio
+            </button>
+            <div className="flex items-center justify-between text-xs pt-1">
+              <span className="text-muted-foreground">Cobrado</span>
+              <span className="tabular-nums">{formatearARS(sumaPagosSplit)}</span>
+            </div>
+            <div className="flex items-center justify-between text-xs">
+              <span className={cn("font-medium", restanteSplit > 0 ? "text-k-loss" : "text-k-gain")}>
+                {restanteSplit > 0 ? "Resta" : "Sobra"}
+              </span>
+              <span className={cn("tabular-nums font-medium", restanteSplit > 0 ? "text-k-loss" : "text-k-gain")}>
+                {formatearARS(Math.abs(restanteSplit))}
+              </span>
+            </div>
+            {restanteSplit > 0 && (
+              <div className="space-y-1 pt-1">
+                <p className="text-[11px] text-muted-foreground">
+                  Dejar {formatearARS(restanteSplit)} a cuenta corriente de:
+                </p>
+                <SelectorClienteFiado
+                  clientes={clientes}
+                  clienteFiadoId={clienteFiadoId}
+                  setClienteFiadoId={setClienteFiadoId}
+                />
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-1.5">
+            {mediosPago?.map((m) => (
+              <button
+                key={m.id}
+                type="button"
+                onClick={() => setMedioPago(m.id)}
+                className={cn(
+                  "flex items-center justify-between px-3 py-2 rounded-xl border text-sm font-medium transition-all",
+                  medioPagoId === m.id
+                    ? "border-primary bg-primary/8 text-foreground"
+                    : "border-border/60 bg-background hover:bg-muted/30 text-muted-foreground"
+                )}
+              >
+                <span>{m.nombre}</span>
+                {m.comisionBp > 0 && (
+                  <span className="text-xs text-muted-foreground tabular-nums">
+                    {(m.comisionBp / 100).toFixed(2)}%
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Resumen tipo ticket — último vistazo antes de confirmar, sin paso extra */}
@@ -262,10 +416,10 @@ export function CarritoResumenPanel({ checkout, mostrarItems = false, expandActi
           </div>
           <div className="flex items-center justify-between text-xs text-muted-foreground">
             <span>Medio de pago</span>
-            <span>{medioPagoSeleccionado?.nombre ?? "Sin elegir"}</span>
+            <span>{pagosSplit ? "Dividido" : (medioPagoSeleccionado?.nombre ?? "Sin elegir")}</span>
           </div>
 
-          {comisionCentavos > 0 && (
+          {!pagosSplit && comisionCentavos > 0 && (
             <>
               <Separator className="bg-border/40" />
               <div className="flex items-center justify-between text-sm">
@@ -295,12 +449,17 @@ export function CarritoResumenPanel({ checkout, mostrarItems = false, expandActi
         {expandAction}
         <Button
           className="w-full h-10 rounded-xl"
-          disabled={carrito.length === 0 || !medioPagoId || loading || faltaPeso}
+          disabled={
+            carrito.length === 0 || loading || faltaPeso ||
+            (pagosSplit
+              ? pagosSplit.some((p) => !p.medioPagoId) || (restanteSplit > 0 && !clienteFiadoId)
+              : !medioPagoId)
+          }
           onClick={confirmar}
         >
           {loading ? <Loader2 className="size-4 animate-spin" /> : "Confirmar venta"}
         </Button>
-        {medioPagoSeleccionado?.esMercadoPago && carrito.length > 0 && !faltaPeso && (
+        {!pagosSplit && medioPagoSeleccionado?.esMercadoPago && carrito.length > 0 && !faltaPeso && (
           <Button
             variant="ghost"
             className="w-full text-xs text-muted-foreground h-8"

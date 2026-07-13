@@ -34,6 +34,20 @@ const SESION_INCLUDE = {
   },
 } as const
 
+const HORARIOS_ARQUEO_DEFAULT = "14:00,19:00"
+
+/** Convierte "HH:mm,HH:mm" en horarios de HOY (Date), ordenados. */
+function horariosDeHoy(horariosStr: string | null): Date[] {
+  const horarios = (horariosStr ?? HORARIOS_ARQUEO_DEFAULT).split(",").map((h) => h.trim()).filter(Boolean)
+  const hoy = new Date()
+  return horarios
+    .map((h) => {
+      const [hh, mm] = h.split(":").map(Number)
+      return new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate(), hh, mm, 0, 0)
+    })
+    .sort((a, b) => a.getTime() - b.getTime())
+}
+
 function calcEfectivoEsperado(fondoInicialCentavos: number, movimientos: Array<{
   tipo: string
   montoCentavos: number
@@ -71,12 +85,26 @@ export const cajaSesionService = {
         throw new Error(`Abrí la ${caja.nombre} — ya tiene una sesión abierta`)
       }
 
+      // Cajas digitales (MP/QR/posnet) abren siempre en $0 a la vista, para
+      // cualquier rol — no confiar en lo que mande el cliente. El saldo real
+      // se arrastra por detrás desde el último cierre, para no "perder" el
+      // acumulado (mismo bug real que documenta listarActivas en caja.service.ts).
+      let fondoReal = fondoInicialCentavos
+      if (!caja.manejaEfectivo) {
+        const ultimoCierre = await tx.cajaSesion.findFirst({
+          where: { cajaId, estado: "CERRADA" },
+          orderBy: { fechaCierre: "desc" },
+          select: { efectivoContadoCentavos: true },
+        })
+        fondoReal = ultimoCierre?.efectivoContadoCentavos ?? 0
+      }
+
       return tx.cajaSesion.create({
         data: {
           ...(id ? { id } : {}),
           cajaId,
           abiertaPorUserId: userId,
-          fondoInicialCentavos,
+          fondoInicialCentavos: fondoReal,
           estado: "ABIERTA",
           organizationId,
         },
@@ -195,6 +223,26 @@ export const cajaSesionService = {
     })
   },
 
+  /** Historial de arqueos parciales (conteos de control, no cierres) —
+   * filtrable por caja, para revisar diferencias detectadas a lo largo del día. */
+  async listarArqueosParciales(organizationId: string, filtros: { cajaId?: string } = {}, take = 50) {
+    return prisma.arqueoParcial.findMany({
+      where: { organizationId, ...(filtros.cajaId ? { cajaId: filtros.cajaId } : {}) },
+      select: {
+        id: true,
+        efectivoEsperadoCentavos: true,
+        efectivoContadoCentavos: true,
+        diferenciaCentavos: true,
+        nota: true,
+        fecha: true,
+        caja: { select: { nombre: true } },
+        user: { select: { nombre: true } },
+      },
+      orderBy: { fecha: "desc" },
+      take,
+    })
+  },
+
   async listarHistorial(cajaId: string, organizationId: string, take = 20) {
     return prisma.cajaSesion.findMany({
       where: { cajaId, organizationId },
@@ -224,5 +272,94 @@ export const cajaSesionService = {
       select: { caja: { select: { nombre: true } } },
     })
     return sesiones.map((s) => s.caja.nombre)
+  },
+
+  /**
+   * Conteo de control DENTRO de una sesión abierta — no la cierra ni le toca
+   * el fondo/estado, solo deja constancia de esperado/contado/diferencia en
+   * este momento. Mismo cálculo de esperado que un cierre real.
+   */
+  async registrarArqueoParcial(
+    cajaSesionId: string,
+    organizationId: string,
+    userId: string,
+    efectivoContadoCentavos: number,
+    nota?: string
+  ) {
+    const sesion = await prisma.cajaSesion.findFirstOrThrow({
+      where: { id: cajaSesionId, organizationId, estado: "ABIERTA" },
+    })
+    const movimientos = await prisma.movimientoCaja.findMany({
+      where: { cajaSesionId },
+      include: { medioPago: { select: { esEfectivo: true } } },
+    })
+    const efectivoEsperadoCentavos = calcEfectivoEsperado(sesion.fondoInicialCentavos, movimientos)
+    const diferenciaCentavos = efectivoContadoCentavos - efectivoEsperadoCentavos
+
+    return prisma.arqueoParcial.create({
+      data: {
+        cajaSesionId,
+        cajaId: sesion.cajaId,
+        userId,
+        efectivoEsperadoCentavos,
+        efectivoContadoCentavos,
+        diferenciaCentavos,
+        nota: nota ?? null,
+        organizationId,
+      },
+    })
+  },
+
+  /**
+   * Cajas de efectivo con sesión abierta que deben un arqueo parcial del
+   * horario de control más reciente que ya pasó hoy (ver
+   * Organization.horariosArqueo, default 14:00/19:00). Si ya se registró un
+   * arqueo para esa sesión desde ese horario en adelante, no está pendiente
+   * — no hace falta ponerse al día con horarios anteriores ya pasados.
+   */
+  async arqueosPendientes(organizationId: string) {
+    const org = await prisma.organization.findUniqueOrThrow({
+      where: { id: organizationId },
+      select: { horariosArqueo: true },
+    })
+    const horarios = horariosDeHoy(org.horariosArqueo)
+    const ahora = new Date()
+    const vencidos = horarios.filter((h) => h <= ahora)
+    if (vencidos.length === 0) return []
+    const ultimoVencido = vencidos[vencidos.length - 1]
+
+    const cajas = await prisma.caja.findMany({
+      where: { organizationId, activo: true, manejaEfectivo: true },
+      select: {
+        id: true,
+        nombre: true,
+        sesiones: { where: { estado: "ABIERTA" }, select: { id: true }, take: 1 },
+      },
+    })
+
+    const pendientes: {
+      cajaId: string; cajaNombre: string; cajaSesionId: string; horario: Date; efectivoEsperadoCentavos: number
+    }[] = []
+    for (const caja of cajas) {
+      const sesionId = caja.sesiones[0]?.id
+      if (!sesionId) continue
+      const arqueoReciente = await prisma.arqueoParcial.findFirst({
+        where: { cajaSesionId: sesionId, fecha: { gte: ultimoVencido } },
+      })
+      if (!arqueoReciente) {
+        const sesion = await prisma.cajaSesion.findUniqueOrThrow({
+          where: { id: sesionId },
+          select: {
+            fondoInicialCentavos: true,
+            movimientos: { select: { tipo: true, montoCentavos: true, medioPago: { select: { esEfectivo: true } } } },
+          },
+        })
+        const efectivoEsperadoCentavos = calcEfectivoEsperado(sesion.fondoInicialCentavos, sesion.movimientos)
+        pendientes.push({
+          cajaId: caja.id, cajaNombre: caja.nombre, cajaSesionId: sesionId, horario: ultimoVencido, efectivoEsperadoCentavos,
+        })
+      }
+    }
+    return pendientes
   },
 }

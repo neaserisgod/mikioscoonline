@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { motion } from "framer-motion"
+import { stagger } from "@/lib/motion"
 import { TrendingUp } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
 import { MarkupBadge } from "@/components/ui/markup-badge"
@@ -39,14 +40,6 @@ function getMesRango(): { desde: string; hasta: string } {
   const lastDay = new Date(y, now.getMonth() + 1, 0).getDate()
   const hasta = `${y}-${m}-${String(lastDay).padStart(2, "0")}`
   return { desde, hasta }
-}
-
-const stagger = {
-  container: { hidden: {}, show: { transition: { staggerChildren: 0.02 } } },
-  item: {
-    hidden: { opacity: 0, x: -4 },
-    show: { opacity: 1, x: 0, transition: { type: "spring" as const, stiffness: 300, damping: 30 } },
-  },
 }
 
 const COLS = "grid-cols-[1fr_auto_auto_auto] lg:grid-cols-[1.4fr_0.7fr_0.9fr_1fr_1fr_auto]"

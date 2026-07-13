@@ -69,13 +69,24 @@ function mensajeError(e: unknown): string {
 
 // ─── Actions ──────────────────────────────────────────────────────────────────
 
+// VENDEDOR nunca debe fijar costo — aunque el form ya lo oculta, esto es la
+// defensa real (el form es solo UX, no un límite de seguridad). Sin costo,
+// producto.service.ts estima uno provisional a partir del markup default de
+// la categoría (ver resolverTriangulo) — el ADMIN lo corrige después.
+function sinCostoSiNoEsAdmin<T extends { costoCentavos?: number; costoPorKgCentavos?: number; markupBp?: number }>(
+  data: T,
+  role: "ADMIN" | "VENDEDOR"
+): T {
+  if (role === "ADMIN") return data
+  return { ...data, costoCentavos: undefined, costoPorKgCentavos: undefined, markupBp: undefined }
+}
+
 export async function crearProductoAction(input: unknown): Promise<GuardarProductoResult> {
   try {
     const session = await auth()
     if (!session?.user?.organizationId) return { ok: false, error: "No autorizado" }
-    if (session.user.role !== "ADMIN") return { ok: false, error: "Solo ADMIN puede crear productos" }
 
-    const parsed = CrearProductoSchema.parse(input)
+    const parsed = sinCostoSiNoEsAdmin(CrearProductoSchema.parse(input), session.user.role)
     await productoService.crear({ ...parsed, organizationId: session.user.organizationId })
     return { ok: true }
   } catch (e) {
@@ -87,9 +98,8 @@ export async function editarProductoAction(id: string, input: unknown): Promise<
   try {
     const session = await auth()
     if (!session?.user?.organizationId) return { ok: false, error: "No autorizado" }
-    if (session.user.role !== "ADMIN") return { ok: false, error: "Solo ADMIN puede editar productos" }
 
-    const parsed = EditarProductoSchema.parse(input)
+    const parsed = sinCostoSiNoEsAdmin(EditarProductoSchema.parse(input), session.user.role)
     await productoService.editar({ id, organizationId: session.user.organizationId, ...parsed })
     return { ok: true }
   } catch (e) {

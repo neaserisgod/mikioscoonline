@@ -3,7 +3,8 @@
 import { useState } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { motion } from "framer-motion"
-import { ShoppingCart, AlertTriangle, TrendingUp, Zap, Wallet, ArrowDownLeft, ArrowUpRight, Loader2, FileText } from "lucide-react"
+import { stagger } from "@/lib/motion"
+import { ShoppingCart, AlertTriangle, TrendingUp, Zap, Wallet, ArrowDownLeft, ArrowUpRight, Loader2, FileText, ClipboardCheck } from "lucide-react"
 import Link from "next/link"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
@@ -17,7 +18,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Label } from "@/components/ui/label"
 import { formatearARS } from "@/domain/dinero"
 import { cn } from "@/lib/utils"
-import { cerrarCajaAction, registrarMovimientoAction } from "@/app/actions/cajaSesion.actions"
+import { cerrarCajaAction, registrarMovimientoAction, registrarArqueoParcialAction } from "@/app/actions/cajaSesion.actions"
 import { retirarGananciaAction } from "@/app/actions/config.actions"
 import { AbrirCajaSheet } from "@/components/pos/abrir-caja-sheet"
 
@@ -159,6 +160,7 @@ interface CajaPanelItem {
   id: string
   nombre: string
   esPrincipal: boolean
+  manejaEfectivo: boolean
   sesiones: CajaSesionPanel[]
   /** Lo contado al cerrar la última sesión — sugerido como fondo inicial al reabrir. */
   ultimoCierreCentavos: number | null
@@ -185,7 +187,7 @@ function horaCorta(iso: string) {
   return new Date(iso).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })
 }
 
-type PanelMode = "abrir" | "cerrar" | "movimiento" | "detalle"
+type PanelMode = "abrir" | "cerrar" | "movimiento" | "detalle" | "arqueo"
 
 function CajasPanel() {
   const qc = useQueryClient()
@@ -202,11 +204,12 @@ function CajasPanel() {
   const [expectedCash, setExpectedCash] = useState(0)
   const [sesionData, setSesionData] = useState<CajaSesionPanel | null>(null)
   const [fondoSugerido, setFondoSugerido] = useState<number | null>(null)
+  const [manejaEfectivo, setManejaEfectivo] = useState(true)
 
   function invalidar() { qc.invalidateQueries({ queryKey: ["cajas-panel"] }) }
 
   function openAbrir(c: CajaPanelItem) {
-    setCajaId(c.id); setCajaNombre(c.nombre); setFondoSugerido(c.ultimoCierreCentavos); setMode("abrir")
+    setCajaId(c.id); setCajaNombre(c.nombre); setFondoSugerido(c.ultimoCierreCentavos); setManejaEfectivo(c.manejaEfectivo); setMode("abrir")
   }
   function openCerrar(c: CajaPanelItem, s: CajaSesionPanel) {
     setSesionId(s.id); setCajaNombre(c.nombre); setExpectedCash(calcEfectivoEnCaja(s)); setMode("cerrar")
@@ -216,6 +219,9 @@ function CajasPanel() {
   }
   function openDetalle(c: CajaPanelItem, s: CajaSesionPanel) {
     setSesionId(s.id); setCajaNombre(c.nombre); setSesionData(s); setMode("detalle")
+  }
+  function openArqueo(c: CajaPanelItem, s: CajaSesionPanel) {
+    setSesionId(s.id); setCajaNombre(c.nombre); setExpectedCash(calcEfectivoEnCaja(s)); setMode("arqueo")
   }
 
   const lastUpdate = dataUpdatedAt
@@ -302,6 +308,13 @@ function CajasPanel() {
                           <ArrowUpRight className="size-3.5" />
                         </Button>
                         <Button
+                          variant="ghost" size="icon-sm"
+                          title="Hacer arqueo de control (no cierra la caja)"
+                          onClick={() => openArqueo(caja, sesion)}
+                        >
+                          <ClipboardCheck className="size-3.5" />
+                        </Button>
+                        <Button
                           variant="ghost" size="sm"
                           className="text-xs h-7 px-2.5"
                           onClick={() => openCerrar(caja, sesion)}
@@ -333,6 +346,7 @@ function CajasPanel() {
               cajaNombre={cajaNombre}
               cajaId={cajaId}
               fondoSugerido={fondoSugerido}
+              manejaEfectivo={manejaEfectivo}
               onSuccess={() => { setMode(null); invalidar() }}
             />
           )}
@@ -353,6 +367,14 @@ function CajasPanel() {
           )}
           {mode === "detalle" && sesionData && (
             <CajaDetalleSheet cajaNombre={cajaNombre} sesion={sesionData} />
+          )}
+          {mode === "arqueo" && sesionId && (
+            <ArqueoParcialManualSheet
+              cajaNombre={cajaNombre}
+              sesionId={sesionId}
+              efectivoEsperado={expectedCash}
+              onSuccess={() => { setMode(null); invalidar() }}
+            />
           )}
         </SheetContent>
       </Sheet>
@@ -550,6 +572,64 @@ function MovimientoCajaSheet({ cajaNombre, sesionId, onSuccess }: {
   )
 }
 
+/** Arqueo de control disparado a mano (a diferencia de ArqueoParcialGate, que
+ * solo aparece cuando se venció un horario de control) — no cierra la caja,
+ * solo deja registro de esperado/contado/diferencia en este momento. */
+function ArqueoParcialManualSheet({ cajaNombre, sesionId, efectivoEsperado, onSuccess }: {
+  cajaNombre: string; sesionId: string; efectivoEsperado: number; onSuccess: () => void
+}) {
+  const [contado, setContado] = useState("")
+  const [nota, setNota] = useState("")
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  async function onSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    const montoCentavos = Math.round(parseFloat(contado) * 100)
+    if (!Number.isFinite(montoCentavos) || montoCentavos < 0) { toast.error("Ingresá un monto válido"); return }
+    setIsSubmitting(true)
+    try {
+      await registrarArqueoParcialAction(sesionId, { efectivoContadoCentavos: montoCentavos, nota: nota || undefined })
+      toast.success("Arqueo registrado")
+      onSuccess()
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Error") }
+    finally { setIsSubmitting(false) }
+  }
+
+  return (
+    <>
+      <SheetHeader><SheetTitle>Arqueo de control · {cajaNombre}</SheetTitle></SheetHeader>
+      <p className="mt-2 text-xs text-muted-foreground">
+        Un conteo de control, no cierra la caja — sigue abierta con normalidad después de esto.
+      </p>
+      <div className="mt-4 rounded-xl border border-border/60 bg-card px-4 py-3 flex items-center justify-between">
+        <p className="text-sm text-muted-foreground">Esperado ahora</p>
+        <p className="text-lg font-semibold tabular-nums">{formatearARS(efectivoEsperado)}</p>
+      </div>
+      <form onSubmit={onSubmit} className="mt-4 space-y-4">
+        <div className="space-y-1.5">
+          <Label>Contaste ($)</Label>
+          <input
+            type="number" step="0.01" min="0" autoFocus
+            value={contado} onChange={(e) => setContado(e.target.value)}
+            className="w-full rounded-xl border border-border/60 bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label>Nota (opcional)</Label>
+          <input
+            type="text" value={nota} onChange={(e) => setNota(e.target.value)}
+            placeholder="Explicar diferencia, si hay"
+            className="w-full rounded-xl border border-border/60 bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+          />
+        </div>
+        <Button type="submit" className="w-full" disabled={isSubmitting}>
+          {isSubmitting ? <Loader2 className="size-4 animate-spin" /> : "Registrar arqueo"}
+        </Button>
+      </form>
+    </>
+  )
+}
+
 function CajaDetalleSheet({ cajaNombre, sesion }: { cajaNombre: string; sesion: CajaSesionPanel }) {
   const t = computeSessionTotals(sesion.movimientos, sesion.fondoInicialCentavos)
 
@@ -656,14 +736,6 @@ function InicioVendedor({ stockBajo }: { stockBajo: { id: string; nombre: string
 }
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
-
-const stagger = {
-  container: { hidden: {}, show: { transition: { staggerChildren: 0.03 } } },
-  item: {
-    hidden: { opacity: 0, y: 6 },
-    show: { opacity: 1, y: 0, transition: { type: "spring" as const, stiffness: 280, damping: 28 } },
-  },
-}
 
 function getToday() {
   // Fecha LOCAL, no UTC — toISOString() corre el día para atrás en husos

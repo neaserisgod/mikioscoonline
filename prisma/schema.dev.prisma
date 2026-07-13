@@ -47,6 +47,7 @@ model Organization {
   estadoPago              EstadoPago @default(TRIAL)
   trialTerminaEl          DateTime?  // seteado al completar el onboarding = ahora + 14 días
   mpPreapprovalId         String?    // id de la suscripción en Mercado Pago una vez autorizada
+  horariosArqueo          String?    // "HH:mm,HH:mm" — arqueos parciales de control durante el día
   createdAt               DateTime   @default(now())
   updatedAt               DateTime   @updatedAt
 
@@ -61,6 +62,8 @@ model Organization {
   cajas           Caja[]
   cajaSesiones    CajaSesion[]
   movimientosCaja MovimientoCaja[]
+  arqueosParciales ArqueoParcial[]
+  customers       Customer[]
 }
 
 // ─── Usuarios ────────────────────────────────────────────────────────────────
@@ -85,6 +88,7 @@ model User {
   stockMovements   StockMovement[]
   sesionesAbiertas CajaSesion[] @relation("SesionAbiertaPor")
   sesionesCerradas CajaSesion[] @relation("SesionCerradaPor")
+  arqueosParciales ArqueoParcial[]
 }
 
 // ─── Configuración ──────────────────────────────────────────────────────────
@@ -121,6 +125,23 @@ model Provider {
   updatedAt      DateTime     @updatedAt
 
   products Product[]
+
+  @@unique([nombre, organizationId])
+}
+
+model Customer {
+  id             String       @id @default(cuid())
+  nombre         String
+  telefono       String?
+  direccion      String?
+  activo         Boolean      @default(true)
+  saldoCuentaCorrienteCentavos Int @default(0)
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  sales Sale[]
 
   @@unique([nombre, organizationId])
 }
@@ -215,6 +236,7 @@ model Caja {
   sesiones       CajaSesion[]
   movimientos    MovimientoCaja[]
   mediosDePago   PaymentMethod[]
+  arqueosParciales ArqueoParcial[]
 
   @@unique([nombre, organizationId])
 }
@@ -239,6 +261,24 @@ model CajaSesion {
   organization             Organization @relation(fields: [organizationId], references: [id])
 
   movimientos MovimientoCaja[]
+  arqueosParciales ArqueoParcial[]
+}
+
+model ArqueoParcial {
+  id                       String     @id @default(cuid())
+  cajaSesionId             String
+  cajaSesion               CajaSesion @relation(fields: [cajaSesionId], references: [id])
+  cajaId                   String
+  caja                     Caja       @relation(fields: [cajaId], references: [id])
+  userId                   String
+  user                     User       @relation(fields: [userId], references: [id])
+  efectivoEsperadoCentavos Int
+  efectivoContadoCentavos  Int
+  diferenciaCentavos       Int
+  nota                     String?
+  fecha                    DateTime   @default(now())
+  organizationId           String
+  organization             Organization @relation(fields: [organizationId], references: [id])
 }
 
 model MovimientoCaja {
@@ -338,6 +378,9 @@ model Sale {
   traspasoCigarrillosCentavos   Int     @default(0)
   traspasoCigarrillosConfirmado Boolean @default(false)
   esConsumoInterno   Boolean      @default(false)
+  fiadoCentavos      Int          @default(0)
+  customerId         String?
+  customer           Customer?    @relation(fields: [customerId], references: [id])
   organizationId     String
   organization       Organization @relation(fields: [organizationId], references: [id])
   createdAt          DateTime     @default(now())

@@ -18,3 +18,20 @@ export function sanitizarProductos<T extends { costoCentavos: number; costoPorKg
   if (role === "ADMIN") return productos
   return productos.map((p) => sanitizarProducto(p, role))
 }
+
+/** Mismo criterio que sanitizarProducto pero para los resúmenes agregados por
+ * proveedor/categoría (gananciaPotencialCentavos, valorCostoCentavos, etc.) —
+ * VENDEDOR necesita navegar el catálogo por proveedor/categoría, pero no ver
+ * el dinero involucrado. */
+export function sanitizarResumen<T extends { gananciaPotencialCentavos: number; valorCostoCentavos?: number; valorVentaCentavos?: number }>(
+  filas: T[],
+  role: "ADMIN" | "VENDEDOR"
+): T[] {
+  if (role === "ADMIN") return filas
+  return filas.map((f) => ({
+    ...f,
+    gananciaPotencialCentavos: 0,
+    ...("valorCostoCentavos" in f ? { valorCostoCentavos: 0 } : {}),
+    ...("valorVentaCentavos" in f ? { valorVentaCentavos: 0 } : {}),
+  }))
+}

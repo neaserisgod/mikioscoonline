@@ -1,14 +1,15 @@
 import { NextResponse } from "next/server"
-import { requireAdminApi } from "@/lib/api-auth"
+import { requireSessionApi } from "@/lib/api-auth"
 import { productoService } from "@/services/producto.service"
+import { sanitizarResumen } from "@/lib/sanitizar-producto"
 
-// Admin-only: expone gananciaPotencialCentavos (rentabilidad) por proveedor —
-// mismo dato sensible que /api/rentabilidad, no puede quedar abierto a VENDEDOR
-// aunque la pantalla que lo consume (/productos) ya sea admin-only.
+// VENDEDOR puede navegar el catálogo por proveedor (necesita agregar/editar
+// productos), pero gananciaPotencialCentavos/valorCosto/valorVenta se ocultan
+// — mismo dato sensible que /api/rentabilidad.
 export async function GET() {
-  const result = await requireAdminApi()
+  const result = await requireSessionApi()
   if ("error" in result) return result.error
 
   const data = await productoService.resumenProveedores(result.user.organizationId)
-  return NextResponse.json(data)
+  return NextResponse.json(sanitizarResumen(data, result.user.role))
 }

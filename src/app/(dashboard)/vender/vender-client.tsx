@@ -183,6 +183,8 @@ export default function VenderClient() {
             </AnimatePresence>
           </div>
 
+          {query.length === 0 && <MasVendidos onAgregar={agregar} />}
+
           {/* Productos del carrito — acá vive el grueso de la pantalla */}
           <CarritoItemsList checkout={checkout} className="flex-1" />
         </div>
@@ -196,6 +198,43 @@ export default function VenderClient() {
       </div>
 
       <CameraScannerSheet open={cameraOpen} onOpenChange={setCameraOpen} />
+    </div>
+  )
+}
+
+/** Acceso rápido a los productos más vendidos de los últimos 30 días, para
+ * no tener que buscar los que salen todo el tiempo (bebidas, cigarrillos,
+ * etc). Se oculta apenas el cajero empieza a escribir en el buscador. */
+function MasVendidos({ onAgregar }: { onAgregar: (p: Producto) => void }) {
+  const { data: productos } = useQuery<Producto[]>({
+    queryKey: ["productos-mas-vendidos"],
+    queryFn: () => fetch("/api/productos?masVendidos=1").then((r) => r.json()),
+    staleTime: 5 * 60_000,
+  })
+
+  if (!productos || productos.length === 0) return null
+
+  return (
+    <div className="space-y-1.5">
+      <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground px-0.5">
+        Más vendidos
+      </p>
+      <div className="flex gap-2 overflow-x-auto pb-1 -mx-0.5 px-0.5">
+        {productos.map((p) => (
+          <button
+            key={p.id}
+            type="button"
+            onClick={() => onAgregar(p)}
+            className="shrink-0 rounded-xl border border-border/60 bg-card hover:bg-muted/30 transition-colors px-3 py-2 text-left"
+          >
+            <p className="text-sm font-medium truncate max-w-32">{p.nombre}</p>
+            <p className="text-xs text-muted-foreground tabular-nums">
+              {formatPrice(p.esPesable ? (p.precioPorKgCentavos ?? 0) : p.precioCentavos)}
+              {p.esPesable && "/kg"}
+            </p>
+          </button>
+        ))}
+      </div>
     </div>
   )
 }

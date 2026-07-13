@@ -14,12 +14,18 @@ export async function GET(req: NextRequest) {
   const q = searchParams.get("q")
   const stockBajo = searchParams.get("stockBajo") === "1"
   const since = searchParams.get("since")
+  const masVendidos = searchParams.get("masVendidos") === "1"
   const providerId = searchParams.get("providerId") ?? undefined
   const categoryId = searchParams.get("categoryId") ?? undefined
 
   if (stockBajo) {
     const data = await productoService.stockBajo(organizationId)
     return NextResponse.json(data)
+  }
+
+  if (masVendidos) {
+    const data = await productoService.masVendidos(organizationId, 30, 10)
+    return NextResponse.json(sanitizarProductos(data, role))
   }
 
   if (since) {

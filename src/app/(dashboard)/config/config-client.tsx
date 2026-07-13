@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from "framer-motion"
 import {
   Plus, Pencil, Trash2, EyeOff, Eye, ChevronUp, ChevronDown,
   Star, Tag, Truck, Archive, CreditCard, Receipt,
-  Settings2, Check, X, Loader2,
+  Settings2, Check, Loader2,
   Building2, Users, Database, Shield, Download, Wallet, KeyRound,
 } from "lucide-react"
 import { useForm } from "react-hook-form"
@@ -22,6 +22,7 @@ import { useSession } from "next-auth/react"
 import { Skeleton } from "@/components/ui/skeleton"
 import { formatearARS } from "@/domain/dinero"
 import { cn } from "@/lib/utils"
+import { Field, StatusBadge, SectionShell, ListCard, ActionRow } from "@/components/config/list-primitives"
 import {
   crearCategoriaAction, editarCategoriaAction,
   desactivarCategoriaAction, reactivarCategoriaAction, eliminarCategoriaAction,
@@ -108,7 +109,7 @@ interface CajaItem {
 }
 interface Organizacion {
   id: string; nombre: string; cuit: string | null; condicionIva: string | null
-  puntoDeVenta: number | null; stockMinimoDefault: number
+  puntoDeVenta: number | null; stockMinimoDefault: number; horariosArqueo: string | null
 }
 interface Usuario {
   id: string; nombre: string; email: string | null; role: "ADMIN" | "VENDEDOR"
@@ -147,124 +148,6 @@ function useConfig<T>(endpoint: string) {
 }
 
 // ─── Componentes compartidos ──────────────────────────────────────────────────
-
-function Field({ label, error, ...props }: { label: string; error?: string } & React.InputHTMLAttributes<HTMLInputElement>) {
-  return (
-    <div className="space-y-1.5">
-      <Label>{label}</Label>
-      <Input {...props} className={cn("rounded-xl", props.className)} />
-      {error && <p className="text-xs text-k-loss">{error}</p>}
-    </div>
-  )
-}
-
-function StatusBadge({ activo, count }: { activo: boolean; count?: number }) {
-  if (!activo) return (
-    <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground font-medium">
-      Inactivo
-    </span>
-  )
-  if (count !== undefined) return (
-    <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground">
-      {count} prod.
-    </span>
-  )
-  return null
-}
-
-function ActionRow({
-  primary, secondary, badge, activo, onEdit, onToggle, onDelete, deleteLabel, isPending,
-}: {
-  primary: string
-  secondary?: string
-  badge?: React.ReactNode
-  activo: boolean
-  onEdit?: () => void
-  onToggle: () => void
-  onDelete?: () => void
-  deleteLabel?: string
-  isPending?: boolean
-}) {
-  const [confirmDelete, setConfirmDelete] = useState(false)
-
-  return (
-    <div className={cn("px-4 py-3 flex items-center gap-3", !activo && "opacity-60")}>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 flex-wrap">
-          <p className="text-sm font-medium truncate">{primary}</p>
-          {badge}
-        </div>
-        {secondary && <p className="text-xs text-muted-foreground">{secondary}</p>}
-      </div>
-
-      <div className="flex items-center gap-1 shrink-0">
-        {isPending && <Loader2 className="size-3.5 animate-spin text-muted-foreground" />}
-
-        {onEdit && !isPending && (
-          <Button variant="ghost" size="icon-sm" onClick={onEdit}>
-            <Pencil className="size-3.5" />
-          </Button>
-        )}
-
-        {/* Toggle activo / desactivar */}
-        {!isPending && (
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={onToggle}
-            title={activo ? "Desactivar" : "Reactivar"}
-          >
-            {activo ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
-          </Button>
-        )}
-
-        {/* Eliminar (hard-delete) solo si hay callback */}
-        {onDelete && !isPending && !confirmDelete && (
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={() => setConfirmDelete(true)}
-            title={deleteLabel ?? "Eliminar"}
-            className="text-k-loss hover:text-k-loss"
-          >
-            <Trash2 className="size-3.5" />
-          </Button>
-        )}
-        {onDelete && confirmDelete && (
-          <div className="flex items-center gap-1">
-            <span className="text-xs text-k-loss font-medium">¿Eliminar?</span>
-            <Button variant="ghost" size="icon-sm" onClick={() => { onDelete(); setConfirmDelete(false) }} className="text-k-loss">
-              <Check className="size-3.5" />
-            </Button>
-            <Button variant="ghost" size="icon-sm" onClick={() => setConfirmDelete(false)}>
-              <X className="size-3.5" />
-            </Button>
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-
-function SectionShell({ title, children, action }: { title: string; children: React.ReactNode; action?: React.ReactNode }) {
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-base font-semibold">{title}</h2>
-        {action}
-      </div>
-      {children}
-    </div>
-  )
-}
-
-function ListCard({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="rounded-2xl border border-border/60 bg-card divide-y divide-border/40 overflow-hidden">
-      {children}
-    </div>
-  )
-}
 
 // ─── Página principal ─────────────────────────────────────────────────────────
 
@@ -703,11 +586,13 @@ function CuentaCorrienteForm({ proveedor, onSuccess }: { proveedor: Proveedor; o
   const { data: stockProveedores } = useQuery<ResumenProveedorStock[]>({
     queryKey: ["config-resumen-proveedores-stock"],
     queryFn: () => fetch("/api/productos/resumen-proveedores").then((r) => r.json()),
+    staleTime: 60_000,
   })
   const { desde, hasta } = mesActualRango()
   const { data: ventasProveedores } = useQuery<FilaRentabilidadProveedor[]>({
     queryKey: ["config-rentabilidad-proveedor-mes", desde, hasta],
     queryFn: () => fetch(`/api/rentabilidad?por=proveedor&desde=${desde}&hasta=${hasta}`).then((r) => r.json()),
+    staleTime: 60_000,
   })
   const stockDeEste = stockProveedores?.find((p) => p.id === proveedor.id)
   const ventasDeEste = ventasProveedores?.find((p) => p.id === proveedor.id)
@@ -744,8 +629,15 @@ function CuentaCorrienteForm({ proveedor, onSuccess }: { proveedor: Proveedor; o
     <>
       <SheetHeader><SheetTitle>Cuenta corriente — {proveedor.nombre}</SheetTitle></SheetHeader>
       <div className="mt-4 rounded-xl border border-border/60 bg-card px-4 py-3 flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">Le debemos</p>
-        <p className="text-lg font-semibold tabular-nums text-k-loss">{formatearARS(proveedor.saldoCuentaCorrienteCentavos)}</p>
+        <p className="text-sm text-muted-foreground">
+          {proveedor.saldoCuentaCorrienteCentavos >= 0 ? "Le debemos" : "Saldo a favor"}
+        </p>
+        <p className={cn(
+          "text-lg font-semibold tabular-nums",
+          proveedor.saldoCuentaCorrienteCentavos >= 0 ? "text-k-loss" : "text-k-gain"
+        )}>
+          {formatearARS(Math.abs(proveedor.saldoCuentaCorrienteCentavos))}
+        </p>
       </div>
 
       <div className="mt-2 rounded-xl border border-border/60 bg-card px-4 py-3">
@@ -1911,6 +1803,16 @@ interface MovimientoRow {
   fixedExpense: { nombre: string } | null
   sale: { id: string; esConsumoInterno: boolean } | null
 }
+interface ArqueoParcialRow {
+  id: string
+  efectivoEsperadoCentavos: number
+  efectivoContadoCentavos: number
+  diferenciaCentavos: number
+  nota: string | null
+  fecha: string
+  caja: { nombre: string }
+  user: { nombre: string }
+}
 
 function hoyISO() {
   const d = new Date()
@@ -1937,6 +1839,7 @@ function MovimientosSection() {
       if (cajaId !== "todas") params.set("cajaId", cajaId)
       return fetch(`/api/cajas/movimientos?${params}`).then((r) => r.json())
     },
+    staleTime: 30_000,
   })
 
   const totalPorTipo = (data ?? []).reduce<Record<string, number>>((acc, m) => {
@@ -2028,7 +1931,54 @@ function MovimientosSection() {
           ))}
         </ListCard>
       )}
+
+      <ArqueosParcialesList cajaId={cajaId} />
     </SectionShell>
+  )
+}
+
+function ArqueosParcialesList({ cajaId }: { cajaId: string }) {
+  const { data, isLoading } = useQuery<ArqueoParcialRow[]>({
+    queryKey: ["arqueos-parciales", cajaId],
+    queryFn: () => {
+      const params = cajaId !== "todas" ? `?cajaId=${cajaId}` : ""
+      return fetch(`/api/cajas/arqueos-parciales${params}`).then((r) => r.json())
+    },
+  })
+
+  if (isLoading || !data || data.length === 0) return null
+
+  return (
+    <div className="space-y-2">
+      <p className="text-xs text-muted-foreground px-1">Arqueos de control (no cierran la caja)</p>
+      <ListCard>
+        {data.map((a) => (
+          <div key={a.id} className="px-4 py-3 flex items-center gap-3">
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <p className="text-sm font-medium truncate">{a.caja.nombre}</p>
+                <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-foreground/8 text-muted-foreground font-medium">
+                  {a.user.nombre}
+                </span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Esperado {formatearARS(a.efectivoEsperadoCentavos)} · Contado {formatearARS(a.efectivoContadoCentavos)}
+              </p>
+              {a.nota && <p className="text-xs text-muted-foreground truncate">{a.nota}</p>}
+              <p className="text-[11px] text-muted-foreground/70">
+                {new Date(a.fecha).toLocaleString("es-AR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
+              </p>
+            </div>
+            <p className={cn(
+              "text-sm font-semibold tabular-nums shrink-0",
+              a.diferenciaCentavos === 0 ? "text-muted-foreground" : a.diferenciaCentavos > 0 ? "text-k-gain" : "text-k-loss"
+            )}>
+              {a.diferenciaCentavos >= 0 ? "+" : ""}{formatearARS(a.diferenciaCentavos)}
+            </p>
+          </div>
+        ))}
+      </ListCard>
+    </div>
   )
 }
 
@@ -2042,6 +1992,7 @@ const negocioSchema = z.object({
   condicionIva: z.enum(["RESPONSABLE_INSCRIPTO", "MONOTRIBUTO", "EXENTO", "CONSUMIDOR_FINAL"]).optional(),
   puntoDeVenta: z.number().int().positive().optional(),
   stockMinimoDefault: z.number().int().min(0),
+  horariosArqueo: z.string().regex(/^\d{2}:\d{2}(,\d{2}:\d{2})*$/, "Formato: 14:00,19:00").optional().or(z.literal("")),
 })
 type NegocioFormData = z.infer<typeof negocioSchema>
 
@@ -2068,6 +2019,7 @@ function NegocioForm({ data, onMutate }: { data: Organizacion; onMutate: () => v
       condicionIva: (data.condicionIva as NegocioFormData["condicionIva"]) ?? undefined,
       puntoDeVenta: data.puntoDeVenta ?? undefined,
       stockMinimoDefault: data.stockMinimoDefault,
+      horariosArqueo: data.horariosArqueo ?? "",
     },
   })
 
@@ -2079,6 +2031,7 @@ function NegocioForm({ data, onMutate }: { data: Organizacion; onMutate: () => v
         condicionIva: formData.condicionIva || null,
         puntoDeVenta: formData.puntoDeVenta || null,
         stockMinimoDefault: formData.stockMinimoDefault,
+        horariosArqueo: formData.horariosArqueo || null,
       })
       toast.success("Datos del negocio actualizados")
       onMutate()
@@ -2120,6 +2073,16 @@ function NegocioForm({ data, onMutate }: { data: Organizacion; onMutate: () => v
           {...register("stockMinimoDefault", { valueAsNumber: true })}
           error={errors.stockMinimoDefault?.message}
         />
+        <Field
+          label="Horarios de arqueo de control"
+          placeholder="14:00,19:00"
+          {...register("horariosArqueo")}
+          error={errors.horariosArqueo?.message}
+        />
+        <p className="text-xs text-muted-foreground -mt-2">
+          Conteos de control que NO cierran la caja, para detectar diferencias antes de que se acumulen
+          muchas horas. Formato HH:mm separados por coma. Vacío = 14:00,19:00 por defecto.
+        </p>
         <Button type="submit" disabled={isSubmitting}>
           {isSubmitting && <Loader2 className="size-4 animate-spin mr-2" />}
           Guardar cambios

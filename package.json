@@ -25,6 +25,7 @@
     "kiosco:backup-once": "tsx scripts/kiosco-backup-once.ts"
   },
   "dependencies": {
+    "@afipsdk/afip.js": "^1.2.3",
     "@base-ui/react": "^1.6.0",
     "@hookform/resolvers": "^5.4.0",
     "@prisma/adapter-better-sqlite3": "^7.8.0",

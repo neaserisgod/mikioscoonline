@@ -5,6 +5,7 @@ import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { useQuery } from "@tanstack/react-query"
+import { useSession } from "next-auth/react"
 import { Loader2, AlertTriangle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -76,6 +77,8 @@ interface Ubicacion { id: string; nombre: string }
 
 export default function ProductoForm({ producto, barcodePreset, defaultsNuevo, onSuccess }: ProductoFormProps) {
   const isEditing = !!producto
+  const { data: session } = useSession()
+  const esAdmin = session?.user?.role === "ADMIN"
 
   const { data: categorias } = useQuery<Categoria[]>({
     queryKey: ["categorias"],
@@ -338,7 +341,26 @@ export default function ProductoForm({ producto, barcodePreset, defaultsNuevo, o
         </div>
       </div>
 
-      {/* Precio / Costo / Markup con toggle % / $ */}
+      {/* Precio / Costo / Markup — ADMIN ve el triángulo completo con toggle % / $.
+          VENDEDOR solo carga el precio de venta; el costo se estima server-side
+          desde el markup default de la categoría (ver crearProductoAction) y
+          queda marcado "provisional" hasta que un ADMIN lo corrija. */}
+      {!esAdmin ? (
+        <div className="space-y-1.5">
+          <Label htmlFor="precio">{esPesable ? "Precio por kg ($/kg)" : "Precio de venta ($)"}</Label>
+          <Input
+            id="precio"
+            type="number"
+            step="0.01"
+            min="0"
+            {...register("precioCentavos", { setValueAs: (v) => (v === "" || v == null ? undefined : Number(v)) })}
+            className="rounded-xl tabular-nums"
+          />
+          {errors.precioCentavos && (
+            <p className="text-xs text-k-loss">{errors.precioCentavos.message}</p>
+          )}
+        </div>
+      ) : (
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <Label>Precio y costo</Label>
@@ -475,6 +497,7 @@ export default function ProductoForm({ producto, barcodePreset, defaultsNuevo, o
           </div>
         )}
       </div>
+      )}
 
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1.5">

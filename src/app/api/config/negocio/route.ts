@@ -16,6 +16,7 @@ const NegocioSchema = z.object({
   condicionIva: z.enum(["RESPONSABLE_INSCRIPTO", "MONOTRIBUTO", "EXENTO", "CONSUMIDOR_FINAL"]).optional().nullable(),
   puntoDeVenta: z.number().int().positive().optional().nullable(),
   stockMinimoDefault: z.number().int().min(0).optional(),
+  horariosArqueo: z.string().regex(/^\d{2}:\d{2}(,\d{2}:\d{2})*$/, "Formato: HH:mm,HH:mm").optional().nullable(),
 })
 
 export async function PATCH(req: NextRequest) {

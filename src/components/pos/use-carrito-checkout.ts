@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 import { calcularRecargoCigarrillos } from "@/domain/recargo-cigarrillos"
 import { subtotalLinea } from "@/domain/pesables"
+import { formatearARS } from "@/domain/dinero"
 import { crearVentaAction } from "@/app/actions/ventas.actions"
 import { cancelarOrdenMpAction, enviarMontoMpAction } from "@/app/actions/pagos.actions"
 import { useVentasStore, useVentaActiva } from "@/stores/ventas.store"
@@ -15,6 +16,11 @@ export interface MedioPago {
   comisionBp: number
   esMercadoPago: boolean
   esEfectivo: boolean
+}
+
+export interface Cliente {
+  id: string
+  nombre: string
 }
 
 /**
@@ -28,6 +34,7 @@ export function useCarritoCheckout(onSuccess?: (ventaId: string) => void) {
   const {
     cambiarCantidad, setGramos, eliminarLinea, vaciarCarrito, setMedioPago, setDescuentoPct, setConsumoInterno,
     onVentaConfirmada, iniciarPagoMp, cancelarPagoMp,
+    iniciarPagoSplit, iniciarFiadoTotal, cancelarPagoSplit, agregarLineaPagoSplit, actualizarLineaPagoSplit, quitarLineaPagoSplit,
   } = useVentasStore()
   const [loading, setLoading] = useState(false)
   const [confirmVaciar, setConfirmVaciar] = useState(false)
@@ -38,11 +45,20 @@ export function useCarritoCheckout(onSuccess?: (ventaId: string) => void) {
     totalCentavos: number
     nombreMedioPago: string
   } | null>(null)
+  // Cuenta corriente: a qué cliente se le deja el resto no cubierto en un
+  // cobro dividido (ver pagosSplit). null = no se dejó nada a cuenta corriente.
+  const [clienteFiadoId, setClienteFiadoId] = useState<string | null>(null)
 
   const { data: mediosPago } = useQuery<MedioPago[]>({
     queryKey: ["medios-pago"],
     queryFn: () => fetch("/api/config/medios-pago").then((r) => r.json()),
     staleTime: 5 * 60_000,
+  })
+
+  const { data: clientes } = useQuery<Cliente[]>({
+    queryKey: ["clientes"],
+    queryFn: () => fetch("/api/clientes").then((r) => r.json()),
+    staleTime: 60_000,
   })
 
   const medioPagoId = venta?.medioPagoId ?? ""
@@ -87,11 +103,71 @@ export function useCarritoCheckout(onSuccess?: (ventaId: string) => void) {
     : 0
   const totalACobrarCentavos = totalConDescuentoCentavos + recargoTotalCentavos
 
+  const pagosSplit = venta?.pagosSplit ?? null
+  const sumaPagosSplit = (pagosSplit ?? []).reduce((s, p) => s + p.montoCentavos, 0)
+  const restanteSplit = totalACobrarCentavos - sumaPagosSplit
+
   async function confirmar() {
-    if (!medioPagoId) { toast.error("Seleccioná un medio de pago"); return }
     if (carrito.length === 0) return
     if (faltaPeso) { toast.error("Cargá el peso de todos los productos pesables"); return }
     if (!venta) return
+
+    // Cobro dividido: la plata ya se cobró en el momento (efectivo + QR ya
+    // tapeado, etc.), no tiene sentido mandar nada a esperar a un dispositivo
+    // — se registra directo, igual que el cobro manual de emergencia.
+    if (pagosSplit) {
+      if (pagosSplit.some((p) => !p.medioPagoId)) { toast.error("Elegí el medio de pago de cada línea"); return }
+      if (restanteSplit > 0 && !clienteFiadoId) {
+        toast.error(`Falta cubrir ${formatearARS(restanteSplit)} — elegí un cliente para dejarlo a cuenta corriente`)
+        return
+      }
+
+      setLoading(true)
+      try {
+        const result = await crearVentaAction({
+          lineas: carrito.map((l) => ({
+            productId: l.productId,
+            cantidad: l.cantidad,
+            ...(l.esPesable && { gramos: l.gramos ?? 0 }),
+          })),
+          pagos: pagosSplit.map((p) => ({ paymentMethodId: p.medioPagoId, montoCentavos: p.montoCentavos })),
+          descuentoCentavos,
+          esConsumoInterno,
+          ...(restanteSplit > 0 && clienteFiadoId
+            ? { fiadoCentavos: restanteSplit, customerId: clienteFiadoId }
+            : {}),
+        })
+
+        if (!result.ok) {
+          if (result.error.toLowerCase().includes("stock")) {
+            toast.error("Stock insuficiente — otro carrito ya reservó esas unidades")
+          } else {
+            toast.error(result.error)
+          }
+          return
+        }
+
+        setSuccessInfo({
+          ventaId: result.id,
+          totalCentavos: totalACobrarCentavos,
+          nombreMedioPago: "Pago dividido",
+        })
+        onVentaConfirmada()
+        setClienteFiadoId(null)
+        qc.invalidateQueries({ queryKey: ["resumen"] })
+        qc.invalidateQueries({ queryKey: ["productos"] })
+        qc.invalidateQueries({ queryKey: ["cajas-panel"] })
+        if (restanteSplit > 0 && clienteFiadoId) qc.invalidateQueries({ queryKey: ["clientes"] })
+        onSuccess?.(result.id)
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Error al registrar la venta")
+      } finally {
+        setLoading(false)
+      }
+      return
+    }
+
+    if (!medioPagoId) { toast.error("Seleccioná un medio de pago"); return }
 
     // Cobro con MercadoPago (QR o posnet): no se registra la venta todavía — se manda
     // el monto al dispositivo y se espera la confirmación real del pago (ver
@@ -231,6 +307,12 @@ export function useCarritoCheckout(onSuccess?: (ventaId: string) => void) {
     loading, successInfo, setSuccessInfo, confirmVaciar, setConfirmVaciar,
     manualDialogOpen, setManualDialogOpen, manualLoading, confirmarCobroManual,
     cambiarCantidad, setGramos, eliminarLinea, vaciarCarrito, setMedioPago,
+    pagosSplit, sumaPagosSplit, restanteSplit,
+    iniciarPagoSplit: () => iniciarPagoSplit(totalACobrarCentavos),
+    iniciarFiadoTotal,
+    cancelarPagoSplit: () => { cancelarPagoSplit(); setClienteFiadoId(null) },
+    agregarLineaPagoSplit, actualizarLineaPagoSplit, quitarLineaPagoSplit,
+    clientes, clienteFiadoId, setClienteFiadoId,
     confirmar,
     cancelarPagoMp: async () => {
       if (!venta?.pagoMpPendiente) return
