@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useRef } from "react"
+import { useCallback, useEffect, useRef } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { motion, AnimatePresence } from "framer-motion"
 import { Search, Camera } from "lucide-react"
@@ -15,6 +15,7 @@ import { CajaEstadoBar } from "@/components/pos/caja-estado-bar"
 import { CameraScannerSheet } from "@/components/scanner/camera-scanner-sheet"
 import { useVentasStore } from "@/stores/ventas.store"
 import { useState } from "react"
+import { cn } from "@/lib/utils"
 
 interface Producto {
   id: string
@@ -35,6 +36,7 @@ export default function VenderClient() {
   const [query, setQuery] = useState("")
   const [showDropdown, setShowDropdown] = useState(false)
   const [cameraOpen, setCameraOpen] = useState(false)
+  const [highlightedIndex, setHighlightedIndex] = useState(0)
 
   const { agregarProducto } = useVentasStore()
   const checkout = useCarritoCheckout()
@@ -47,6 +49,10 @@ export default function VenderClient() {
         : Promise.resolve([]),
     enabled: query.length >= 1,
   })
+
+  // Nuevos resultados → resaltar el primero de nuevo (ver navegación con
+  // flechas más abajo, evita elegir sin querer un producto de la búsqueda anterior).
+  useEffect(() => { setHighlightedIndex(0) }, [productos])
 
   const agregar = useCallback(
     (p: Producto) => {
@@ -114,10 +120,17 @@ export default function VenderClient() {
                   onFocus={() => query && setShowDropdown(true)}
                   onKeyDown={(e) => {
                     if (e.key === "Escape") { setShowDropdown(false); setQuery("") }
-                    // Si hay exactamente un resultado, Enter lo agrega — el scanner global se abstiene
-                    // cuando el foco está en este input (ver use-global-scanner.ts)
-                    if (e.key === "Enter" && productos && productos.length === 1) {
-                      agregar(productos[0])
+                    // Navegación sin soltar el teclado: ↑↓ mueve el resaltado, Enter
+                    // agrega el resaltado (el scanner global se abstiene cuando el
+                    // foco está en este input — ver use-global-scanner.ts)
+                    else if (e.key === "ArrowDown" && productos && productos.length > 0) {
+                      e.preventDefault()
+                      setHighlightedIndex((i) => Math.min(i + 1, productos.length - 1))
+                    } else if (e.key === "ArrowUp" && productos && productos.length > 0) {
+                      e.preventDefault()
+                      setHighlightedIndex((i) => Math.max(i - 1, 0))
+                    } else if (e.key === "Enter" && productos && productos.length > 0) {
+                      agregar(productos[highlightedIndex] ?? productos[0])
                     }
                   }}
                   // Marca este input para que el escáner global lo detecte y se abstenga
@@ -151,11 +164,15 @@ export default function VenderClient() {
                     </p>
                   ) : (
                     <ul className="max-h-64 overflow-y-auto py-1">
-                      {productos.map((p) => (
+                      {productos.map((p, i) => (
                         <li key={p.id}>
                           <button
                             type="button"
-                            className="w-full text-left px-4 py-2.5 hover:bg-muted/50 transition-colors flex items-center justify-between gap-3"
+                            className={cn(
+                              "w-full text-left px-4 py-2.5 hover:bg-muted/50 transition-colors flex items-center justify-between gap-3",
+                              i === highlightedIndex && "bg-muted/50"
+                            )}
+                            onMouseEnter={() => setHighlightedIndex(i)}
                             onClick={() => agregar(p)}
                           >
                             <div className="min-w-0">

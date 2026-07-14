@@ -302,7 +302,17 @@ export function CarritoResumenPanel({ checkout, mostrarItems = false, expandActi
                 )}
               </div>
             ))}
-            <button type="button" onClick={agregarLineaPagoSplit} className="text-xs text-primary hover:underline">
+            <button
+              type="button"
+              onClick={() => {
+                const nuevoIndex = pagosSplit.length
+                agregarLineaPagoSplit()
+                // Precarga lo que falta cubrir — evita que el cajero saque la
+                // cuenta a mano cada vez que agrega una línea de pago dividido.
+                if (restanteSplit > 0) actualizarLineaPagoSplit(nuevoIndex, { montoCentavos: restanteSplit })
+              }}
+              className="text-xs text-primary hover:underline"
+            >
               + Agregar medio
             </button>
             <div className="flex items-center justify-between text-xs pt-1">

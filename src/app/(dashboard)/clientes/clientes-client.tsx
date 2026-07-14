@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { motion } from "framer-motion"
 import { toast } from "sonner"
@@ -188,11 +188,19 @@ function CuentaCorrienteSheet({ cliente, onSuccess }: { cliente: Cliente; onSucc
   })
 
   const [modo, setModo] = useState<"pago" | "cargar">(cliente.saldoCuentaCorrienteCentavos > 0 ? "pago" : "cargar")
-  const [monto, setMonto] = useState("")
+  // El caso más común es cobrar la deuda completa — prellenado, no default rígido.
+  const [monto, setMonto] = useState(
+    cliente.saldoCuentaCorrienteCentavos > 0 ? String(cliente.saldoCuentaCorrienteCentavos / 100) : ""
+  )
   const [cajaId, setCajaId] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   const cajasAbiertas = cajas?.filter((c) => c.sesiones.length > 0) ?? []
+
+  // Si hay una sola caja abierta no tiene sentido obligar a elegirla del dropdown.
+  useEffect(() => {
+    if (cajasAbiertas.length === 1 && !cajaId) setCajaId(cajasAbiertas[0].id)
+  }, [cajasAbiertas, cajaId])
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -239,7 +247,14 @@ function CuentaCorrienteSheet({ cliente, onSuccess }: { cliente: Cliente; onSucc
         <Button type="button" variant={modo === "cargar" ? "default" : "outline"} onClick={() => setModo("cargar")}>
           Cargar deuda
         </Button>
-        <Button type="button" variant={modo === "pago" ? "default" : "outline"} onClick={() => setModo("pago")}>
+        <Button
+          type="button"
+          variant={modo === "pago" ? "default" : "outline"}
+          onClick={() => {
+            setModo("pago")
+            if (!monto && cliente.saldoCuentaCorrienteCentavos > 0) setMonto(String(cliente.saldoCuentaCorrienteCentavos / 100))
+          }}
+        >
           Registrar pago
         </Button>
       </div>

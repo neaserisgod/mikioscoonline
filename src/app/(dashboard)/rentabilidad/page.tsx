@@ -18,7 +18,7 @@ export default async function RentabilidadPage() {
 
   const queryClient = getQueryClient()
   await queryClient.prefetchQuery({
-    queryKey: ["rentabilidad", "proveedor", desde, hasta],
+    queryKey: ["rentabilidad", "proveedor", "mes", desde, hasta],
     queryFn: async () =>
       serializable(
         await rentabilidadService.porAgrupador({

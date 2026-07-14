@@ -4,7 +4,7 @@ import { useState } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { motion } from "framer-motion"
-import { Home, ShoppingCart, TrendingUp, Package, Settings, LogOut, Pin, PinOff, UserRoundCog, Users, Receipt, PackagePlus } from "lucide-react"
+import { Home, ShoppingCart, TrendingUp, Package, Settings, LogOut, Pin, PinOff, UserRoundCog, Users, Receipt, PackagePlus, Truck } from "lucide-react"
 import { signOut, useSession } from "next-auth/react"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Button } from "@/components/ui/button"
@@ -20,6 +20,7 @@ export const NAV_ITEMS = [
   { href: "/rentabilidad", label: "Rentabilidad", icon: TrendingUp, adminOnly: true },
   { href: "/historial-ventas", label: "Historial de ventas", icon: Receipt, adminOnly: true },
   { href: "/productos", label: "Productos", icon: Package },
+  { href: "/proveedores", label: "Proveedores", icon: Truck, adminOnly: true },
   { href: "/pedidos", label: "Pedidos a proveedores", icon: PackagePlus, adminOnly: true },
   { href: "/config", label: "Configuración", icon: Settings, adminOnly: true },
 ]

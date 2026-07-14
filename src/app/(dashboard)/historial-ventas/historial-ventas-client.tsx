@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { AlertTriangle, Loader2, Receipt, RotateCw } from "lucide-react"
 import { toast } from "sonner"
@@ -14,6 +15,8 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { EmptyState } from "@/components/ui/empty-state"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { formatearARS } from "@/domain/dinero"
+import { cn } from "@/lib/utils"
+import { DateRangeShortcuts } from "@/components/date-range-shortcuts"
 import { facturarVentaAction } from "@/app/actions/facturacion.actions"
 
 interface MedioPago {
@@ -80,6 +83,7 @@ const FACTURA_ESTADO_OPCIONES = [
 ]
 
 export default function HistorialVentasClient() {
+  const router = useRouter()
   const rangoDefault = getRangoDefault()
   const [desde, setDesde] = useState(rangoDefault.desde)
   const [hasta, setHasta] = useState(rangoDefault.hasta)
@@ -138,6 +142,10 @@ export default function HistorialVentasClient() {
         <h1 className="font-heading text-2xl font-medium">Historial de ventas</h1>
         <p className="text-sm text-muted-foreground">Revisá todas las ventas registradas y detectá las que tienen algo faltante.</p>
       </div>
+
+      <DateRangeShortcuts
+        onSelect={({ desde: d, hasta: h }) => actualizarFiltro(() => { setDesde(d); setHasta(h) })}
+      />
 
       <div className="flex flex-wrap items-end gap-2">
         <div className="space-y-1">
@@ -243,9 +251,13 @@ export default function HistorialVentasClient() {
             </TableHeader>
             <TableBody>
               {ventas.map((v) => (
-                <TableRow key={v.id} className={v.tieneProblema ? "bg-destructive/5" : undefined}>
+                <TableRow
+                  key={v.id}
+                  className={cn("cursor-pointer hover:bg-muted/30", v.tieneProblema && "bg-destructive/5")}
+                  onClick={() => router.push(`/historial-ventas/${v.id}`)}
+                >
                   <TableCell className="text-muted-foreground">
-                    <Link href={`/historial-ventas/${v.id}`} className="hover:underline">
+                    <Link href={`/historial-ventas/${v.id}`} className="hover:underline" onClick={(e) => e.stopPropagation()}>
                       {fechaHoraLocal(v.fecha)}
                     </Link>
                   </TableCell>
@@ -278,7 +290,7 @@ export default function HistorialVentasClient() {
                         size="sm"
                         className="h-6 px-2 text-xs"
                         disabled={facturandoId === v.id}
-                        onClick={() => facturar.mutate(v.id)}
+                        onClick={(e) => { e.stopPropagation(); facturar.mutate(v.id) }}
                       >
                         {facturandoId === v.id ? <Loader2 className="size-3 animate-spin" /> : <RotateCw className="size-3" />}
                         Reintentar
@@ -291,7 +303,7 @@ export default function HistorialVentasClient() {
                         size="sm"
                         className="h-6 px-2 text-xs"
                         disabled={facturandoId === v.id}
-                        onClick={() => facturar.mutate(v.id)}
+                        onClick={(e) => { e.stopPropagation(); facturar.mutate(v.id) }}
                       >
                         {facturandoId === v.id ? <Loader2 className="size-3 animate-spin" /> : null}
                         Facturar

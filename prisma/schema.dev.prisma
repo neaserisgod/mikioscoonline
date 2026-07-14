@@ -72,6 +72,7 @@ model Organization {
   arqueosParciales ArqueoParcial[]
   customers       Customer[]
   comprobantes    Comprobante[]
+  movimientosCuentaCorrienteProveedor MovimientoCuentaCorrienteProveedor[]
 }
 
 // ─── Usuarios ────────────────────────────────────────────────────────────────
@@ -133,8 +134,23 @@ model Provider {
   updatedAt      DateTime     @updatedAt
 
   products Product[]
+  movimientosCuentaCorriente MovimientoCuentaCorrienteProveedor[]
 
   @@unique([nombre, organizationId])
+}
+
+model MovimientoCuentaCorrienteProveedor {
+  id             String       @id @default(cuid())
+  providerId     String
+  provider       Provider     @relation(fields: [providerId], references: [id])
+  tipo           String       // "COMPRA" | "PAGO"
+  montoCentavos  Int
+  cajaId         String?
+  caja           Caja?        @relation(fields: [cajaId], references: [id])
+  nota           String?
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  createdAt      DateTime     @default(now())
 }
 
 model Customer {
@@ -246,6 +262,7 @@ model Caja {
   movimientos    MovimientoCaja[]
   mediosDePago   PaymentMethod[]
   arqueosParciales ArqueoParcial[]
+  movimientosCuentaCorrienteProveedor MovimientoCuentaCorrienteProveedor[]
 
   @@unique([nombre, organizationId])
 }

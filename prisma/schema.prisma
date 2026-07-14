@@ -74,6 +74,7 @@ model Organization {
   arqueosParciales ArqueoParcial[]
   customers       Customer[]
   comprobantes    Comprobante[]
+  movimientosCuentaCorrienteProveedor MovimientoCuentaCorrienteProveedor[]
 }
 
 // ─── Usuarios ────────────────────────────────────────────────────────────────
@@ -132,10 +133,11 @@ model Provider {
   // Puede ir negativo si se compró más de lo que el fondo cubría — es informativo,
   // no un límite duro.
   saldoReposicionCentavos Int @default(0)
-  // Cuenta corriente: cuánto le debemos a este proveedor. Se carga a mano — no
-  // hay modelo de "compra"/orden de compra en el sistema. Sube al registrar una
+  // Cuenta corriente: cuánto le debemos a este proveedor. Sube al registrar una
   // compra a crédito, baja al registrar un pago (que además crea un EGRESO real
-  // en la caja elegida). Puede ir negativo si se pagó de más — informativo.
+  // en la caja elegida). Puede ir negativo si se pagó de más — informativo. El
+  // saldo vive acá (rápido de leer); el detalle de cada movimiento está en
+  // MovimientoCuentaCorrienteProveedor.
   saldoCuentaCorrienteCentavos Int @default(0)
   // Piso de reinversión: colchón en pesos que SIEMPRE debe quedar reservado
   // para reponerle stock a este proveedor antes de considerar "ganancia
@@ -150,8 +152,32 @@ model Provider {
   updatedAt      DateTime     @updatedAt
 
   products Product[]
+  movimientosCuentaCorriente MovimientoCuentaCorrienteProveedor[]
 
   @@unique([nombre, organizationId])
+}
+
+/**
+ * Ledger de cuenta corriente de un proveedor — una fila por cada compra a
+ * crédito o pago (ver proveedorService.registrarCompraCuentaCorriente /
+ * registrarPagoCuentaCorriente), sea que haya pasado por
+ * pedidoProveedorService.ingresar o se haya cargado a mano. Solo es
+ * historial: el saldo vigente sigue viviendo en
+ * Provider.saldoCuentaCorrienteCentavos (más rápido de leer que sumar filas).
+ */
+model MovimientoCuentaCorrienteProveedor {
+  id             String       @id @default(cuid())
+  providerId     String
+  provider       Provider     @relation(fields: [providerId], references: [id])
+  tipo           String       // "COMPRA" | "PAGO" — validado Zod
+  montoCentavos  Int
+  // Solo en PAGO — de qué caja salió la plata (crea además un EGRESO real ahí).
+  cajaId         String?
+  caja           Caja?        @relation(fields: [cajaId], references: [id])
+  nota           String?
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  createdAt      DateTime     @default(now())
 }
 
 model Customer {
@@ -270,6 +296,7 @@ model Caja {
   movimientos    MovimientoCaja[]
   mediosDePago   PaymentMethod[]
   arqueosParciales ArqueoParcial[]
+  movimientosCuentaCorrienteProveedor MovimientoCuentaCorrienteProveedor[]
 
   @@unique([nombre, organizationId])
 }

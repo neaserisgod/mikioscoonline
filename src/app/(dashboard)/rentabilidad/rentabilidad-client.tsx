@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { useSearchParams } from "next/navigation"
 import { useQuery } from "@tanstack/react-query"
 import { motion } from "framer-motion"
 import { stagger } from "@/lib/motion"
@@ -12,7 +13,10 @@ import { formatearARS } from "@/domain/dinero"
 import { cn } from "@/lib/utils"
 
 type Agrupador = "proveedor" | "categoria" | "heladera" | "caja"
-type Periodo = "mes" | "historico"
+type Periodo = "hoy" | "mes" | "historico"
+
+const AGRUPADOR_VALUES: Agrupador[] = ["proveedor", "categoria", "heladera", "caja"]
+const PERIODO_VALUES: Periodo[] = ["hoy", "mes", "historico"]
 
 interface FilaRentabilidad {
   id: string
@@ -32,6 +36,13 @@ const AGRUPADORES: { value: Agrupador; label: string }[] = [
   { value: "caja", label: "Por caja" },
 ]
 
+function getHoyRango(): { desde: string; hasta: string } {
+  const d = new Date()
+  const pad = (n: number) => String(n).padStart(2, "0")
+  const hoy = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+  return { desde: hoy, hasta: hoy }
+}
+
 function getMesRango(): { desde: string; hasta: string } {
   const now = new Date()
   const y = now.getFullYear()
@@ -42,19 +53,31 @@ function getMesRango(): { desde: string; hasta: string } {
   return { desde, hasta }
 }
 
+const PERIODO_LABELS: Record<Periodo, string> = { hoy: "Hoy", mes: "Mes actual", historico: "Histórico" }
+
 const COLS = "grid-cols-[1fr_auto_auto_auto] lg:grid-cols-[1.4fr_0.7fr_0.9fr_1fr_1fr_auto]"
 
 export default function RentabilidadClient() {
-  const [agrupador, setAgrupador] = useState<Agrupador>("proveedor")
-  const [periodo, setPeriodo] = useState<Periodo>("mes")
-  const { desde, hasta } = getMesRango()
+  // Permite deep-linkear desde otras pantallas (ej. el card "Dónde ganás hoy"
+  // de Inicio) sin duplicar el fetch+render acá — solo se lee al montar.
+  const searchParams = useSearchParams()
+  const agrupadorParam = searchParams.get("agrupador")
+  const periodoParam = searchParams.get("periodo")
+
+  const [agrupador, setAgrupador] = useState<Agrupador>(
+    AGRUPADOR_VALUES.includes(agrupadorParam as Agrupador) ? (agrupadorParam as Agrupador) : "proveedor"
+  )
+  const [periodo, setPeriodo] = useState<Periodo>(
+    PERIODO_VALUES.includes(periodoParam as Periodo) ? (periodoParam as Periodo) : "mes"
+  )
+  const rango = periodo === "hoy" ? getHoyRango() : periodo === "mes" ? getMesRango() : null
 
   const { data: filas, isLoading } = useQuery<FilaRentabilidad[]>({
-    queryKey: ["rentabilidad", agrupador, periodo, desde, hasta],
+    queryKey: ["rentabilidad", agrupador, periodo, rango?.desde, rango?.hasta],
     queryFn: () =>
       fetch(
-        periodo === "mes"
-          ? `/api/rentabilidad?por=${agrupador}&desde=${desde}&hasta=${hasta}`
+        rango
+          ? `/api/rentabilidad?por=${agrupador}&desde=${rango.desde}&hasta=${rango.hasta}`
           : `/api/rentabilidad?por=${agrupador}`
       ).then((r) => r.json()),
   })
@@ -74,11 +97,11 @@ export default function RentabilidadClient() {
         <div>
           <h1 className="font-heading text-2xl font-medium">Rentabilidad</h1>
           <p className="text-sm text-muted-foreground">
-            {periodo === "mes" ? "Mes actual" : "Histórico completo"}
+            {periodo === "historico" ? "Histórico completo" : PERIODO_LABELS[periodo]}
           </p>
         </div>
         <div className="flex shrink-0 gap-1 rounded-full bg-muted p-1">
-          {(["mes", "historico"] as const).map((p) => (
+          {PERIODO_VALUES.map((p) => (
             <button
               key={p}
               type="button"
@@ -90,7 +113,7 @@ export default function RentabilidadClient() {
                   : "text-muted-foreground hover:text-foreground"
               )}
             >
-              {p === "mes" ? "Mes actual" : "Histórico"}
+              {PERIODO_LABELS[p]}
             </button>
           ))}
         </div>
@@ -100,7 +123,7 @@ export default function RentabilidadClient() {
       <div className={cn("grid grid-cols-2 gap-3", agrupador === "proveedor" ? "lg:grid-cols-5" : "lg:grid-cols-4")}>
         <div className="rounded-2xl border border-border/60 bg-card p-4">
           <p className="text-xs text-muted-foreground">
-            {periodo === "mes" ? "Ventas del mes" : "Ventas totales"}
+            {periodo === "hoy" ? "Ventas de hoy" : periodo === "mes" ? "Ventas del mes" : "Ventas totales"}
           </p>
           <p className="text-xl font-semibold tabular-nums mt-1">{formatearARS(totalVentas)}</p>
         </div>

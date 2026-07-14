@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma"
 import { prisma as prismaAuth } from "@/lib/prisma-auth"
 import { mesAnioActual, inicioMes, finMes } from "@/domain/dinero"
 import { calcularTrialTerminaEl } from "@/lib/suscripcion"
+import { precioDesdeCosoYMarkup, precioDesdeCosoYGananciaFija, markupBpDesdeCostoYPrecio } from "@/domain/markup"
 import bcrypt from "bcryptjs"
 
 // ─── Categorías ──────────────────────────────────────────────────────────────
@@ -50,6 +51,65 @@ export const categoriaService = {
     if (productos > 0) throw new Error(`No se puede eliminar: tiene ${productos} producto(s) asociado(s)`)
     return prisma.category.delete({ where: { id: cat.id } })
   },
+
+  /** Vista previa de "Recalcular precios": qué productos activos de esta
+   * categoría cambiarían de precio si se les aplicara el markup default
+   * ACTUAL de la categoría sobre su costo actual (sin tocar el costo). No hay
+   * forma de distinguir en el modelo un producto con markup "manual" de uno
+   * que coincide con el default por casualidad, así que se listan todos los
+   * que cambiarían y el dueño elige cuáles aplicar en aplicarRecalculo. */
+  async previsualizarRecalculo(id: string, organizationId: string) {
+    const categoria = await prisma.category.findFirstOrThrow({ where: { id, organizationId } })
+    const productos = await prisma.product.findMany({
+      where: { categoryId: id, organizationId, activo: true },
+      select: {
+        id: true, nombre: true, esPesable: true,
+        costoCentavos: true, precioCentavos: true,
+        costoPorKgCentavos: true, precioPorKgCentavos: true,
+      },
+    })
+    return productos
+      .map((p) => {
+        const costo = p.esPesable ? (p.costoPorKgCentavos ?? 0) : p.costoCentavos
+        const precioActual = p.esPesable ? (p.precioPorKgCentavos ?? 0) : p.precioCentavos
+        if (costo <= 0) return null
+        const precioNuevo =
+          categoria.markupDefaultTipo === "FIJO"
+            ? precioDesdeCosoYGananciaFija(costo, categoria.markupDefaultFijoCentavos)
+            : precioDesdeCosoYMarkup(costo, categoria.markupDefaultBp)
+        if (precioNuevo === precioActual) return null
+        return { id: p.id, nombre: p.nombre, esPesable: p.esPesable, costoCentavos: costo, precioActualCentavos: precioActual, precioNuevoCentavos: precioNuevo }
+      })
+      .filter((x) => x !== null)
+  },
+
+  /** Aplica el recálculo solo a los productos elegidos en la vista previa —
+   * nunca a toda la categoría a ciegas. Recalcula contra el markup default
+   * VIGENTE al momento de aplicar (no el de cuando se pidió la vista previa),
+   * por si alguien la dejó abierta y mientras tanto cambió el default de nuevo. */
+  async aplicarRecalculo(id: string, organizationId: string, productIds: string[]) {
+    const categoria = await prisma.category.findFirstOrThrow({ where: { id, organizationId } })
+    const productos = await prisma.product.findMany({
+      where: { id: { in: productIds }, categoryId: id, organizationId, activo: true },
+    })
+    await prisma.$transaction(
+      productos.flatMap((p) => {
+        const costo = p.esPesable ? (p.costoPorKgCentavos ?? 0) : p.costoCentavos
+        if (costo <= 0) return []
+        const precioNuevo =
+          categoria.markupDefaultTipo === "FIJO"
+            ? precioDesdeCosoYGananciaFija(costo, categoria.markupDefaultFijoCentavos)
+            : precioDesdeCosoYMarkup(costo, categoria.markupDefaultBp)
+        return [
+          prisma.product.update({
+            where: { id: p.id },
+            data: p.esPesable ? { precioPorKgCentavos: precioNuevo } : { precioCentavos: precioNuevo },
+          }),
+        ]
+      })
+    )
+    return { actualizados: productos.length }
+  },
 }
 
 // ─── Proveedores ─────────────────────────────────────────────────────────────
@@ -97,17 +157,24 @@ export const proveedorService = {
     return prisma.provider.update({ where: { id }, data: { pisoReposicionCentavos: montoCentavos } })
   },
 
-  /** Cuenta corriente: compra a crédito — sube lo que le debemos, cargado a mano. */
+  /** Cuenta corriente: compra a crédito — sube lo que le debemos, cargado a mano
+   * o disparado desde pedidoProveedorService.ingresar. Deja fila en el ledger. */
   async registrarCompraCuentaCorriente(id: string, organizationId: string, montoCentavos: number) {
-    await prisma.provider.findFirstOrThrow({ where: { id, organizationId } })
-    return prisma.provider.update({
-      where: { id },
-      data: { saldoCuentaCorrienteCentavos: { increment: montoCentavos } },
+    return prisma.$transaction(async (tx) => {
+      await tx.provider.findFirstOrThrow({ where: { id, organizationId } })
+      await tx.movimientoCuentaCorrienteProveedor.create({
+        data: { providerId: id, organizationId, tipo: "COMPRA", montoCentavos },
+      })
+      return tx.provider.update({
+        where: { id },
+        data: { saldoCuentaCorrienteCentavos: { increment: montoCentavos } },
+      })
     })
   },
 
   /** Cuenta corriente: pago al proveedor — baja lo que le debemos Y crea un
-   * EGRESO real en la caja elegida (plata que efectivamente salió). */
+   * EGRESO real en la caja elegida (plata que efectivamente salió). Deja fila
+   * en el ledger, igual que la compra. */
   async registrarPagoCuentaCorriente(
     id: string,
     organizationId: string,
@@ -131,6 +198,10 @@ export const proveedorService = {
         },
       })
 
+      await tx.movimientoCuentaCorrienteProveedor.create({
+        data: { providerId: id, organizationId, tipo: "PAGO", montoCentavos, cajaId },
+      })
+
       // Nunca por debajo de $0: si no había cuenta corriente (o el pago supera
       // la deuda), esto es simplemente un pago de un pedido — el EGRESO de
       // arriba ya lo registra. La cuenta corriente no es "saldo a favor" ni
@@ -140,6 +211,91 @@ export const proveedorService = {
         data: { saldoCuentaCorrienteCentavos: Math.max(0, provider.saldoCuentaCorrienteCentavos - montoCentavos) },
       })
     })
+  },
+
+  /** Historial de compras/pagos de este proveedor — ver MovimientoCuentaCorrienteProveedor. */
+  async listarMovimientosCuentaCorriente(id: string, organizationId: string) {
+    await prisma.provider.findFirstOrThrow({ where: { id, organizationId } })
+    return prisma.movimientoCuentaCorrienteProveedor.findMany({
+      where: { providerId: id, organizationId },
+      include: { caja: { select: { nombre: true } } },
+      orderBy: { createdAt: "desc" },
+      take: 100,
+    })
+  },
+
+  /** Historial de pedidos (entradas de stock) a este proveedor — no hay un
+   * modelo de "pedido" propio, cada línea de pedidoProveedorService.ingresar
+   * queda como una ENTRADA de StockMovement con motivo "Pedido a {nombre}". */
+  async listarPedidos(id: string, organizationId: string) {
+    const provider = await prisma.provider.findFirstOrThrow({ where: { id, organizationId } })
+    return prisma.stockMovement.findMany({
+      where: {
+        tipo: "ENTRADA",
+        motivo: `Pedido a ${provider.nombre}`,
+        product: { organizationId },
+      },
+      include: { product: { select: { nombre: true, sku: true } } },
+      orderBy: { creadoEn: "desc" },
+      take: 200,
+    })
+  },
+
+  /** Vista previa de "Subió todo un X%": nuevo costo de cada producto activo
+   * de este proveedor, manteniendo el markup actual de cada uno (el precio
+   * de venta se recalcula solo a partir del costo nuevo). No toca nada
+   * todavía — ver aplicarAjusteCosto. */
+  async previsualizarAjusteCosto(id: string, organizationId: string, porcentaje: number) {
+    await prisma.provider.findFirstOrThrow({ where: { id, organizationId } })
+    const productos = await prisma.product.findMany({
+      where: { providerId: id, organizationId, activo: true },
+      select: {
+        id: true, nombre: true, esPesable: true,
+        costoCentavos: true, precioCentavos: true,
+        costoPorKgCentavos: true, precioPorKgCentavos: true,
+      },
+    })
+    return productos
+      .map((p) => {
+        const costo = p.esPesable ? (p.costoPorKgCentavos ?? 0) : p.costoCentavos
+        const precio = p.esPesable ? (p.precioPorKgCentavos ?? 0) : p.precioCentavos
+        if (costo <= 0) return null
+        const costoNuevo = Math.round(costo * (1 + porcentaje / 100))
+        const markupActual = markupBpDesdeCostoYPrecio(costo, precio)
+        const precioNuevo = precioDesdeCosoYMarkup(costoNuevo, markupActual)
+        return { id: p.id, nombre: p.nombre, esPesable: p.esPesable, costoActualCentavos: costo, costoNuevoCentavos: costoNuevo, precioActualCentavos: precio, precioNuevoCentavos: precioNuevo }
+      })
+      .filter((x) => x !== null)
+  },
+
+  /** Aplica el ajuste solo a los productos elegidos en la vista previa,
+   * recalculando desde el costo ACTUAL de cada uno al momento de aplicar (no
+   * desde los valores ya vistos en la preview, por si algo cambió mientras
+   * tanto) — mismo criterio que categoriaService.aplicarRecalculo. */
+  async aplicarAjusteCosto(id: string, organizationId: string, porcentaje: number, productIds: string[]) {
+    await prisma.provider.findFirstOrThrow({ where: { id, organizationId } })
+    const productos = await prisma.product.findMany({
+      where: { id: { in: productIds }, providerId: id, organizationId, activo: true },
+    })
+    await prisma.$transaction(
+      productos.flatMap((p) => {
+        const costo = p.esPesable ? (p.costoPorKgCentavos ?? 0) : p.costoCentavos
+        const precio = p.esPesable ? (p.precioPorKgCentavos ?? 0) : p.precioCentavos
+        if (costo <= 0) return []
+        const costoNuevo = Math.round(costo * (1 + porcentaje / 100))
+        const markupActual = markupBpDesdeCostoYPrecio(costo, precio)
+        const precioNuevo = precioDesdeCosoYMarkup(costoNuevo, markupActual)
+        return [
+          prisma.product.update({
+            where: { id: p.id },
+            data: p.esPesable
+              ? { costoPorKgCentavos: costoNuevo, precioPorKgCentavos: precioNuevo }
+              : { costoCentavos: costoNuevo, precioCentavos: precioNuevo },
+          }),
+        ]
+      })
+    )
+    return { actualizados: productos.length }
   },
 }
 

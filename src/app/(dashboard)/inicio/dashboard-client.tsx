@@ -187,6 +187,15 @@ function horaCorta(iso: string) {
   return new Date(iso).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })
 }
 
+/** Sesiones abiertas hace demasiado (>24hs) casi siempre significa que se
+ * olvidaron de cerrar la caja el día anterior — hoy nadie se entera hasta que
+ * alguien mira el panel a mano, ver CajasPanel más abajo. */
+const HORAS_SESION_SOSPECHOSA = 24
+
+function horasAbierta(fechaApertura: string): number {
+  return (Date.now() - new Date(fechaApertura).getTime()) / (60 * 60_000)
+}
+
 type PanelMode = "abrir" | "cerrar" | "movimiento" | "detalle" | "arqueo"
 
 function CajasPanel() {
@@ -257,6 +266,7 @@ function CajasPanel() {
               const abierta = !!sesion
               const enCaja = abierta ? calcEfectivoEnCaja(sesion) : 0
               const nMov = sesion?.movimientos.length ?? 0
+              const sospechosa = abierta && horasAbierta(sesion.fechaApertura) > HORAS_SESION_SOSPECHOSA
 
               return (
                 <div key={caja.id} className="px-4 py-2.5 flex items-center gap-3 min-h-[52px]">
@@ -272,6 +282,14 @@ function CajasPanel() {
                       )}>
                         {abierta ? "ABIERTA" : "CERRADA"}
                       </span>
+                      {sospechosa && (
+                        <span
+                          className="text-[10px] px-1.5 py-0.5 rounded-md font-medium bg-amber-500/15 text-amber-700 dark:text-amber-400"
+                          title="Lleva más de 24hs abierta — ¿se olvidaron de cerrarla?"
+                        >
+                          ¿Olvidada?
+                        </span>
+                      )}
                     </div>
                     {abierta && (
                       <p className="text-xs text-muted-foreground mt-0.5">
@@ -1002,12 +1020,20 @@ export default function DashboardClient() {
         {/* Columna derecha */}
         <div className="space-y-4">
 
-          {/* Dónde ganás hoy */}
+          {/* Dónde ganás hoy — el header linkea a Rentabilidad con período "Hoy"
+              ya seleccionado, para ver el desglose completo (unidades, costo,
+              markup, u otros agrupadores) sin reimplementar esa tabla acá. */}
           <div className="rounded-2xl border border-border/60 bg-card overflow-hidden">
-            <div className="px-4 pt-4 pb-2.5 border-b border-border/40">
-              <p className="text-sm font-medium">Dónde ganás hoy</p>
-              <p className="text-xs text-muted-foreground">Por proveedor · ganancia bruta</p>
-            </div>
+            <Link
+              href="/rentabilidad?periodo=hoy&agrupador=proveedor"
+              className="flex items-center justify-between px-4 pt-4 pb-2.5 border-b border-border/40 hover:bg-muted/30 transition-colors"
+            >
+              <div>
+                <p className="text-sm font-medium">Dónde ganás hoy</p>
+                <p className="text-xs text-muted-foreground">Por proveedor · ganancia bruta</p>
+              </div>
+              <TrendingUp className="size-3.5 text-muted-foreground shrink-0" />
+            </Link>
             {topProveedores.length === 0 ? (
               <div className="px-4 py-4">
                 <p className="text-xs text-muted-foreground">

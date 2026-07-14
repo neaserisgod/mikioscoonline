@@ -13,9 +13,18 @@ interface PrefetchEntry {
 
 const TODAY = new Date().toISOString().slice(0, 10)
 
+function mesActualRango() {
+  const d = new Date()
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, "0")
+  const ultimoDia = new Date(y, d.getMonth() + 1, 0).getDate()
+  return { desde: `${y}-${m}-01`, hasta: `${y}-${m}-${String(ultimoDia).padStart(2, "0")}` }
+}
+const MES_ACTUAL = mesActualRango()
+
 // Secciones enteras de solo-ADMIN — VENDEDOR nunca navega ahí (los links ni se
 // muestran), pero el warm-up al iniciar sesión igual las precarga si no se filtran acá.
-const RUTAS_ADMIN_ONLY = new Set(["/productos", "/rentabilidad", "/config"])
+const RUTAS_ADMIN_ONLY = new Set(["/productos", "/rentabilidad", "/config", "/proveedores"])
 
 // Mapa único de qué precargar por sección — el staleTime de cada entrada debe
 // coincidir con el que usa la query real consumidora (si no, el dato
@@ -45,8 +54,9 @@ export const ROUTE_PREFETCH_MAP: Record<string, PrefetchEntry[]> = {
   ],
   "/rentabilidad": [
     {
-      key: ["rentabilidad", "proveedor", TODAY, TODAY],
-      url: `/api/rentabilidad?por=proveedor&desde=${TODAY}&hasta=${TODAY}`,
+      // Coincide con el default del cliente: agrupador "proveedor" + periodo "mes" (ver rentabilidad-client.tsx)
+      key: ["rentabilidad", "proveedor", "mes", MES_ACTUAL.desde, MES_ACTUAL.hasta],
+      url: `/api/rentabilidad?por=proveedor&desde=${MES_ACTUAL.desde}&hasta=${MES_ACTUAL.hasta}`,
       staleTime: 30_000,
     },
   ],

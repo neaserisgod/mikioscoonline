@@ -415,6 +415,50 @@ export const productoService = {
     `
   },
 
+  /** Productos vendiéndose por debajo del costo (ver domain/markup.ts,
+   * margenNegativo) — casi siempre un error de carga, no una promoción real.
+   * Prisma no compara dos columnas en `where` → raw query solo para los ids,
+   * después se pide el producto completo (misma forma que el resto de listar*). */
+  async margenNegativo(organizationId: string) {
+    const ids = await prisma.$queryRaw<Array<{ id: string }>>`
+      SELECT id
+      FROM "Product"
+      WHERE "organizationId" = ${organizationId}
+        AND activo = true
+        AND (
+          (NOT "esPesable" AND "precioCentavos" < "costoCentavos")
+          OR ("esPesable" AND "costoPorKgCentavos" IS NOT NULL AND COALESCE("precioPorKgCentavos", 0) < "costoPorKgCentavos")
+        )
+    `
+    if (ids.length === 0) return []
+    return prisma.product.findMany({
+      where: { id: { in: ids.map((r) => r.id) } },
+      include: incluirRelaciones,
+      orderBy: { nombre: "asc" },
+    })
+  },
+
+  /** Productos con costo cargado a ojo (ver domain/markup.ts, se marca al crear
+   * sin factura real) pendientes de confirmar con el costo real de compra. */
+  async costoProvisional(organizationId: string) {
+    return prisma.product.findMany({
+      where: { organizationId, activo: true, costoEsProvisional: true },
+      include: incluirRelaciones,
+      orderBy: { nombre: "asc" },
+    })
+  },
+
+  /** Stock bajo de un proveedor puntual, para sugerir un pedido — ver
+   * pedidos-client.tsx ("Sugerir pedido"). Excluye pesables: la pantalla de
+   * pedidos no los soporta todavía (ver pedido-proveedor.service.ts). */
+  async stockBajoPorProveedor(organizationId: string, providerId: string) {
+    const productos = await prisma.product.findMany({
+      where: { organizationId, providerId, activo: true, esPesable: false },
+      select: { id: true, sku: true, nombre: true, stock: true, stockMinimo: true },
+    })
+    return productos.filter((p) => p.stock <= p.stockMinimo)
+  },
+
   /** Valor total del stock activo — a costo (lo que se pagó, "plata invertida
    * en estantería") y a precio de lista, para completar el panorama junto al
    * efectivo disponible (ver resumenService.reparto). Filtrable por proveedor

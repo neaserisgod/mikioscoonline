@@ -32,7 +32,7 @@ export function useCarritoCheckout(onSuccess?: (ventaId: string) => void) {
   const qc = useQueryClient()
   const venta = useVentaActiva()
   const {
-    cambiarCantidad, setGramos, eliminarLinea, vaciarCarrito, setMedioPago, setDescuentoPct, setConsumoInterno,
+    cambiarCantidad, setCantidad, setGramos, eliminarLinea, vaciarCarrito, setMedioPago, setDescuentoPct, setConsumoInterno,
     onVentaConfirmada, iniciarPagoMp, cancelarPagoMp,
     iniciarPagoSplit, iniciarFiadoTotal, cancelarPagoSplit, agregarLineaPagoSplit, actualizarLineaPagoSplit, quitarLineaPagoSplit,
   } = useVentasStore()
@@ -306,7 +306,7 @@ export function useCarritoCheckout(onSuccess?: (ventaId: string) => void) {
     esConsumoInterno, setConsumoInterno,
     loading, successInfo, setSuccessInfo, confirmVaciar, setConfirmVaciar,
     manualDialogOpen, setManualDialogOpen, manualLoading, confirmarCobroManual,
-    cambiarCantidad, setGramos, eliminarLinea, vaciarCarrito, setMedioPago,
+    cambiarCantidad, setCantidad, setGramos, eliminarLinea, vaciarCarrito, setMedioPago,
     pagosSplit, sumaPagosSplit, restanteSplit,
     iniciarPagoSplit: () => iniciarPagoSplit(totalACobrarCentavos),
     iniciarFiadoTotal,

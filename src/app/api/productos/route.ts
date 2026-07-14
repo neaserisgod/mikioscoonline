@@ -13,6 +13,8 @@ export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl
   const q = searchParams.get("q")
   const stockBajo = searchParams.get("stockBajo") === "1"
+  const costoProvisional = searchParams.get("costoProvisional") === "1"
+  const margenNegativo = searchParams.get("margenNegativo") === "1"
   const since = searchParams.get("since")
   const masVendidos = searchParams.get("masVendidos") === "1"
   const providerId = searchParams.get("providerId") ?? undefined
@@ -20,6 +22,17 @@ export async function GET(req: NextRequest) {
 
   if (stockBajo) {
     const data = await productoService.stockBajo(organizationId)
+    return NextResponse.json(data)
+  }
+
+  // Filtros con costo/precio real — nunca para VENDEDOR (ver sanitizarProducto).
+  if (costoProvisional || margenNegativo) {
+    if (role !== "ADMIN") {
+      return NextResponse.json({ error: "Solo ADMIN puede ver esto" }, { status: 403 })
+    }
+    const data = costoProvisional
+      ? await productoService.costoProvisional(organizationId)
+      : await productoService.margenNegativo(organizationId)
     return NextResponse.json(data)
   }
 

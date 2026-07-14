@@ -16,7 +16,7 @@ import { toast } from "sonner"
 import { crearProductoAction, editarProductoAction } from "@/app/actions/productos.actions"
 import { resolverTriangulo } from "@/domain/markup"
 import { formatearARS } from "@/domain/dinero"
-import { cn } from "@/lib/utils"
+import { cn, normalizarTexto } from "@/lib/utils"
 import { CatalogoBuscador } from "@/components/catalogo-buscador"
 
 const schema = z.object({
@@ -247,6 +247,13 @@ export default function ProductoForm({ producto, barcodePreset, defaultsNuevo, o
             onSelect={(item) => {
               setValue("nombre", item.nombre)
               setValue("barcode", item.sku)
+              // El catálogo trae "categoria" como texto libre (ej. "GASEOSAS |
+              // SPRITE") sin costo/precio/proveedor — solo alcanza para
+              // autocompletar la categoría, matcheando el primer segmento
+              // contra las categorías ya creadas en el negocio.
+              const primerSegmento = normalizarTexto(item.categoria.split("|")[0].trim())
+              const match = categorias?.find((c) => normalizarTexto(c.nombre) === primerSegmento)
+              if (match) setValue("categoryId", match.id)
             }}
           />
         </div>

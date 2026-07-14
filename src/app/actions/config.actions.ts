@@ -56,6 +56,16 @@ export async function eliminarCategoriaAction(id: string) {
   return categoriaService.eliminar(id, user.organizationId)
 }
 
+export async function previsualizarRecalculoCategoriaAction(id: string) {
+  const user = await requireAdmin()
+  return categoriaService.previsualizarRecalculo(id, user.organizationId)
+}
+
+export async function aplicarRecalculoCategoriaAction(id: string, productIds: string[]) {
+  const user = await requireAdmin()
+  return categoriaService.aplicarRecalculo(id, user.organizationId, productIds)
+}
+
 // ─── Proveedores ─────────────────────────────────────────────────────────────
 
 const ProveedorSchema = z.object({ nombre: z.string().min(1) })
@@ -102,6 +112,13 @@ export async function registrarPagoCuentaCorrienteAction(id: string, montoCentav
   const monto = z.number().int().positive().parse(montoCentavos)
   const caja = z.string().min(1).parse(cajaId)
   return proveedorService.registrarPagoCuentaCorriente(id, user.organizationId, monto, caja)
+}
+
+export async function aplicarAjusteCostoProveedorAction(id: string, porcentaje: unknown, productIds: unknown) {
+  const user = await requireAdmin()
+  const pct = z.number().finite().refine((n) => n !== 0).parse(porcentaje)
+  const ids = z.array(z.string().min(1)).parse(productIds)
+  return proveedorService.aplicarAjusteCosto(id, user.organizationId, pct, ids)
 }
 
 // ─── Ubicaciones ─────────────────────────────────────────────────────────────

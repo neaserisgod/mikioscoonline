@@ -1,0 +1,624 @@
+"use client"
+
+import { useState, useEffect } from "react"
+import Link from "next/link"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { motion } from "framer-motion"
+import { toast } from "sonner"
+import { Plus, Wallet, Loader2, Truck, Pencil, ArrowRight, ArrowDownLeft, ArrowUpRight, Package, AlertTriangle, PackagePlus, Percent } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Label } from "@/components/ui/label"
+import { Skeleton } from "@/components/ui/skeleton"
+import { formatearARS } from "@/domain/dinero"
+import { cn } from "@/lib/utils"
+import { Field, StatusBadge, ListCard, ActionRow } from "@/components/config/list-primitives"
+import {
+  crearProveedorAction, editarProveedorAction,
+  desactivarProveedorAction, reactivarProveedorAction, eliminarProveedorAction,
+  registrarCompraCuentaCorrienteAction, registrarPagoCuentaCorrienteAction, actualizarPisoReposicionAction,
+  aplicarAjusteCostoProveedorAction,
+} from "@/app/actions/config.actions"
+
+interface Proveedor {
+  id: string; nombre: string; activo: boolean
+  saldoCuentaCorrienteCentavos: number
+  pisoReposicionCentavos: number
+  saldoReposicionCentavos: number
+  _count: { products: number }
+}
+interface StockBajoItem { id: string; sku: string; nombre: string; stock: number; stockMinimo: number }
+interface CajaItem { id: string; nombre: string; sesiones: { id: string }[] }
+interface ResumenProveedorStock { id: string; valorCostoCentavos: number; valorVentaCentavos: number }
+interface FilaRentabilidadProveedor { id: string; ventasCentavos: number }
+interface MovimientoCuentaCorriente {
+  id: string; tipo: "COMPRA" | "PAGO"; montoCentavos: number; createdAt: string
+  caja: { nombre: string } | null
+}
+interface PedidoLinea {
+  id: string; cantidad: number; creadoEn: string
+  product: { nombre: string; sku: string }
+}
+
+function mesActualRango() {
+  const d = new Date()
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, "0")
+  const ultimoDia = new Date(y, d.getMonth() + 1, 0).getDate()
+  return { desde: `${y}-${m}-01`, hasta: `${y}-${m}-${String(ultimoDia).padStart(2, "0")}` }
+}
+
+function fechaCorta(iso: string) {
+  return new Date(iso).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "2-digit" })
+}
+
+export default function ProveedoresClient() {
+  const qc = useQueryClient()
+  const { data, isLoading } = useQuery<Proveedor[]>({
+    queryKey: ["proveedores"],
+    queryFn: () => fetch("/api/config/proveedores").then((r) => r.json()),
+    staleTime: 30_000,
+  })
+
+  const [sheetOpen, setSheetOpen] = useState(false)
+  const [editing, setEditing] = useState<Proveedor | null>(null)
+  const [cuentaProveedor, setCuentaProveedor] = useState<Proveedor | null>(null)
+  const [ajustandoProveedor, setAjustandoProveedor] = useState<Proveedor | null>(null)
+  const [pending, setPending] = useState<string | null>(null)
+
+  function invalidar() { qc.invalidateQueries({ queryKey: ["proveedores"] }) }
+
+  function abrirCrear() { setEditing(null); setSheetOpen(true) }
+  function abrirEditar(p: Proveedor) { setEditing(p); setSheetOpen(true) }
+
+  async function toggle(p: Proveedor) {
+    setPending(p.id)
+    try {
+      if (p.activo) await desactivarProveedorAction(p.id)
+      else await reactivarProveedorAction(p.id)
+      toast.success(p.activo ? `"${p.nombre}" desactivado` : `"${p.nombre}" reactivado`)
+      invalidar()
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Error") }
+    finally { setPending(null) }
+  }
+
+  async function eliminar(p: Proveedor) {
+    setPending(p.id)
+    try {
+      await eliminarProveedorAction(p.id)
+      toast.success(`"${p.nombre}" eliminado`)
+      invalidar()
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Error") }
+    finally { setPending(null) }
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h1 className="font-heading text-2xl font-medium">Proveedores</h1>
+        <Button size="sm" onClick={abrirCrear} className="gap-1.5"><Plus className="size-3.5" /> Nuevo</Button>
+      </div>
+
+      {isLoading ? (
+        <div className="space-y-2">
+          {[1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-14 w-full rounded-2xl" />)}
+        </div>
+      ) : data?.length === 0 ? (
+        <div className="flex flex-col items-center gap-2 py-12 text-muted-foreground">
+          <Truck className="size-8" />
+          <p className="text-sm">Sin proveedores todavía</p>
+        </div>
+      ) : (
+        <motion.div initial="hidden" animate="show">
+          <ListCard>
+            {data?.map((p) => (
+              <ActionRow
+                key={p.id}
+                primary={p.nombre}
+                activo={p.activo}
+                isPending={pending === p.id}
+                onEdit={() => abrirEditar(p)}
+                onToggle={() => toggle(p)}
+                onDelete={p._count.products === 0 ? () => eliminar(p) : undefined}
+                badge={
+                  <>
+                    <StatusBadge activo={p.activo} count={p.activo ? p._count.products : undefined} />
+                    {p.saldoCuentaCorrienteCentavos > 0 && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-k-loss/10 text-k-loss font-medium">
+                        Debe {formatearARS(p.saldoCuentaCorrienteCentavos)}
+                      </span>
+                    )}
+                  </>
+                }
+                extraAction={
+                  <>
+                    <Button variant="ghost" size="icon-sm" onClick={() => setCuentaProveedor(p)} title="Cuenta corriente">
+                      <Wallet className="size-3.5" />
+                    </Button>
+                    {p._count.products > 0 && (
+                      <Button variant="ghost" size="icon-sm" onClick={() => setAjustandoProveedor(p)} title="Ajustar costos por %">
+                        <Percent className="size-3.5" />
+                      </Button>
+                    )}
+                  </>
+                }
+              />
+            ))}
+          </ListCard>
+        </motion.div>
+      )}
+
+      <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
+        <SheetContent>
+          <ProveedorForm editing={editing} onSuccess={() => { setSheetOpen(false); invalidar() }} />
+        </SheetContent>
+      </Sheet>
+
+      <Sheet open={!!ajustandoProveedor} onOpenChange={(v) => !v && setAjustandoProveedor(null)}>
+        <SheetContent>
+          {ajustandoProveedor && (
+            <AjusteCostoSheet
+              proveedor={ajustandoProveedor}
+              onSuccess={() => { setAjustandoProveedor(null); invalidar() }}
+            />
+          )}
+        </SheetContent>
+      </Sheet>
+
+      <Sheet open={!!cuentaProveedor} onOpenChange={(v) => !v && setCuentaProveedor(null)}>
+        <SheetContent>
+          {cuentaProveedor && (
+            <CuentaCorrienteSheet
+              proveedor={cuentaProveedor}
+              onSuccess={() => { setCuentaProveedor(null); invalidar() }}
+            />
+          )}
+        </SheetContent>
+      </Sheet>
+    </div>
+  )
+}
+
+function ProveedorForm({ editing, onSuccess }: { editing: Proveedor | null; onSuccess: () => void }) {
+  const [nombre, setNombre] = useState(editing?.nombre ?? "")
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  async function onSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!nombre.trim()) { toast.error("El nombre es obligatorio"); return }
+    setIsSubmitting(true)
+    try {
+      if (editing) {
+        await editarProveedorAction(editing.id, { nombre: nombre.trim() })
+        toast.success("Proveedor actualizado")
+      } else {
+        await crearProveedorAction({ nombre: nombre.trim() })
+        toast.success("Proveedor creado")
+      }
+      onSuccess()
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Error") }
+    finally { setIsSubmitting(false) }
+  }
+
+  return (
+    <>
+      <SheetHeader><SheetTitle>{editing ? "Editar proveedor" : "Nuevo proveedor"}</SheetTitle></SheetHeader>
+      <form onSubmit={onSubmit} className="mt-6 space-y-4">
+        <Field label="Nombre" autoFocus value={nombre} onChange={(e) => setNombre(e.target.value)} />
+        <Button type="submit" className="w-full" disabled={isSubmitting}>
+          {isSubmitting ? <Loader2 className="size-4 animate-spin" /> : editing ? "Guardar" : "Crear"}
+        </Button>
+      </form>
+    </>
+  )
+}
+
+interface FilaAjusteCosto {
+  id: string; nombre: string; esPesable: boolean
+  costoActualCentavos: number; costoNuevoCentavos: number
+  precioActualCentavos: number; precioNuevoCentavos: number
+}
+
+/** "Subió todo un X%": ajusta el costo de los productos de este proveedor
+ * manteniendo el markup de cada uno — nunca aplica nada sin vista previa
+ * primero (ver proveedorService.previsualizarAjusteCosto/aplicarAjusteCosto). */
+function AjusteCostoSheet({ proveedor, onSuccess }: { proveedor: Proveedor; onSuccess: () => void }) {
+  const [porcentajeInput, setPorcentajeInput] = useState("")
+  const [porcentajeConfirmado, setPorcentajeConfirmado] = useState<number | null>(null)
+  const [seleccionados, setSeleccionados] = useState<Set<string>>(new Set())
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  const { data: filas, isLoading } = useQuery<FilaAjusteCosto[]>({
+    queryKey: ["proveedor-ajuste-costo-preview", proveedor.id, porcentajeConfirmado],
+    queryFn: () =>
+      fetch(`/api/config/proveedores/${proveedor.id}/ajuste-costo-preview?porcentaje=${porcentajeConfirmado}`).then((r) => r.json()),
+    enabled: porcentajeConfirmado !== null,
+  })
+
+  function verVistaPrevia(e: React.FormEvent) {
+    e.preventDefault()
+    const pct = Number(porcentajeInput)
+    if (!Number.isFinite(pct) || pct === 0) { toast.error("Ingresá un porcentaje válido (puede ser negativo)"); return }
+    setPorcentajeConfirmado(pct)
+    setSeleccionados(new Set())
+  }
+
+  useEffect(() => {
+    if (filas) setSeleccionados(new Set(filas.map((f) => f.id)))
+  }, [filas])
+
+  function toggle(id: string) {
+    setSeleccionados((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  async function aplicar() {
+    if (porcentajeConfirmado === null) return
+    setIsSubmitting(true)
+    try {
+      const res = await aplicarAjusteCostoProveedorAction(proveedor.id, porcentajeConfirmado, Array.from(seleccionados))
+      toast.success(`${res.actualizados} producto${res.actualizados === 1 ? "" : "s"} actualizado${res.actualizados === 1 ? "" : "s"}`)
+      onSuccess()
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Error") }
+    finally { setIsSubmitting(false) }
+  }
+
+  return (
+    <>
+      <SheetHeader><SheetTitle>Ajustar costos — {proveedor.nombre}</SheetTitle></SheetHeader>
+      <p className="mt-2 text-xs text-muted-foreground">
+        Sube (o baja, con % negativo) el costo de todos los productos de este proveedor, manteniendo el markup
+        actual de cada uno — el precio de venta se recalcula solo a partir del costo nuevo.
+      </p>
+
+      <form onSubmit={verVistaPrevia} className="mt-4 flex items-end gap-2">
+        <Field
+          label="Porcentaje (ej. 8 = subió 8%)"
+          type="number" step="0.1"
+          value={porcentajeInput}
+          onChange={(e) => setPorcentajeInput(e.target.value)}
+        />
+        <Button type="submit" variant="outline">Ver vista previa</Button>
+      </form>
+
+      {isLoading && (
+        <div className="mt-4 space-y-2">
+          {[1, 2, 3].map((i) => <Skeleton key={i} className="h-12 rounded-xl" />)}
+        </div>
+      )}
+
+      {filas && (
+        filas.length === 0 ? (
+          <p className="mt-4 text-sm text-muted-foreground">Ningún producto activo de este proveedor tiene costo cargado.</p>
+        ) : (
+          <>
+            <div className="mt-4 rounded-xl border border-border/60 bg-card divide-y divide-border/40 max-h-[45vh] overflow-y-auto">
+              {filas.map((f) => (
+                <label key={f.id} className="flex items-center gap-3 px-3 py-2.5 cursor-pointer">
+                  <Checkbox checked={seleccionados.has(f.id)} onCheckedChange={() => toggle(f.id)} />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm truncate">{f.nombre}</p>
+                    <p className="text-xs text-muted-foreground">
+                      Costo {formatearARS(f.costoActualCentavos)} → {formatearARS(f.costoNuevoCentavos)}{f.esPesable && "/kg"}
+                    </p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className="text-xs text-muted-foreground line-through">{formatearARS(f.precioActualCentavos)}</p>
+                    <p className="text-sm font-semibold tabular-nums">{formatearARS(f.precioNuevoCentavos)}</p>
+                  </div>
+                </label>
+              ))}
+            </div>
+            <Button className="w-full mt-4" disabled={seleccionados.size === 0 || isSubmitting} onClick={aplicar}>
+              {isSubmitting
+                ? <Loader2 className="size-4 animate-spin" />
+                : `Aplicar a ${seleccionados.size} producto${seleccionados.size === 1 ? "" : "s"}`}
+            </Button>
+          </>
+        )
+      )}
+    </>
+  )
+}
+
+function MontoInlineEdit({ defaultValue, onSave, onCancel }: {
+  defaultValue: number; onSave: (pesos: number) => Promise<void>; onCancel: () => void
+}) {
+  const [pesos, setPesos] = useState(String(defaultValue))
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  async function onSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    setIsSubmitting(true)
+    try { await onSave(Number(pesos) || 0) } finally { setIsSubmitting(false) }
+  }
+
+  return (
+    <form onSubmit={onSubmit} className="flex gap-2">
+      <input
+        type="number" step="0.01" min="0" autoFocus
+        value={pesos} onChange={(e) => setPesos(e.target.value)}
+        className="w-full rounded-lg border border-border/60 bg-background px-2.5 py-1.5 text-sm tabular-nums focus:outline-none focus:ring-1 focus:ring-ring"
+      />
+      <Button type="submit" size="sm" disabled={isSubmitting}>Guardar</Button>
+      <Button type="button" variant="outline" size="sm" onClick={onCancel}>Cancelar</Button>
+    </form>
+  )
+}
+
+function CuentaCorrienteSheet({ proveedor, onSuccess }: { proveedor: Proveedor; onSuccess: () => void }) {
+  const qc = useQueryClient()
+  // OJO: /api/config/cajas lista todas las cajas activas (para administrarlas),
+  // no cuáles tienen sesión abierta AHORA — para elegir de dónde sale un pago
+  // hace falta /api/cajas (el mismo que usa Clientes), si no se puede elegir
+  // una caja cerrada y el pago falla recién al confirmar.
+  const { data: cajas } = useQuery<CajaItem[]>({
+    queryKey: ["cajas-panel"],
+    queryFn: () => fetch("/api/cajas").then((r) => r.json()),
+    staleTime: 5 * 60_000,
+  })
+  const { desde, hasta } = mesActualRango()
+  const { data: stockProveedores } = useQuery<ResumenProveedorStock[]>({
+    queryKey: ["productos-resumen-proveedores"],
+    queryFn: () => fetch("/api/productos/resumen-proveedores").then((r) => r.json()),
+    staleTime: 60_000,
+  })
+  const { data: ventasProveedores } = useQuery<FilaRentabilidadProveedor[]>({
+    queryKey: ["rentabilidad-proveedor-mes", desde, hasta],
+    queryFn: () => fetch(`/api/rentabilidad?por=proveedor&desde=${desde}&hasta=${hasta}`).then((r) => r.json()),
+    staleTime: 60_000,
+  })
+  const { data: movimientos } = useQuery<MovimientoCuentaCorriente[]>({
+    queryKey: ["proveedor-movimientos", proveedor.id],
+    queryFn: () => fetch(`/api/config/proveedores/${proveedor.id}/movimientos`).then((r) => r.json()),
+    staleTime: 30_000,
+  })
+  const { data: pedidos } = useQuery<PedidoLinea[]>({
+    queryKey: ["proveedor-pedidos", proveedor.id],
+    queryFn: () => fetch(`/api/config/proveedores/${proveedor.id}/pedidos`).then((r) => r.json()),
+    staleTime: 30_000,
+  })
+  const { data: stockBajo } = useQuery<StockBajoItem[]>({
+    queryKey: ["proveedor-stock-bajo", proveedor.id],
+    queryFn: () => fetch(`/api/config/proveedores/${proveedor.id}/stock-bajo`).then((r) => r.json()),
+    staleTime: 30_000,
+  })
+
+  const [modo, setModo] = useState<"pago" | "compra">("pago")
+  // El caso más común es pagar la deuda completa — prellenado, no default rígido.
+  const [monto, setMonto] = useState(
+    proveedor.saldoCuentaCorrienteCentavos > 0 ? String(proveedor.saldoCuentaCorrienteCentavos / 100) : ""
+  )
+  const [cajaId, setCajaId] = useState("")
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [editandoPiso, setEditandoPiso] = useState(false)
+
+  const cajasAbiertas = cajas?.filter((c) => c.sesiones.length > 0) ?? []
+  const stockDeEste = stockProveedores?.find((p) => p.id === proveedor.id)
+  const ventasDeEste = ventasProveedores?.find((p) => p.id === proveedor.id)
+
+  // Si hay una sola caja abierta no tiene sentido obligar a elegirla del dropdown.
+  useEffect(() => {
+    if (cajasAbiertas.length === 1 && !cajaId) setCajaId(cajasAbiertas[0].id)
+  }, [cajasAbiertas, cajaId])
+
+  async function guardarPiso(pesos: number) {
+    try {
+      await actualizarPisoReposicionAction(proveedor.id, Math.round(pesos * 100))
+      toast.success("Piso de reinversión actualizado")
+      setEditandoPiso(false)
+      onSuccess()
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Error") }
+  }
+
+  async function onSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    const montoCentavos = Math.round(parseFloat(monto) * 100)
+    if (!montoCentavos || montoCentavos <= 0) { toast.error("Ingresá un monto válido"); return }
+    if (modo === "pago" && !cajaId) { toast.error("Elegí de qué caja sale el pago"); return }
+    setIsSubmitting(true)
+    try {
+      if (modo === "compra") {
+        await registrarCompraCuentaCorrienteAction(proveedor.id, montoCentavos)
+        toast.success("Compra a crédito registrada")
+      } else {
+        await registrarPagoCuentaCorrienteAction(proveedor.id, montoCentavos, cajaId)
+        toast.success("Pago registrado")
+      }
+      qc.invalidateQueries({ queryKey: ["proveedor-movimientos", proveedor.id] })
+      onSuccess()
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Error") }
+    finally { setIsSubmitting(false) }
+  }
+
+  return (
+    <>
+      <SheetHeader><SheetTitle>Cuenta corriente — {proveedor.nombre}</SheetTitle></SheetHeader>
+
+      <Link
+        href={`/productos?proveedorId=${proveedor.id}`}
+        className="mt-4 flex items-center justify-between rounded-xl border border-border/60 bg-card px-4 py-2.5 text-sm hover:bg-muted/30 transition-colors"
+      >
+        <span className="text-muted-foreground">Ver catálogo de este proveedor</span>
+        <ArrowRight className="size-3.5 text-muted-foreground" />
+      </Link>
+
+      {stockBajo && stockBajo.length > 0 && (
+        <Link
+          href={`/pedidos?providerId=${proveedor.id}&sugerir=1`}
+          className="mt-2 flex items-center justify-between gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-sm hover:bg-amber-500/15 transition-colors"
+        >
+          <span className="flex items-center gap-2 text-amber-700 dark:text-amber-400">
+            <AlertTriangle className="size-3.5 shrink-0" />
+            {stockBajo.length} producto{stockBajo.length === 1 ? "" : "s"} con stock bajo — sugerir pedido
+          </span>
+          <ArrowRight className="size-3.5 text-amber-700 dark:text-amber-400 shrink-0" />
+        </Link>
+      )}
+
+      {proveedor.saldoReposicionCentavos > 0 && proveedor.saldoReposicionCentavos >= proveedor.pisoReposicionCentavos && (
+        <Link
+          href={`/pedidos?providerId=${proveedor.id}`}
+          className="mt-2 flex items-center justify-between gap-3 rounded-xl border border-k-gain/30 bg-k-gain-muted/15 px-4 py-2.5 text-sm hover:bg-k-gain-muted/25 transition-colors"
+        >
+          <span className="flex items-center gap-2 text-k-gain">
+            <PackagePlus className="size-3.5 shrink-0" />
+            Ya juntaste {formatearARS(proveedor.saldoReposicionCentavos)} de fondo — buen momento para pedirle
+          </span>
+          <ArrowRight className="size-3.5 text-k-gain shrink-0" />
+        </Link>
+      )}
+
+      <div className="mt-2 rounded-xl border border-border/60 bg-card px-4 py-3 flex items-center justify-between">
+        <p className="text-sm text-muted-foreground">
+          {proveedor.saldoCuentaCorrienteCentavos >= 0 ? "Le debemos" : "Saldo a favor"}
+        </p>
+        <p className={cn(
+          "text-lg font-semibold tabular-nums",
+          proveedor.saldoCuentaCorrienteCentavos >= 0 ? "text-k-loss" : "text-k-gain"
+        )}>
+          {formatearARS(Math.abs(proveedor.saldoCuentaCorrienteCentavos))}
+        </p>
+      </div>
+
+      <div className="mt-2 rounded-xl border border-border/60 bg-card px-4 py-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm text-muted-foreground">Piso de reinversión</p>
+            <p className="text-[11px] text-muted-foreground/70">Colchón reservado antes de contar ganancia limpia</p>
+          </div>
+          {!editandoPiso && (
+            <div className="flex items-center gap-2">
+              <p className="text-sm font-semibold tabular-nums">{formatearARS(proveedor.pisoReposicionCentavos)}</p>
+              <Button type="button" variant="ghost" size="icon-sm" onClick={() => setEditandoPiso(true)}>
+                <Pencil className="size-3.5" />
+              </Button>
+            </div>
+          )}
+        </div>
+        {editandoPiso && (
+          <div className="mt-2">
+            <MontoInlineEdit
+              defaultValue={proveedor.pisoReposicionCentavos / 100}
+              onSave={guardarPiso}
+              onCancel={() => setEditandoPiso(false)}
+            />
+          </div>
+        )}
+      </div>
+
+      <div className="mt-2 rounded-xl border border-border/60 bg-card px-4 py-3 space-y-2">
+        <p className="text-[11px] text-muted-foreground/70">Para decidir el piso: lo que tenés y lo que vendés de este proveedor</p>
+        <div className="flex items-center justify-between text-sm">
+          <span className="text-muted-foreground">Costo del stock que tenés ahora</span>
+          <span className="font-medium tabular-nums">{formatearARS(stockDeEste?.valorCostoCentavos ?? 0)}</span>
+        </div>
+        <div className="flex items-center justify-between text-sm">
+          <span className="text-muted-foreground">Precio de venta de ese mismo stock</span>
+          <span className="font-medium tabular-nums">{formatearARS(stockDeEste?.valorVentaCentavos ?? 0)}</span>
+        </div>
+        <div className="flex items-center justify-between text-sm">
+          <span className="text-muted-foreground">Total que facturaste este mes</span>
+          <span className="font-medium tabular-nums">{formatearARS(ventasDeEste?.ventasCentavos ?? 0)}</span>
+        </div>
+      </div>
+
+      <div className="mt-4 grid grid-cols-2 gap-2">
+        <Button
+          type="button"
+          variant={modo === "pago" ? "default" : "outline"}
+          onClick={() => {
+            setModo("pago")
+            if (!monto && proveedor.saldoCuentaCorrienteCentavos > 0) setMonto(String(proveedor.saldoCuentaCorrienteCentavos / 100))
+          }}
+        >
+          Registrar pago
+        </Button>
+        <Button type="button" variant={modo === "compra" ? "default" : "outline"} onClick={() => setModo("compra")}>Compra a crédito</Button>
+      </div>
+
+      <form onSubmit={onSubmit} className="mt-4 space-y-4">
+        <Field
+          label="Monto ($)"
+          type="number"
+          step="0.01"
+          min="0"
+          value={monto}
+          onChange={(e) => setMonto(e.target.value)}
+        />
+        {modo === "pago" && (
+          <div className="space-y-1.5">
+            <Label>Caja de la que sale el pago</Label>
+            <Select value={cajaId} onValueChange={(v) => setCajaId(v ?? "")}>
+              <SelectTrigger><SelectValue placeholder="Elegí una caja" /></SelectTrigger>
+              <SelectContent>
+                {cajasAbiertas.map((c) => (
+                  <SelectItem key={c.id} value={c.id}>{c.nombre}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {cajasAbiertas.length === 0 && (
+              <p className="text-xs text-k-loss">No hay ninguna caja abierta — abrí una para registrar el pago.</p>
+            )}
+          </div>
+        )}
+        <Button type="submit" className="w-full" disabled={isSubmitting}>
+          {isSubmitting ? <Loader2 className="size-4 animate-spin" /> : modo === "pago" ? "Registrar pago" : "Registrar compra"}
+        </Button>
+        {modo === "pago" && (
+          <p className="text-xs text-muted-foreground">Se crea un egreso real en la caja elegida y baja lo que le debemos.</p>
+        )}
+        {modo === "compra" && (
+          <p className="text-xs text-muted-foreground">Solo sube lo que le debemos — no mueve ninguna caja.</p>
+        )}
+      </form>
+
+      {movimientos && movimientos.length > 0 && (
+        <div className="mt-4 rounded-xl border border-border/60 bg-card px-4 py-3 space-y-1.5">
+          <p className="text-[11px] text-muted-foreground/70">Historial de cuenta corriente</p>
+          {movimientos.slice(0, 6).map((m) => (
+            <div key={m.id} className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground flex items-center gap-1.5">
+                {m.tipo === "PAGO"
+                  ? <ArrowUpRight className="size-3 text-k-gain shrink-0" />
+                  : <ArrowDownLeft className="size-3 text-k-loss shrink-0" />}
+                {fechaCorta(m.createdAt)} · {m.tipo === "PAGO" ? `Pago${m.caja ? ` (${m.caja.nombre})` : ""}` : "Compra a crédito"}
+              </span>
+              <span className={cn("font-medium tabular-nums", m.tipo === "PAGO" ? "text-k-gain" : "text-k-loss")}>
+                {formatearARS(m.montoCentavos)}
+              </span>
+            </div>
+          ))}
+          {movimientos.length > 6 && (
+            <p className="text-[11px] text-muted-foreground">+{movimientos.length - 6} más</p>
+          )}
+        </div>
+      )}
+
+      {pedidos && pedidos.length > 0 && (
+        <div className="mt-2 rounded-xl border border-border/60 bg-card px-4 py-3 space-y-1.5">
+          <p className="text-[11px] text-muted-foreground/70 flex items-center gap-1.5">
+            <Package className="size-3" /> Historial de pedidos (entradas de stock)
+          </p>
+          {pedidos.slice(0, 6).map((l) => (
+            <div key={l.id} className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground truncate">
+                {fechaCorta(l.creadoEn)} · {l.product.nombre}
+              </span>
+              <span className="font-medium tabular-nums shrink-0 ml-2">+{l.cantidad}</span>
+            </div>
+          ))}
+          {pedidos.length > 6 && (
+            <p className="text-[11px] text-muted-foreground">+{pedidos.length - 6} más</p>
+          )}
+        </div>
+      )}
+    </>
+  )
+}

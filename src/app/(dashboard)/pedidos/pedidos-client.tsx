@@ -1,6 +1,7 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { useSearchParams } from "next/navigation"
 import { useQuery } from "@tanstack/react-query"
 import { Plus, Trash2, PackagePlus } from "lucide-react"
 import { toast } from "sonner"
@@ -55,19 +56,48 @@ function num(v: string): number {
 }
 
 export default function PedidosClient() {
-  const [providerId, setProviderId] = useState("")
+  const searchParams = useSearchParams()
+  const providerIdParam = searchParams.get("providerId")
+  const sugerir = searchParams.get("sugerir") === "1"
+
+  const [providerId, setProviderId] = useState(providerIdParam ?? "")
   const [lineas, setLineas] = useState<Linea[]>([nuevaLinea()])
   const [ivaPesos, setIvaPesos] = useState("")
   const [otrosImpuestosPesos, setOtrosImpuestosPesos] = useState("")
   const [montoPagadoPesos, setMontoPagadoPesos] = useState("")
   const [cajaId, setCajaId] = useState("")
   const [enviando, setEnviando] = useState(false)
+  const [prefillHecho, setPrefillHecho] = useState(false)
 
   const { data: proveedores } = useQuery<Proveedor[]>({
     queryKey: ["proveedores"],
     queryFn: () => fetch("/api/config/proveedores").then((r) => r.json()),
     staleTime: 5 * 60_000,
   })
+
+  // Deep-link desde /proveedores ("Sugerir pedido"): precarga producto +
+  // cantidad de cada ítem en stock bajo de ese proveedor. El usuario sigue
+  // teniendo que cargar cuánto pagó por cada línea — eso no se puede inferir.
+  const { data: stockBajoSugerido } = useQuery<{ id: string; stock: number; stockMinimo: number }[]>({
+    queryKey: ["proveedor-stock-bajo", providerIdParam],
+    queryFn: () => fetch(`/api/config/proveedores/${providerIdParam}/stock-bajo`).then((r) => r.json()),
+    enabled: sugerir && !!providerIdParam,
+  })
+  useEffect(() => {
+    if (prefillHecho || !stockBajoSugerido || stockBajoSugerido.length === 0) return
+    setLineas(
+      stockBajoSugerido.map((p) => ({
+        key: crypto.randomUUID(),
+        productId: p.id,
+        cantidad: String(Math.max(p.stockMinimo - p.stock, 1)),
+        montoTotal: "",
+        precioVenta: "",
+        precioTocado: false,
+      }))
+    )
+    setPrefillHecho(true)
+    toast.info(`Precargamos ${stockBajoSugerido.length} línea${stockBajoSugerido.length === 1 ? "" : "s"} en stock bajo — completá cuánto pagaste por cada una`)
+  }, [stockBajoSugerido, prefillHecho])
 
   const { data: productosDelProveedor } = useQuery<Producto[]>({
     queryKey: ["productos", "porProveedor", providerId],

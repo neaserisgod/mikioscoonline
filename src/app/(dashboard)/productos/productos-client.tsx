@@ -71,6 +71,8 @@ export default function ProductosClient() {
 
   const proveedorId = searchParams.get("proveedorId")
   const categoriaId = searchParams.get("categoriaId")
+  const filtroParam = searchParams.get("filtro")
+  const filtroEspecial = filtroParam === "costoProvisional" || filtroParam === "margenNegativo" ? filtroParam : null
 
   // Scanner: ?barcode=XXX → abrir form nuevo con barcode prellenado
   // Scanner: ?abrir=ID → abrir form de edición del producto
@@ -117,12 +119,14 @@ export default function ProductosClient() {
     staleTime: 30_000,
   })
 
-  // Nivel 3 (o búsqueda global, que ignora el drill-down por completo).
+  // Nivel 3 (o búsqueda global / filtro especial, que ignoran el drill-down por completo).
   const { data: productos, isLoading: loadingProductos } = useQuery<Producto[]>({
-    queryKey: ["productos", q, proveedorId, categoriaId],
+    queryKey: ["productos", q, proveedorId, categoriaId, filtroEspecial],
     queryFn: () => {
       const params = new URLSearchParams()
-      if (q) {
+      if (filtroEspecial) {
+        params.set(filtroEspecial, "1")
+      } else if (q) {
         params.set("q", q)
       } else {
         if (proveedorId) params.set("providerId", proveedorId)
@@ -130,8 +134,22 @@ export default function ProductosClient() {
       }
       return fetch(`/api/productos?${params.toString()}`).then((r) => r.json())
     },
-    enabled: !!q || (!!proveedorId && !!categoriaId),
+    enabled: !!filtroEspecial || !!q || (!!proveedorId && !!categoriaId),
     staleTime: 30_000,
+  })
+
+  // Contadores para los chips de "revisar" — solo ADMIN, ven costo/precio real.
+  const { data: costoProvisionalList } = useQuery<Producto[]>({
+    queryKey: ["productos-costo-provisional"],
+    queryFn: () => fetch("/api/productos?costoProvisional=1").then((r) => r.json()),
+    enabled: esAdmin,
+    staleTime: 60_000,
+  })
+  const { data: margenNegativoList } = useQuery<Producto[]>({
+    queryKey: ["productos-margen-negativo"],
+    queryFn: () => fetch("/api/productos?margenNegativo=1").then((r) => r.json()),
+    enabled: esAdmin,
+    staleTime: 60_000,
   })
 
   const productoEditing = productos?.find((p) => p.id === editingId)
@@ -182,7 +200,7 @@ export default function ProductosClient() {
     providerId: proveedorId && proveedorId !== "__sin_proveedor__" ? proveedorId : undefined,
   }
 
-  const mostrandoLista = !!q || (!!proveedorId && !!categoriaId)
+  const mostrandoLista = !!filtroEspecial || !!q || (!!proveedorId && !!categoriaId)
 
   // Ganancia potencial total de lo que se está viendo — nivel 1/2 vienen ya
   // sumados del backend; nivel 3/búsqueda se suma acá con el mismo cálculo
@@ -343,8 +361,46 @@ export default function ProductosClient() {
         />
       </div>
 
-      {/* Breadcrumb del drill-down — oculto mientras hay una búsqueda activa */}
-      {!q && (
+      {/* Chips de "revisar" — solo ADMIN, solo cuando no hay filtro/búsqueda activa */}
+      {esAdmin && !q && !filtroEspecial && (
+        <div className="flex flex-wrap gap-2">
+          {!!costoProvisionalList?.length && (
+            <button
+              type="button"
+              onClick={() => router.push("/productos?filtro=costoProvisional")}
+              className="flex items-center gap-1.5 rounded-full bg-muted px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <AlertTriangle className="size-3" />
+              {costoProvisionalList.length} con costo estimado
+            </button>
+          )}
+          {!!margenNegativoList?.length && (
+            <button
+              type="button"
+              onClick={() => router.push("/productos?filtro=margenNegativo")}
+              className="flex items-center gap-1.5 rounded-full bg-k-loss/10 px-3 py-1.5 text-xs font-medium text-k-loss hover:bg-k-loss/15 transition-colors"
+            >
+              <AlertTriangle className="size-3" />
+              {margenNegativoList.length} con margen negativo
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Filtro especial activo (desde los chips de arriba) */}
+      {filtroEspecial && (
+        <div className="flex items-center justify-between rounded-xl border border-border/60 bg-muted/20 px-3 py-2 text-sm">
+          <span className="text-muted-foreground">
+            {filtroEspecial === "costoProvisional" ? "Productos con costo estimado" : "Productos con margen negativo"}
+          </span>
+          <button type="button" onClick={() => router.push("/productos")} className="text-xs underline underline-offset-2">
+            Quitar filtro
+          </button>
+        </div>
+      )}
+
+      {/* Breadcrumb del drill-down — oculto mientras hay una búsqueda o filtro activo */}
+      {!q && !filtroEspecial && (
         <div className="flex items-center gap-1.5 text-sm">
           <button
             type="button"

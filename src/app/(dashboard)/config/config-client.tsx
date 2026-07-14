@@ -1,13 +1,13 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { motion, AnimatePresence } from "framer-motion"
 import {
-  Plus, Pencil, Trash2, EyeOff, Eye, ChevronUp, ChevronDown,
-  Star, Tag, Truck, Archive, CreditCard, Receipt,
+  Plus, Pencil, EyeOff, Eye, ChevronUp, ChevronDown,
+  Star, Tag, Archive, CreditCard, Receipt,
   Settings2, Check, Loader2,
-  Building2, Users, Database, Shield, Download, Wallet, KeyRound,
+  Building2, Users, Database, Shield, Download, Wallet, KeyRound, RefreshCw,
 } from "lucide-react"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
@@ -24,12 +24,11 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { formatearARS } from "@/domain/dinero"
 import { cn } from "@/lib/utils"
 import { Field, StatusBadge, SectionShell, ListCard, ActionRow } from "@/components/config/list-primitives"
+import { DateRangeShortcuts } from "@/components/date-range-shortcuts"
 import {
   crearCategoriaAction, editarCategoriaAction,
   desactivarCategoriaAction, reactivarCategoriaAction, eliminarCategoriaAction,
-  crearProveedorAction, editarProveedorAction,
-  desactivarProveedorAction, reactivarProveedorAction, eliminarProveedorAction,
-  registrarCompraCuentaCorrienteAction, registrarPagoCuentaCorrienteAction, actualizarPisoReposicionAction,
+  aplicarRecalculoCategoriaAction,
   crearUbicacionAction, editarUbicacionAction,
   desactivarUbicacionAction, reactivarUbicacionAction, eliminarUbicacionAction,
   crearMedioPagoAction, editarMedioPagoAction,
@@ -51,7 +50,7 @@ import { resetearOnboardingAction } from "@/app/actions/onboarding.actions"
 
 type SeccionId =
   | "negocio"
-  | "categorias" | "proveedores" | "heladeras"
+  | "categorias" | "heladeras"
   | "medios-pago" | "gastos-fijos"
   | "cajas" | "movimientos"
   | "operacion" | "usuarios" | "datos"
@@ -59,12 +58,6 @@ type SeccionId =
 interface Categoria {
   id: string; nombre: string; markupDefaultBp: number; activo: boolean
   markupDefaultTipo: string; markupDefaultFijoCentavos: number
-  _count: { products: number }
-}
-interface Proveedor {
-  id: string; nombre: string; activo: boolean
-  saldoCuentaCorrienteCentavos: number
-  pisoReposicionCentavos: number
   _count: { products: number }
 }
 interface Ubicacion {
@@ -131,7 +124,6 @@ const SECCIONES: { id: SeccionId; label: string; icon: React.ElementType; group?
   { id: "cajas",       label: "Cajas",          icon: Wallet,     group: "General" },
   { id: "movimientos", label: "Movimientos",    icon: Receipt,    group: "General" },
   { id: "categorias",  label: "Categorías",     icon: Tag,        group: "Catálogo" },
-  { id: "proveedores", label: "Proveedores",    icon: Truck,      group: "Catálogo" },
   { id: "heladeras",   label: "Heladeras",      icon: Archive,    group: "Catálogo" },
   { id: "medios-pago", label: "Medios de pago", icon: CreditCard, group: "Finanzas" },
   { id: "gastos-fijos",label: "Gastos fijos",   icon: Receipt,    group: "Finanzas" },
@@ -239,7 +231,6 @@ export function ConfigClient() {
               {seccion === "cajas"       && <CajasSection      onMutate={() => invalidate("cajas")} />}
               {seccion === "movimientos" && <MovimientosSection />}
               {seccion === "categorias"  && <CategoriasSection  onMutate={() => invalidate("categorias")} />}
-              {seccion === "proveedores" && <ProveedoresSection onMutate={() => invalidate("proveedores")} />}
               {seccion === "heladeras"   && <HeladerasSection   onMutate={() => invalidate("ubicaciones")} />}
               {seccion === "medios-pago" && <MediosPagoSection  onMutate={() => invalidate("medios-pago")} />}
               {seccion === "gastos-fijos"&& <GastosFijosSection onMutate={() => invalidate("gastos-fijos")} />}
@@ -271,6 +262,7 @@ function CategoriasSection({ onMutate }: { onMutate: () => void }) {
   const [sheetOpen, setSheetOpen] = useState(false)
   const [editing, setEditing] = useState<Categoria | null>(null)
   const [pending, setPending] = useState<string | null>(null)
+  const [recalculando, setRecalculando] = useState<Categoria | null>(null)
 
   const { register, handleSubmit, reset, watch, setValue, formState: { errors, isSubmitting } } = useForm<CategoriaForm>({
     resolver: zodResolver(categoriaSchema),
@@ -372,10 +364,28 @@ function CategoriasSection({ onMutate }: { onMutate: () => void }) {
               onDelete={c._count.products === 0 ? () => eliminar(c) : undefined}
               deleteLabel="Eliminar (sin productos)"
               isPending={pending === c.id}
+              extraAction={
+                c.activo && c._count.products > 0 ? (
+                  <Button variant="ghost" size="icon-sm" onClick={() => setRecalculando(c)} title="Recalcular precios con el markup default">
+                    <RefreshCw className="size-3.5" />
+                  </Button>
+                ) : undefined
+              }
             />
           ))}
         </ListCard>
       )}
+
+      <Sheet open={!!recalculando} onOpenChange={(v) => !v && setRecalculando(null)}>
+        <SheetContent>
+          {recalculando && (
+            <RecalculoPreciosSheet
+              categoria={recalculando}
+              onSuccess={() => { setRecalculando(null); onMutate() }}
+            />
+          )}
+        </SheetContent>
+      </Sheet>
 
       <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
         <SheetContent>
@@ -431,198 +441,44 @@ function CategoriasSection({ onMutate }: { onMutate: () => void }) {
   )
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// PROVEEDORES
-// ═══════════════════════════════════════════════════════════════════════════════
+interface FilaRecalculo {
+  id: string; nombre: string; esPesable: boolean
+  costoCentavos: number; precioActualCentavos: number; precioNuevoCentavos: number
+}
 
-function ProveedoresSection({ onMutate }: { onMutate: () => void }) {
-  const { data, isLoading } = useConfig<Proveedor[]>("proveedores")
-  const [sheetOpen, setSheetOpen] = useState(false)
-  const [editing, setEditing] = useState<Proveedor | null>(null)
-  const [cuentaProveedor, setCuentaProveedor] = useState<Proveedor | null>(null)
-  const [pending, setPending] = useState<string | null>(null)
-
-  const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<{ nombre: string }>({
-    resolver: zodResolver(z.object({ nombre: z.string().min(1, "Requerido") })),
+/** Vista previa + aplicación del recálculo de precios con el markup default
+ * de la categoría — nunca aplica nada sin que el dueño vea antes qué cambia
+ * y elija qué filas confirmar (ver categoriaService.previsualizarRecalculo). */
+function RecalculoPreciosSheet({ categoria, onSuccess }: { categoria: Categoria; onSuccess: () => void }) {
+  const { data: filas, isLoading } = useQuery<FilaRecalculo[]>({
+    queryKey: ["categoria-recalculo-preview", categoria.id],
+    queryFn: () => fetch(`/api/config/categorias/${categoria.id}/recalculo-preview`).then((r) => r.json()),
   })
-
-  function abrirCrear() { setEditing(null); reset({ nombre: "" }); setSheetOpen(true) }
-  function abrirEditar(p: Proveedor) { setEditing(p); reset({ nombre: p.nombre }); setSheetOpen(true) }
-
-  async function onSubmit({ nombre }: { nombre: string }) {
-    try {
-      if (editing) {
-        await editarProveedorAction(editing.id, { nombre })
-        toast.success("Proveedor actualizado")
-      } else {
-        await crearProveedorAction({ nombre })
-        toast.success("Proveedor creado")
-      }
-      setSheetOpen(false)
-      onMutate()
-    } catch (e) { toast.error(e instanceof Error ? e.message : "Error") }
-  }
-
-  async function toggle(p: Proveedor) {
-    setPending(p.id)
-    try {
-      if (p.activo) await desactivarProveedorAction(p.id)
-      else await reactivarProveedorAction(p.id)
-      toast.success(p.activo ? `"${p.nombre}" desactivado` : `"${p.nombre}" reactivado`)
-      onMutate()
-    } catch (e) { toast.error(e instanceof Error ? e.message : "Error") }
-    finally { setPending(null) }
-  }
-
-  async function eliminar(p: Proveedor) {
-    setPending(p.id)
-    try {
-      await eliminarProveedorAction(p.id)
-      toast.success(`"${p.nombre}" eliminado`)
-      onMutate()
-    } catch (e) { toast.error(e instanceof Error ? e.message : "Error") }
-    finally { setPending(null) }
-  }
-
-  return (
-    <SectionShell
-      title="Proveedores"
-      action={<Button size="sm" onClick={abrirCrear} className="gap-1.5"><Plus className="size-3.5" /> Nuevo</Button>}
-    >
-      {isLoading ? <SkeletonList /> : (
-        <ListCard>
-          {data?.length === 0 && <EmptyRow label="Sin proveedores" />}
-          {data?.map((p) => (
-            <div key={p.id} className={cn("px-4 py-3 flex items-center gap-3", !p.activo && "opacity-60")}>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <p className="text-sm font-medium truncate">{p.nombre}</p>
-                  <StatusBadge activo={p.activo} count={p.activo ? p._count.products : undefined} />
-                  {p.saldoCuentaCorrienteCentavos > 0 && (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-k-loss/10 text-k-loss font-medium">
-                      Debe {formatearARS(p.saldoCuentaCorrienteCentavos)}
-                    </span>
-                  )}
-                </div>
-              </div>
-              <div className="flex items-center gap-1 shrink-0">
-                {pending === p.id && <Loader2 className="size-3.5 animate-spin text-muted-foreground" />}
-                {pending !== p.id && (
-                  <>
-                    <Button variant="ghost" size="icon-sm" onClick={() => setCuentaProveedor(p)} title="Cuenta corriente">
-                      <Wallet className="size-3.5" />
-                    </Button>
-                    <Button variant="ghost" size="icon-sm" onClick={() => abrirEditar(p)}>
-                      <Pencil className="size-3.5" />
-                    </Button>
-                    <Button variant="ghost" size="icon-sm" onClick={() => toggle(p)} title={p.activo ? "Desactivar" : "Reactivar"}>
-                      {p.activo ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
-                    </Button>
-                    {p._count.products === 0 && (
-                      <Button variant="ghost" size="icon-sm" onClick={() => eliminar(p)} title="Eliminar" className="text-k-loss hover:text-k-loss">
-                        <Trash2 className="size-3.5" />
-                      </Button>
-                    )}
-                  </>
-                )}
-              </div>
-            </div>
-          ))}
-        </ListCard>
-      )}
-      <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
-        <SheetContent>
-          <SheetHeader><SheetTitle>{editing ? "Editar proveedor" : "Nuevo proveedor"}</SheetTitle></SheetHeader>
-          <form onSubmit={handleSubmit(onSubmit)} className="mt-6 space-y-4">
-            <Field label="Nombre" {...register("nombre")} error={errors.nombre?.message} />
-            <Button type="submit" className="w-full" disabled={isSubmitting}>
-              {isSubmitting ? <Loader2 className="size-4 animate-spin" /> : editing ? "Guardar" : "Crear"}
-            </Button>
-          </form>
-        </SheetContent>
-      </Sheet>
-      <Sheet open={!!cuentaProveedor} onOpenChange={(v) => !v && setCuentaProveedor(null)}>
-        <SheetContent>
-          {cuentaProveedor && (
-            <CuentaCorrienteForm
-              proveedor={cuentaProveedor}
-              onSuccess={() => { setCuentaProveedor(null); onMutate() }}
-            />
-          )}
-        </SheetContent>
-      </Sheet>
-    </SectionShell>
-  )
-}
-
-interface ResumenProveedorStock {
-  id: string
-  valorCostoCentavos: number
-  valorVentaCentavos: number
-}
-interface FilaRentabilidadProveedor {
-  id: string
-  ventasCentavos: number
-}
-
-function mesActualRango() {
-  const d = new Date()
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, "0")
-  const ultimoDia = new Date(y, d.getMonth() + 1, 0).getDate()
-  return { desde: `${y}-${m}-01`, hasta: `${y}-${m}-${String(ultimoDia).padStart(2, "0")}` }
-}
-
-function CuentaCorrienteForm({ proveedor, onSuccess }: { proveedor: Proveedor; onSuccess: () => void }) {
-  const { data: cajas } = useConfig<CajaItem[]>("cajas")
-  const [modo, setModo] = useState<"compra" | "pago">("pago")
-  const [monto, setMonto] = useState("")
-  const [cajaId, setCajaId] = useState<string>("")
+  const [seleccionados, setSeleccionados] = useState<Set<string>>(new Set())
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [editandoPiso, setEditandoPiso] = useState(false)
+  const [yaInicializado, setYaInicializado] = useState(false)
 
-  const cajasActivas = cajas?.filter((c) => c.activo) ?? []
+  useEffect(() => {
+    if (filas && !yaInicializado) {
+      setSeleccionados(new Set(filas.map((f) => f.id)))
+      setYaInicializado(true)
+    }
+  }, [filas, yaInicializado])
 
-  // Costo/precio de venta del stock actual de este proveedor + lo que
-  // realmente facturó este mes — sin calcular ganancia, el dueño prefiere
-  // ver los números crudos y sacar la cuenta él mismo.
-  const { data: stockProveedores } = useQuery<ResumenProveedorStock[]>({
-    queryKey: ["config-resumen-proveedores-stock"],
-    queryFn: () => fetch("/api/productos/resumen-proveedores").then((r) => r.json()),
-    staleTime: 60_000,
-  })
-  const { desde, hasta } = mesActualRango()
-  const { data: ventasProveedores } = useQuery<FilaRentabilidadProveedor[]>({
-    queryKey: ["config-rentabilidad-proveedor-mes", desde, hasta],
-    queryFn: () => fetch(`/api/rentabilidad?por=proveedor&desde=${desde}&hasta=${hasta}`).then((r) => r.json()),
-    staleTime: 60_000,
-  })
-  const stockDeEste = stockProveedores?.find((p) => p.id === proveedor.id)
-  const ventasDeEste = ventasProveedores?.find((p) => p.id === proveedor.id)
-
-  async function guardarPiso(pesos: number) {
-    try {
-      await actualizarPisoReposicionAction(proveedor.id, Math.round(pesos * 100))
-      toast.success("Piso de reinversión actualizado")
-      setEditandoPiso(false)
-      onSuccess()
-    } catch (e) { toast.error(e instanceof Error ? e.message : "Error") }
+  function toggle(id: string) {
+    setSeleccionados((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
   }
 
-  async function onSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    const montoCentavos = Math.round(parseFloat(monto) * 100)
-    if (!montoCentavos || montoCentavos <= 0) { toast.error("Ingresá un monto válido"); return }
-    if (modo === "pago" && !cajaId) { toast.error("Elegí de qué caja sale el pago"); return }
+  async function aplicar() {
     setIsSubmitting(true)
     try {
-      if (modo === "compra") {
-        await registrarCompraCuentaCorrienteAction(proveedor.id, montoCentavos)
-        toast.success("Compra a crédito registrada")
-      } else {
-        await registrarPagoCuentaCorrienteAction(proveedor.id, montoCentavos, cajaId)
-        toast.success("Pago registrado")
-      }
+      const res = await aplicarRecalculoCategoriaAction(categoria.id, Array.from(seleccionados))
+      toast.success(`${res.actualizados} producto${res.actualizados === 1 ? "" : "s"} actualizado${res.actualizados === 1 ? "" : "s"}`)
       onSuccess()
     } catch (e) { toast.error(e instanceof Error ? e.message : "Error") }
     finally { setIsSubmitting(false) }
@@ -630,96 +486,48 @@ function CuentaCorrienteForm({ proveedor, onSuccess }: { proveedor: Proveedor; o
 
   return (
     <>
-      <SheetHeader><SheetTitle>Cuenta corriente — {proveedor.nombre}</SheetTitle></SheetHeader>
-      <div className="mt-4 rounded-xl border border-border/60 bg-card px-4 py-3 flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">
-          {proveedor.saldoCuentaCorrienteCentavos >= 0 ? "Le debemos" : "Saldo a favor"}
+      <SheetHeader>
+        <SheetTitle>Recalcular precios — {categoria.nombre}</SheetTitle>
+      </SheetHeader>
+      <p className="mt-2 text-xs text-muted-foreground">
+        Precio nuevo = costo actual de cada producto × el markup default vigente de la categoría. No toca el costo,
+        solo el precio de venta. Elegí qué productos aplicar.
+      </p>
+
+      {isLoading ? (
+        <div className="mt-4 space-y-2">
+          {[1, 2, 3].map((i) => <Skeleton key={i} className="h-12 rounded-xl" />)}
+        </div>
+      ) : !filas || filas.length === 0 ? (
+        <p className="mt-4 text-sm text-muted-foreground">
+          Ningún producto activo de esta categoría cambiaría de precio con el markup default actual.
         </p>
-        <p className={cn(
-          "text-lg font-semibold tabular-nums",
-          proveedor.saldoCuentaCorrienteCentavos >= 0 ? "text-k-loss" : "text-k-gain"
-        )}>
-          {formatearARS(Math.abs(proveedor.saldoCuentaCorrienteCentavos))}
-        </p>
-      </div>
-
-      <div className="mt-2 rounded-xl border border-border/60 bg-card px-4 py-3">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm text-muted-foreground">Piso de reinversión</p>
-            <p className="text-[11px] text-muted-foreground/70">Colchón reservado antes de contar ganancia limpia</p>
+      ) : (
+        <>
+          <div className="mt-4 rounded-xl border border-border/60 bg-card divide-y divide-border/40 max-h-[50vh] overflow-y-auto">
+            {filas.map((f) => (
+              <label key={f.id} className="flex items-center gap-3 px-3 py-2.5 cursor-pointer">
+                <Checkbox checked={seleccionados.has(f.id)} onCheckedChange={() => toggle(f.id)} />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm truncate">{f.nombre}</p>
+                  <p className="text-xs text-muted-foreground">
+                    Costo {formatearARS(f.costoCentavos)}{f.esPesable && "/kg"}
+                  </p>
+                </div>
+                <div className="text-right shrink-0">
+                  <p className="text-xs text-muted-foreground line-through">{formatearARS(f.precioActualCentavos)}</p>
+                  <p className="text-sm font-semibold tabular-nums">{formatearARS(f.precioNuevoCentavos)}</p>
+                </div>
+              </label>
+            ))}
           </div>
-          {!editandoPiso && (
-            <div className="flex items-center gap-2">
-              <p className="text-sm font-semibold tabular-nums">{formatearARS(proveedor.pisoReposicionCentavos)}</p>
-              <Button type="button" variant="ghost" size="icon-sm" onClick={() => setEditandoPiso(true)}>
-                <Pencil className="size-3.5" />
-              </Button>
-            </div>
-          )}
-        </div>
-        {editandoPiso && (
-          <MontoInlineEdit
-            defaultValue={proveedor.pisoReposicionCentavos / 100}
-            onSave={guardarPiso}
-            onCancel={() => setEditandoPiso(false)}
-          />
-        )}
-      </div>
-
-      <div className="mt-2 rounded-xl border border-border/60 bg-card px-4 py-3 space-y-2">
-        <p className="text-[11px] text-muted-foreground/70">Para decidir el piso: lo que tenés y lo que vendés de este proveedor</p>
-        <div className="flex items-center justify-between text-sm">
-          <span className="text-muted-foreground">Costo del stock que tenés ahora</span>
-          <span className="font-medium tabular-nums">{formatearARS(stockDeEste?.valorCostoCentavos ?? 0)}</span>
-        </div>
-        <div className="flex items-center justify-between text-sm">
-          <span className="text-muted-foreground">Precio de venta de ese mismo stock</span>
-          <span className="font-medium tabular-nums">{formatearARS(stockDeEste?.valorVentaCentavos ?? 0)}</span>
-        </div>
-        <div className="flex items-center justify-between text-sm">
-          <span className="text-muted-foreground">Total que facturaste este mes</span>
-          <span className="font-medium tabular-nums">{formatearARS(ventasDeEste?.ventasCentavos ?? 0)}</span>
-        </div>
-      </div>
-
-      <div className="mt-4 grid grid-cols-2 gap-2">
-        <Button type="button" variant={modo === "pago" ? "default" : "outline"} onClick={() => setModo("pago")}>Registrar pago</Button>
-        <Button type="button" variant={modo === "compra" ? "default" : "outline"} onClick={() => setModo("compra")}>Compra a crédito</Button>
-      </div>
-
-      <form onSubmit={onSubmit} className="mt-4 space-y-4">
-        <Field
-          label="Monto ($)"
-          type="number"
-          step="0.01"
-          min="0"
-          value={monto}
-          onChange={(e) => setMonto(e.target.value)}
-        />
-        {modo === "pago" && (
-          <div className="space-y-1.5">
-            <Label>Caja de la que sale el pago</Label>
-            <Select value={cajaId} onValueChange={(v) => setCajaId(v ?? "")}>
-              <SelectTrigger><SelectValue placeholder="Elegí una caja" /></SelectTrigger>
-              <SelectContent>
-                {cajasActivas.map((c) => (
-                  <SelectItem key={c.id} value={c.id}>{c.nombre}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        )}
-        <Button type="submit" className="w-full" disabled={isSubmitting}>
-          {isSubmitting ? <Loader2 className="size-4 animate-spin" /> : modo === "pago" ? "Registrar pago" : "Registrar compra"}
-        </Button>
-        {modo === "pago" && (
-          <p className="text-xs text-muted-foreground">Se crea un egreso real en la caja elegida y baja lo que le debemos.</p>
-        )}
-        {modo === "compra" && (
-          <p className="text-xs text-muted-foreground">Solo sube lo que le debemos — no mueve ninguna caja.</p>
-        )}
-      </form>
+          <Button className="w-full mt-4" disabled={seleccionados.size === 0 || isSubmitting} onClick={aplicar}>
+            {isSubmitting
+              ? <Loader2 className="size-4 animate-spin" />
+              : `Aplicar a ${seleccionados.size} producto${seleccionados.size === 1 ? "" : "s"}`}
+          </Button>
+        </>
+      )}
     </>
   )
 }
@@ -1158,6 +966,17 @@ function GastosFijosSection({ onMutate }: { onMutate: () => void }) {
     return sum + (m?.montoCentavos ?? 0)
   }, 0)
 
+  // Gastos con monto cargado para el mes que corre y todavía sin pagar del
+  // todo — antes había que abrir cada fila para notarlo, acá se ve de un vistazo.
+  const gastosSinPagar = activosData.filter((g) => {
+    const m = g.montos.find((m) => m.mesAnio === mesActual)
+    return !!m && g.pagadoMesActualCentavos < m.montoCentavos
+  })
+  const totalPendienteMes = gastosSinPagar.reduce((sum, g) => {
+    const m = g.montos.find((m) => m.mesAnio === mesActual)!
+    return sum + (m.montoCentavos - g.pagadoMesActualCentavos)
+  }, 0)
+
   async function run(id: string, fn: () => Promise<unknown>, msg: string) {
     setPending(id)
     try { await fn(); toast.success(msg); onMutate() }
@@ -1175,6 +994,15 @@ function GastosFijosSection({ onMutate }: { onMutate: () => void }) {
         <div className="rounded-xl border border-border/60 bg-card px-4 py-3 flex items-center justify-between">
           <p className="text-sm text-muted-foreground">Total mensual activo</p>
           <p className="text-lg font-semibold tabular-nums">{formatearARS(totalMensual)}</p>
+        </div>
+      )}
+
+      {!isLoading && gastosSinPagar.length > 0 && (
+        <div className="rounded-xl border border-k-loss/20 bg-k-loss/5 px-4 py-3 flex items-center justify-between">
+          <p className="text-sm text-k-loss">
+            {gastosSinPagar.length} gasto{gastosSinPagar.length === 1 ? "" : "s"} sin pagar este mes
+          </p>
+          <p className="text-sm font-semibold tabular-nums text-k-loss">{formatearARS(totalPendienteMes)}</p>
         </div>
       )}
 
@@ -1865,6 +1693,8 @@ function MovimientosSection() {
 
   return (
     <SectionShell title="Movimientos">
+      <DateRangeShortcuts onSelect={({ desde: d, hasta: h }) => { setDesde(d); setHasta(h) }} />
+
       <div className="flex flex-wrap items-end gap-2">
         <div className="space-y-1.5">
           <Label>Caja</Label>

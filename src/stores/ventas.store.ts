@@ -73,6 +73,7 @@ interface VentasActions {
   setOverlay: (open: boolean) => void
   agregarProducto: (p: ProductoParaCarrito) => void
   cambiarCantidad: (productId: string, delta: number) => void
+  setCantidad: (productId: string, cantidad: number) => void
   setGramos: (productId: string, gramos: number) => void
   eliminarLinea: (productId: string) => void
   vaciarCarrito: () => void
@@ -217,6 +218,22 @@ export const useVentasStore = create<VentasState & VentasActions>((set, get) => 
           ventas: s.ventas.map((v) =>
             v.id === activa.id ? { ...v, carrito: nuevoCarrito } : v
           ),
+        }
+      })
+    },
+
+    // Sin tope superior contra el stock cacheado — mismo criterio que
+    // setGramos (ver comentario ahí): permite tipear libre, el carrito avisa
+    // si supera el stock y el servidor valida el stock real al confirmar.
+    setCantidad(productId, cantidad) {
+      set((s) => {
+        const activa = ventaActiva(s)
+        if (!activa) return s
+        const nuevoCarrito = activa.carrito
+          .map((l) => (l.productId === productId ? { ...l, cantidad: Math.max(0, Math.round(cantidad)) } : l))
+          .filter((l) => l.cantidad > 0)
+        return {
+          ventas: s.ventas.map((v) => (v.id === activa.id ? { ...v, carrito: nuevoCarrito } : v)),
         }
       })
     },

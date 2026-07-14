@@ -9,12 +9,12 @@ import { cn } from "@/lib/utils"
 import type { CarritoCheckout } from "./use-carrito-checkout"
 
 interface CarritoItemsListProps {
-  checkout: Pick<CarritoCheckout, "carrito" | "subtotal" | "cambiarCantidad" | "setGramos" | "eliminarLinea">
+  checkout: Pick<CarritoCheckout, "carrito" | "subtotal" | "cambiarCantidad" | "setCantidad" | "setGramos" | "eliminarLinea">
   className?: string
 }
 
 export function CarritoItemsList({ checkout, className }: CarritoItemsListProps) {
-  const { carrito, subtotal, cambiarCantidad, setGramos, eliminarLinea } = checkout
+  const { carrito, subtotal, cambiarCantidad, setCantidad, setGramos, eliminarLinea } = checkout
 
   if (carrito.length === 0) {
     return (
@@ -82,20 +82,35 @@ export function CarritoItemsList({ checkout, className }: CarritoItemsListProps)
                   ) : null}
                 </div>
               )
-            })() : (
-              <div className="flex items-center gap-1.5 mt-2">
-                <Button variant="outline" size="icon-sm" className="size-7 rounded-md border-border/60"
-                  onClick={() => cambiarCantidad(item.productId, -1)}>
-                  <Minus className="size-3" />
-                </Button>
-                <span className="w-6 text-center text-sm font-semibold tabular-nums">{item.cantidad}</span>
-                <Button variant="outline" size="icon-sm" className="size-7 rounded-md border-border/60"
-                  disabled={item.cantidad >= item.stock}
-                  onClick={() => cambiarCantidad(item.productId, 1)}>
-                  <Plus className="size-3" />
-                </Button>
-              </div>
-            )}
+            })() : (() => {
+              const superaStock = item.cantidad > item.stock
+              return (
+                <div className="flex items-center gap-1.5 mt-2">
+                  <Button variant="outline" size="icon-sm" className="size-7 rounded-md border-border/60"
+                    onClick={() => cambiarCantidad(item.productId, -1)}>
+                    <Minus className="size-3" />
+                  </Button>
+                  <input
+                    type="number"
+                    min={1}
+                    step={1}
+                    value={item.cantidad}
+                    onChange={(e) => setCantidad(item.productId, Number(e.target.value) || 0)}
+                    className={cn(
+                      "h-7 w-14 rounded-md border bg-background px-1.5 text-center text-sm font-semibold tabular-nums",
+                      superaStock ? "border-k-loss/40" : "border-border/60"
+                    )}
+                  />
+                  <Button variant="outline" size="icon-sm" className="size-7 rounded-md border-border/60"
+                    onClick={() => cambiarCantidad(item.productId, 1)}>
+                    <Plus className="size-3" />
+                  </Button>
+                  {superaStock && (
+                    <span className="text-xs text-k-loss">Supera el stock ({item.stock})</span>
+                  )}
+                </div>
+              )
+            })()}
           </motion.div>
         ))}
       </AnimatePresence>
