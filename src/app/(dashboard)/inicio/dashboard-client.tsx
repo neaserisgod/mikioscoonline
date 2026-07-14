@@ -1003,7 +1003,7 @@ export default function DashboardClient() {
                 </div>
               </div>
             </Link>
-            <Link href="/rentabilidad" className="block">
+            <Link href="/clientes?tab=rentabilidad" className="block">
               <div className="rounded-2xl border border-border/60 bg-card hover:bg-muted/30 transition-colors p-4 flex items-center gap-3">
                 <div className="rounded-xl bg-foreground/8 p-2.5 shrink-0">
                   <TrendingUp className="size-4 text-foreground/70" />
@@ -1025,7 +1025,7 @@ export default function DashboardClient() {
               markup, u otros agrupadores) sin reimplementar esa tabla acá. */}
           <div className="rounded-2xl border border-border/60 bg-card overflow-hidden">
             <Link
-              href="/rentabilidad?periodo=hoy&agrupador=proveedor"
+              href="/clientes?tab=rentabilidad&periodo=hoy&agrupador=proveedor"
               className="flex items-center justify-between px-4 pt-4 pb-2.5 border-b border-border/40 hover:bg-muted/30 transition-colors"
             >
               <div>

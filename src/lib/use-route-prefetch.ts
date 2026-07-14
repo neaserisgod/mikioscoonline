@@ -24,7 +24,10 @@ const MES_ACTUAL = mesActualRango()
 
 // Secciones enteras de solo-ADMIN — VENDEDOR nunca navega ahí (los links ni se
 // muestran), pero el warm-up al iniciar sesión igual las precarga si no se filtran acá.
-const RUTAS_ADMIN_ONLY = new Set(["/productos", "/rentabilidad", "/config", "/proveedores"])
+// /productos y /clientes no están acá: son visibles para todos los roles (las
+// tabs internas de solo-ADMIN — Proveedores/Pedidos, Rentabilidad/Historial —
+// se filtran con el flag `adminOnly` de cada entrada de prefetch, no acá).
+const RUTAS_ADMIN_ONLY = new Set(["/config"])
 
 // Mapa único de qué precargar por sección — el staleTime de cada entrada debe
 // coincidir con el que usa la query real consumidora (si no, el dato
@@ -52,12 +55,15 @@ export const ROUTE_PREFETCH_MAP: Record<string, PrefetchEntry[]> = {
     { key: ["proveedores"], url: "/api/config/proveedores", staleTime: 5 * 60_000 },
     { key: ["ubicaciones"], url: "/api/config/ubicaciones", staleTime: 5 * 60_000 },
   ],
-  "/rentabilidad": [
+  "/clientes": [
+    { key: ["clientes"], url: "/api/clientes", staleTime: 60_000 },
     {
-      // Coincide con el default del cliente: agrupador "proveedor" + periodo "mes" (ver rentabilidad-client.tsx)
+      // Tab Rentabilidad del hub — coincide con su default: agrupador "proveedor" +
+      // período "mes" (ver getMesRango en rentabilidad-client.tsx). Solo-ADMIN.
       key: ["rentabilidad", "proveedor", "mes", MES_ACTUAL.desde, MES_ACTUAL.hasta],
       url: `/api/rentabilidad?por=proveedor&desde=${MES_ACTUAL.desde}&hasta=${MES_ACTUAL.hasta}`,
       staleTime: 30_000,
+      adminOnly: true,
     },
   ],
   "/config": [{ key: ["config", "negocio"], url: "/api/config/negocio", staleTime: 60_000 }],

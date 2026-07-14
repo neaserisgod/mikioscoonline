@@ -48,18 +48,29 @@ function horariosDeHoy(horariosStr: string | null): Date[] {
     .sort((a, b) => a.getTime() - b.getTime())
 }
 
+/**
+ * `cajaManejaEfectivo` decide qué ventas cuentan como "esperado":
+ * - Caja física (manejaEfectivo=true): solo lo pagado en efectivo — es lo único
+ *   que se puede contar en billetes al cerrar. Una venta con QR/Posnet que cayó
+ *   acá por atribución de categoría no puso plata física en la caja.
+ * - Caja digital (manejaEfectivo=false, ej. MercadoPago): TODA venta atribuida
+ *   cuenta, sin filtrar por medio — acá no hay nada que contar en billetes, el
+ *   campo "contado" es el saldo declarado de la cuenta digital, así que
+ *   filtrar por esEfectivo (que para MP siempre es false) dejaba el esperado
+ *   pegado al fondo inicial e ignoraba todas las ventas reales.
+ */
 function calcEfectivoEsperado(fondoInicialCentavos: number, movimientos: Array<{
   tipo: string
   montoCentavos: number
   medioPago: { esEfectivo: boolean } | null
-}>): number {
+}>, cajaManejaEfectivo: boolean): number {
   let total = fondoInicialCentavos
   for (const mov of movimientos) {
     if (mov.tipo === "INGRESO") {
       total += mov.montoCentavos
     } else if (mov.tipo === "EGRESO") {
       total -= mov.montoCentavos
-    } else if (mov.tipo === "VENTA" && mov.medioPago?.esEfectivo) {
+    } else if (mov.tipo === "VENTA" && (!cajaManejaEfectivo || mov.medioPago?.esEfectivo)) {
       total += mov.montoCentavos
     }
   }
@@ -117,6 +128,7 @@ export const cajaSesionService = {
     return prisma.$transaction(async (tx) => {
       const sesion = await tx.cajaSesion.findFirstOrThrow({
         where: { id: cajaSesionId, organizationId },
+        include: { caja: { select: { manejaEfectivo: true } } },
       })
 
       // Idempotente: si un reintento de la cola offline llega después de que el
@@ -130,7 +142,7 @@ export const cajaSesionService = {
         include: { medioPago: { select: { esEfectivo: true } } },
       })
 
-      const efectivoEsperadoCentavos = calcEfectivoEsperado(sesion.fondoInicialCentavos, movimientos)
+      const efectivoEsperadoCentavos = calcEfectivoEsperado(sesion.fondoInicialCentavos, movimientos, sesion.caja.manejaEfectivo)
       const diferenciaCentavos = efectivoContadoCentavos - efectivoEsperadoCentavos
 
       return tx.cajaSesion.update({
@@ -288,12 +300,13 @@ export const cajaSesionService = {
   ) {
     const sesion = await prisma.cajaSesion.findFirstOrThrow({
       where: { id: cajaSesionId, organizationId, estado: "ABIERTA" },
+      include: { caja: { select: { manejaEfectivo: true } } },
     })
     const movimientos = await prisma.movimientoCaja.findMany({
       where: { cajaSesionId },
       include: { medioPago: { select: { esEfectivo: true } } },
     })
-    const efectivoEsperadoCentavos = calcEfectivoEsperado(sesion.fondoInicialCentavos, movimientos)
+    const efectivoEsperadoCentavos = calcEfectivoEsperado(sesion.fondoInicialCentavos, movimientos, sesion.caja.manejaEfectivo)
     const diferenciaCentavos = efectivoContadoCentavos - efectivoEsperadoCentavos
 
     return prisma.arqueoParcial.create({
@@ -354,7 +367,8 @@ export const cajaSesionService = {
             movimientos: { select: { tipo: true, montoCentavos: true, medioPago: { select: { esEfectivo: true } } } },
           },
         })
-        const efectivoEsperadoCentavos = calcEfectivoEsperado(sesion.fondoInicialCentavos, sesion.movimientos)
+        // `cajas` ya viene filtrado por manejaEfectivo: true (ver arriba).
+        const efectivoEsperadoCentavos = calcEfectivoEsperado(sesion.fondoInicialCentavos, sesion.movimientos, true)
         pendientes.push({
           cajaId: caja.id, cajaNombre: caja.nombre, cajaSesionId: sesionId, horario: ultimoVencido, efectivoEsperadoCentavos,
         })

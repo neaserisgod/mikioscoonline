@@ -3,6 +3,7 @@ import { productoService } from "@/services/producto.service"
 import { stockService } from "@/services/stock.service"
 import { proveedorService } from "@/services/config.service"
 import { precioDesdeCosoYMarkup, markupBpDesdeCostoYPrecio } from "@/domain/markup"
+import { redondearPesoArriba } from "@/domain/dinero"
 
 // Pesables (fiambre, etc.) no están soportados todavía en esta pantalla — el
 // "monto puntual del bulto" no tiene un análogo simple en kg, se deja para
@@ -63,13 +64,16 @@ export const pedidoProveedorService = {
       const fraccion = subtotalCentavos > 0 ? linea.montoTotalCentavos / subtotalCentavos : 0
       const impuestosLinea = Math.round(impuestosTotalesCentavos * fraccion)
       const costoLineaConImpuestos = linea.montoTotalCentavos + impuestosLinea
-      const costoUnitarioFinal = Math.round(costoLineaConImpuestos / linea.cantidad)
+      // El negocio no maneja centavos: el costo real por unidad se redondea para
+      // arriba al peso entero (ver domain/dinero.ts).
+      const costoUnitarioFinal = redondearPesoArriba(Math.round(costoLineaConImpuestos / linea.cantidad))
 
       const markupActualBp = producto.costoCentavos > 0
         ? markupBpDesdeCostoYPrecio(producto.costoCentavos, producto.precioCentavos)
         : 0
-      const precioVentaFinal =
-        linea.precioVentaCentavos ?? precioDesdeCosoYMarkup(costoUnitarioFinal, markupActualBp)
+      const precioVentaFinal = linea.precioVentaCentavos !== undefined
+        ? redondearPesoArriba(linea.precioVentaCentavos)
+        : precioDesdeCosoYMarkup(costoUnitarioFinal, markupActualBp)
 
       await productoService.actualizarCostoYPrecio(linea.productId, input.organizationId, {
         costoCentavos: costoUnitarioFinal,

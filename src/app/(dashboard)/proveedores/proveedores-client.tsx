@@ -451,7 +451,7 @@ function CuentaCorrienteSheet({ proveedor, onSuccess }: { proveedor: Proveedor; 
 
       {stockBajo && stockBajo.length > 0 && (
         <Link
-          href={`/pedidos?providerId=${proveedor.id}&sugerir=1`}
+          href={`/productos?tab=pedidos&providerId=${proveedor.id}&sugerir=1`}
           className="mt-2 flex items-center justify-between gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-sm hover:bg-amber-500/15 transition-colors"
         >
           <span className="flex items-center gap-2 text-amber-700 dark:text-amber-400">
@@ -464,7 +464,7 @@ function CuentaCorrienteSheet({ proveedor, onSuccess }: { proveedor: Proveedor; 
 
       {proveedor.saldoReposicionCentavos > 0 && proveedor.saldoReposicionCentavos >= proveedor.pisoReposicionCentavos && (
         <Link
-          href={`/pedidos?providerId=${proveedor.id}`}
+          href={`/productos?tab=pedidos&providerId=${proveedor.id}`}
           className="mt-2 flex items-center justify-between gap-3 rounded-xl border border-k-gain/30 bg-k-gain-muted/15 px-4 py-2.5 text-sm hover:bg-k-gain-muted/25 transition-colors"
         >
           <span className="flex items-center gap-2 text-k-gain">

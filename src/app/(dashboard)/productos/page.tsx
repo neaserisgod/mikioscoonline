@@ -3,8 +3,9 @@ import { getQueryClient, serializable } from "@/lib/get-query-client"
 import { requireSession } from "@/lib/session"
 import { productoService } from "@/services/producto.service"
 import { sanitizarResumen } from "@/lib/sanitizar-producto"
-import ProductosClient from "./productos-client"
+import { ProductosHubClient } from "./productos-hub-client"
 
+// Unifica Productos + Proveedores + Pedidos a proveedores (ver productos-hub-client.tsx).
 export default async function ProductosPage() {
   const session = await requireSession()
 
@@ -19,7 +20,7 @@ export default async function ProductosPage() {
 
   return (
     <HydrationBoundary state={dehydrate(queryClient)}>
-      <ProductosClient />
+      <ProductosHubClient />
     </HydrationBoundary>
   )
 }

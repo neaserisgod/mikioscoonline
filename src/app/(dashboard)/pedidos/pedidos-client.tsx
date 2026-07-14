@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { EmptyState } from "@/components/ui/empty-state"
-import { formatearARS, floatACentavos } from "@/domain/dinero"
+import { formatearARS, floatACentavos, redondearPesoArriba } from "@/domain/dinero"
 import { precioDesdeCosoYMarkup, markupBpDesdeCostoYPrecio } from "@/domain/markup"
 import { ingresarPedidoProveedorAction } from "@/app/actions/pedidos-proveedor.actions"
 
@@ -141,7 +141,7 @@ export default function PedidosClient() {
 
     const fraccion = subtotalCentavos > 0 ? montoLineaCentavos / subtotalCentavos : 0
     const impuestosLinea = Math.round(impuestosCentavos * fraccion)
-    const costoUnitario = Math.round((montoLineaCentavos + impuestosLinea) / cantidad)
+    const costoUnitario = redondearPesoArriba(Math.round((montoLineaCentavos + impuestosLinea) / cantidad))
 
     const producto = productosDisponibles.find((p) => p.id === linea.productId)
     const markupActual =
@@ -276,12 +276,12 @@ export default function PedidosClient() {
                     <Input
                       type="number"
                       min={0}
-                      step={0.01}
+                      step={1}
                       value={
                         linea.precioTocado
                           ? linea.precioVenta
                           : calculo
-                            ? (calculo.precioSugerido / 100).toFixed(2)
+                            ? (calculo.precioSugerido / 100).toFixed(0)
                             : ""
                       }
                       onChange={(e) => actualizarLinea(linea.key, { precioVenta: e.target.value, precioTocado: true })}

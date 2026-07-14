@@ -5,12 +5,17 @@
 // Dos modos:
 //   PORCENTUAL → precio = costo × (1 + bp/10000)
 //   FIJO       → precio = costo + gananciaFijaCentavos
+//
+// El negocio no maneja centavos: todo precio/costo calculado se redondea para
+// arriba al peso entero (ver domain/dinero.ts, redondearPesoArriba).
+
+import { redondearPesoArriba } from "./dinero"
 
 /**
  * precio = costo × (1 + markup)
  */
 export function precioDesdeCosoYMarkup(costoCentavos: number, markupBp: number): number {
-  return Math.round(costoCentavos * (1 + markupBp / 10_000))
+  return redondearPesoArriba(costoCentavos * (1 + markupBp / 10_000))
 }
 
 /**
@@ -18,7 +23,7 @@ export function precioDesdeCosoYMarkup(costoCentavos: number, markupBp: number):
  */
 export function costoDesdeePrecioYMarkup(precioCentavos: number, markupBp: number): number {
   if (markupBp <= -10_000) throw new Error("markupBp no puede ser ≤ -10000 (división por cero)")
-  return Math.round(precioCentavos / (1 + markupBp / 10_000))
+  return redondearPesoArriba(precioCentavos / (1 + markupBp / 10_000))
 }
 
 /**
@@ -31,12 +36,12 @@ export function markupBpDesdeCostoYPrecio(costoCentavos: number, precioCentavos:
 
 /** precio = costo + gananciaFija */
 export function precioDesdeCosoYGananciaFija(costoCentavos: number, gananciaFijaCentavos: number): number {
-  return costoCentavos + gananciaFijaCentavos
+  return redondearPesoArriba(costoCentavos + gananciaFijaCentavos)
 }
 
 /** costo = precio − gananciaFija */
 export function costoDesdeePrecioYGananciaFija(precioCentavos: number, gananciaFijaCentavos: number): number {
-  return precioCentavos - gananciaFijaCentavos
+  return redondearPesoArriba(precioCentavos - gananciaFijaCentavos)
 }
 
 /**

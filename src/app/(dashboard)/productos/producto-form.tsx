@@ -15,7 +15,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { toast } from "sonner"
 import { crearProductoAction, editarProductoAction } from "@/app/actions/productos.actions"
 import { resolverTriangulo } from "@/domain/markup"
-import { formatearARS } from "@/domain/dinero"
+import { formatearARS, redondearPesoArriba } from "@/domain/dinero"
 import { cn, normalizarTexto } from "@/lib/utils"
 import { CatalogoBuscador } from "@/components/catalogo-buscador"
 
@@ -135,25 +135,37 @@ export default function ProductoForm({ producto, barcodePreset, defaultsNuevo, o
   // Fallback to the prop name so SelectValue shows the label even while categorias load
   const categoryDisplayName = catActual?.nombre ?? (isEditing ? producto?.category?.nombre : undefined)
 
-  // Markup mode: defaults to category's tipo when category is selected/changes
-  const [markupTipo, setMarkupTipo] = useState<"PORCENTUAL" | "FIJO">("PORCENTUAL")
-  useEffect(() => {
-    if (catActual) {
-      setMarkupTipo((catActual.markupDefaultTipo as "PORCENTUAL" | "FIJO") ?? "PORCENTUAL")
-    }
-  }, [catActual?.id])
-
   // Ganancia fija local state (en pesos, para el input en modo FIJO)
   const [gananciaFijaPesos, setGananciaFijaPesos] = useState<string>("")
 
+  // Markup mode: defaults to category's tipo when category is selected/changes.
+  // Si el default de la categoría es FIJO, hay que sembrar gananciaFijaPesos
+  // desde el precio/costo ya cargados — si no, queda en "" y el efecto de abajo
+  // recalcula precio = costo + 0, pisando el precio real del producto.
+  const [markupTipo, setMarkupTipo] = useState<"PORCENTUAL" | "FIJO">("PORCENTUAL")
+  useEffect(() => {
+    if (!catActual) return
+    const tipo = (catActual.markupDefaultTipo as "PORCENTUAL" | "FIJO") ?? "PORCENTUAL"
+    setMarkupTipo(tipo)
+    if (tipo === "FIJO") {
+      const precioC = Math.round((Number(precioPesos) || 0) * 100)
+      const costoC = Math.round((Number(costoPesos) || 0) * 100)
+      if (precioC > 0 && costoC > 0) {
+        setGananciaFijaPesos(((precioC - costoC) / 100).toFixed(2))
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [catActual?.id])
+
   // Cuando el usuario tipea gananciaFija o cambia el costo, auto-computa precio en modo FIJO
+  // El negocio no maneja centavos: el precio computado se redondea para arriba al peso entero.
   useEffect(() => {
     if (markupTipo !== "FIJO") return
     const ganancia = parseFloat(gananciaFijaPesos) || 0
     const costo = Number(costoPesos) || 0
     if (costo > 0 || ganancia !== 0) {
-      const precioComputado = costo + ganancia
-      if (precioComputado > 0) setValue("precioCentavos", precioComputado)
+      const precioComputadoC = redondearPesoArriba(Math.round((costo + ganancia) * 100))
+      if (precioComputadoC > 0) setValue("precioCentavos", precioComputadoC / 100)
     }
   }, [gananciaFijaPesos, costoPesos, markupTipo])
 
@@ -161,19 +173,20 @@ export default function ProductoForm({ producto, barcodePreset, defaultsNuevo, o
   function handleSetMarkupTipo(tipo: "PORCENTUAL" | "FIJO") {
     setMarkupTipo(tipo)
     if (tipo === "FIJO") {
-      const precioC = Math.round((Number(precioPesos) || 0) * 100)
-      const costoC = Math.round((Number(costoPesos) || 0) * 100)
+      const precioC = redondearPesoArriba(Math.round((Number(precioPesos) || 0) * 100))
+      const costoC = redondearPesoArriba(Math.round((Number(costoPesos) || 0) * 100))
       if (precioC > 0 && costoC > 0) {
         const ganancia = (precioC - costoC) / 100
-        setGananciaFijaPesos(ganancia.toFixed(2))
+        setGananciaFijaPesos(ganancia.toFixed(0))
       }
     }
   }
 
-  // Compute live triangle for display (always from precio + costo)
+  // Compute live triangle for display (always from precio + costo) — redondeado
+  // para arriba al peso entero, así el preview coincide con lo que se guarda.
   const triangulo = (() => {
-    const precioC = Math.round((Number(precioPesos) || 0) * 100)
-    const costoC = costoPesos !== undefined ? Math.round((Number(costoPesos) || 0) * 100) : undefined
+    const precioC = redondearPesoArriba(Math.round((Number(precioPesos) || 0) * 100))
+    const costoC = costoPesos !== undefined ? redondearPesoArriba(Math.round((Number(costoPesos) || 0) * 100)) : undefined
     if (precioC <= 0) return null
     try {
       return resolverTriangulo({
@@ -190,7 +203,7 @@ export default function ProductoForm({ producto, barcodePreset, defaultsNuevo, o
 
   async function onSubmit(data: FormData) {
     const centavos = (v?: number) =>
-      v !== undefined && !Number.isNaN(v) ? Math.round(v * 100) : undefined
+      v !== undefined && !Number.isNaN(v) ? redondearPesoArriba(Math.round(v * 100)) : undefined
 
     const base = {
       nombre: data.nombre,
@@ -358,7 +371,7 @@ export default function ProductoForm({ producto, barcodePreset, defaultsNuevo, o
           <Input
             id="precio"
             type="number"
-            step="0.01"
+            step="1"
             min="0"
             {...register("precioCentavos", { setValueAs: (v) => (v === "" || v == null ? undefined : Number(v)) })}
             className="rounded-xl tabular-nums"
@@ -400,7 +413,7 @@ export default function ProductoForm({ producto, barcodePreset, defaultsNuevo, o
               <Input
                 id="precio"
                 type="number"
-                step="0.01"
+                step="1"
                 min="0"
                 {...register("precioCentavos", { setValueAs: (v) => (v === "" || v == null ? undefined : Number(v)) })}
                 className="rounded-xl tabular-nums"
@@ -416,7 +429,7 @@ export default function ProductoForm({ producto, barcodePreset, defaultsNuevo, o
               <Input
                 id="costo"
                 type="number"
-                step="0.01"
+                step="1"
                 min="0"
                 placeholder="Opcional"
                 {...register("costoCentavos", { setValueAs: (v) => (v === "" || v == null ? undefined : Number(v)) })}
@@ -435,7 +448,7 @@ export default function ProductoForm({ producto, barcodePreset, defaultsNuevo, o
                 <Input
                   id="costo-fijo"
                   type="number"
-                  step="0.01"
+                  step="1"
                   min="0"
                   placeholder="Opcional"
                   {...register("costoCentavos", { setValueAs: (v) => (v === "" || v == null ? undefined : Number(v)) })}
@@ -449,7 +462,7 @@ export default function ProductoForm({ producto, barcodePreset, defaultsNuevo, o
                 <Input
                   id="ganancia-fija"
                   type="number"
-                  step="0.01"
+                  step="1"
                   value={gananciaFijaPesos}
                   onChange={(e) => setGananciaFijaPesos(e.target.value)}
                   className="rounded-xl tabular-nums"
@@ -461,7 +474,7 @@ export default function ProductoForm({ producto, barcodePreset, defaultsNuevo, o
             <div className="rounded-xl border border-border/60 bg-muted/10 px-3 py-2 flex items-center justify-between text-sm">
               <span className="text-muted-foreground text-xs">Precio de venta (calculado)</span>
               <span className="font-semibold tabular-nums">
-                {precioPesos > 0 ? `$${Number(precioPesos).toFixed(2)}` : "—"}
+                {precioPesos > 0 ? `$${Number(precioPesos).toFixed(0)}` : "—"}
               </span>
             </div>
             {errors.precioCentavos && (

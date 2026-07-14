@@ -43,6 +43,13 @@ export function floatACentavos(valor: number): number {
   return Math.round(valor * 100)
 }
 
+/** Redondea centavos hacia arriba al peso entero: 150001 → 150100 ($1500.01 → $1501).
+ * El negocio no maneja centavos — precio, costo y el total del ticket siempre
+ * se redondean para arriba, nunca para el cliente pagar de menos. */
+export function redondearPesoArriba(centavos: number): number {
+  return Math.ceil(centavos / 100) * 100
+}
+
 /** Devuelve "YYYY-MM" del mes actual para uso en FixedExpenseMonto. */
 export function mesAnioActual(): string {
   const now = new Date()

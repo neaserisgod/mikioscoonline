@@ -5,7 +5,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 import { calcularRecargoCigarrillos } from "@/domain/recargo-cigarrillos"
 import { subtotalLinea } from "@/domain/pesables"
-import { formatearARS } from "@/domain/dinero"
+import { formatearARS, redondearPesoArriba } from "@/domain/dinero"
 import { crearVentaAction } from "@/app/actions/ventas.actions"
 import { cancelarOrdenMpAction, enviarMontoMpAction } from "@/app/actions/pagos.actions"
 import { useVentasStore, useVentaActiva } from "@/stores/ventas.store"
@@ -101,7 +101,9 @@ export function useCarritoCheckout(onSuccess?: (ventaId: string) => void) {
   const recargoTotalCentavos = medioPagoSeleccionado?.esMercadoPago && !esConsumoInterno
     ? calcularRecargoCigarrillos(carrito)
     : 0
-  const totalACobrarCentavos = totalConDescuentoCentavos + recargoTotalCentavos
+  // El negocio no maneja centavos/monedas: el total que efectivamente se cobra
+  // siempre se redondea para arriba al peso entero (ver domain/dinero.ts).
+  const totalACobrarCentavos = redondearPesoArriba(totalConDescuentoCentavos + recargoTotalCentavos)
 
   const pagosSplit = venta?.pagosSplit ?? null
   const sumaPagosSplit = (pagosSplit ?? []).reduce((s, p) => s + p.montoCentavos, 0)

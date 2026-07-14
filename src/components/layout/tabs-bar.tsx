@@ -12,7 +12,7 @@ import { NAV_ITEMS } from "./nav-drawer"
 import { cn } from "@/lib/utils"
 
 const STORAGE_KEY = "pyme_tabs_v1"
-const DEFAULT_TABS = ["/inicio", "/vender", "/rentabilidad"]
+const DEFAULT_TABS = ["/inicio", "/vender", "/clientes"]
 
 // ── Store liviano solo de tabs (sin Zustand — solo localStorage + useState) ───
 

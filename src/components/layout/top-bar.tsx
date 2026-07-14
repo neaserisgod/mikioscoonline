@@ -10,8 +10,8 @@ import { TabsBar } from "./tabs-bar"
 
 const titles: [string, string][] = [
   ["/vender", "Vender"],
-  ["/rentabilidad", "Rentabilidad"],
   ["/productos", "Productos"],
+  ["/clientes", "Clientes"],
   ["/config", "Configuración"],
   ["/inicio", "Inicio"],
 ]
