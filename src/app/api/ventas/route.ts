@@ -31,6 +31,7 @@ function mapVenta(v: VentaListado) {
     cantidadPagos: v._count.payments,
     cantidadMovimientosCaja: v._count.movimientosCaja,
     cantidadStockMovements: v._count.stockMovements,
+    comprobante: v.comprobante ? { estado: v.comprobante.estado, tipo: v.comprobante.tipo, numero: v.comprobante.numero } : null,
     flags,
     tieneProblema: flags.sinLineas || flags.sinStock || flags.sinPago || flags.sinMovimientoCaja,
   }
@@ -48,6 +49,11 @@ export async function GET(req: NextRequest) {
   }
   const hasta = hastaParam ? finDia(hastaParam) : hastaParam
   const medioPagoId = searchParams.get("medioPagoId") || undefined
+  const facturaEstadoParam = searchParams.get("facturaEstado")
+  const facturaEstado =
+    facturaEstadoParam === "EMITIDO" || facturaEstadoParam === "ERROR" || facturaEstadoParam === "SIN_FACTURAR"
+      ? facturaEstadoParam
+      : undefined
   const soloProblemas = searchParams.get("soloProblemas") === "1"
   const page = Math.max(1, Number(searchParams.get("page")) || 1)
   const pageSize = Math.min(200, Math.max(1, Number(searchParams.get("pageSize")) || 50))
@@ -57,6 +63,7 @@ export async function GET(req: NextRequest) {
       fechaDesde: desde,
       fechaHasta: hasta,
       medioPagoId,
+      facturaEstado,
       page,
       pageSize,
     })
@@ -71,6 +78,7 @@ export async function GET(req: NextRequest) {
     fechaDesde: desde,
     fechaHasta: hasta,
     medioPagoId,
+    facturaEstado,
     page: 1,
     pageSize: 100_000,
   })

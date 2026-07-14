@@ -36,6 +36,13 @@ model Organization {
   cuit                    String?
   puntoDeVenta            Int?
   condicionIva            String?    // validado vía Zod: RESPONSABLE_INSCRIPTO | MONOTRIBUTO | EXENTO | CONSUMIDOR_FINAL
+  // false = homologación (comprobantes de prueba, sin validez fiscal), true = producción
+  // real (CAE real, no anulable). Ver facturacionService.facturarVenta.
+  facturacionModoProduccion Boolean  @default(false)
+  // Si true, cada venta manda un tiquet a la terminal Point marcada como
+  // posnet (PaymentMethod.mpTerminalId) vía la API de Terminals de MercadoPago
+  // — no requiere que la venta se haya pagado con esa terminal. Ver impresionService.
+  imprimirTicketPosnet    Boolean    @default(false)
   stockMinimoDefault      Int        @default(0)
   onboardingCompletadoAt  DateTime?  // null = primer inicio sin completar
   // Saldo real en la cuenta de Mercado Pago, cargado a mano (no hay API de saldo
@@ -66,6 +73,7 @@ model Organization {
   movimientosCaja MovimientoCaja[]
   arqueosParciales ArqueoParcial[]
   customers       Customer[]
+  comprobantes    Comprobante[]
 }
 
 // ─── Usuarios ────────────────────────────────────────────────────────────────
@@ -198,6 +206,10 @@ model PaymentMethod {
   recargoTipo                String @default("PORCENTUAL") // "PORCENTUAL" | "FIJO" — validado Zod
   recargoVirtualBp           Int    @default(0)             // recargo % si el medio no es efectivo (0 = sin recargo)
   recargoVirtualFijoCentavos Int    @default(0)             // recargo $ fijo si el medio no es efectivo
+  // Si una venta se cobra (total o parcialmente) con este medio, se factura
+  // automáticamente por AFIP al confirmarla — ver facturacionService.facturarVenta.
+  // Default true al crear un medio con esMercadoPago=true (ver medioPagoService.crear).
+  facturarAutomaticamente Boolean @default(false)
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id])
   createdAt      DateTime     @default(now())
@@ -435,6 +447,7 @@ model Sale {
   payments        Payment[]
   stockMovements  StockMovement[]
   movimientosCaja MovimientoCaja[]
+  comprobante     Comprobante?
 }
 
 model SaleLine {
@@ -463,4 +476,42 @@ model Payment {
   comisionRealCentavos Int?          // TODO: completar al integrar MercadoPago
   referencia           String?       // mp payment id, transferencia ref, etc.
   createdAt            DateTime      @default(now())
+}
+
+// ─── Facturación (AFIP/ARCA) ────────────────────────────────────────────────
+
+/**
+ * Comprobante fiscal emitido (o intentado) para una venta — ver
+ * facturacionService.facturarVenta y src/lib/providers/facturacion. No toda
+ * venta tiene uno: solo se genera si algún medio de pago usado tiene
+ * facturarAutomaticamente=true (ver PaymentMethod).
+ */
+model Comprobante {
+  id     String @id @default(cuid())
+  saleId String @unique
+  sale   Sale   @relation(fields: [saleId], references: [id])
+
+  tipo       String // FACTURA_A | FACTURA_B | FACTURA_C — validado Zod
+  puntoVenta Int
+  // AFIP asigna el número recién al emitir con éxito — null mientras está
+  // PENDIENTE o quedó en ERROR (el reintento vuelve a pedir el próximo número,
+  // createNextVoucher evita que dos reintentos se pisen).
+  numero              Int?
+  cae                 String?
+  caeFechaVencimiento DateTime?
+  estado              String // PENDIENTE | EMITIDO | ERROR — validado Zod
+  error               String? // último mensaje de AFIP, para diagnosticar antes de reintentar
+
+  cuitCliente         String?
+  razonSocialCliente  String
+  condicionIVACliente String // CondicionIVA de fiscal.ts — validado Zod
+
+  subtotalCentavos Int
+  ivaTotalCentavos Int
+  totalCentavos    Int
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
 }

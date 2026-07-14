@@ -18,6 +18,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Checkbox } from "@/components/ui/checkbox"
 import { useSession } from "next-auth/react"
 import { Skeleton } from "@/components/ui/skeleton"
 import { formatearARS } from "@/domain/dinero"
@@ -78,6 +79,7 @@ interface MedioPago {
   recargoTipo: string; recargoVirtualBp: number; recargoVirtualFijoCentavos: number
   mpExternalPosId: string | null
   mpTerminalId: string | null
+  facturarAutomaticamente: boolean
 }
 
 type TipoPago = "efectivo" | "mercadopago" | "digital"
@@ -109,7 +111,8 @@ interface CajaItem {
 }
 interface Organizacion {
   id: string; nombre: string; cuit: string | null; condicionIva: string | null
-  puntoDeVenta: number | null; stockMinimoDefault: number; horariosArqueo: string | null
+  puntoDeVenta: number | null; facturacionModoProduccion: boolean; imprimirTicketPosnet: boolean
+  stockMinimoDefault: number; horariosArqueo: string | null
 }
 interface Usuario {
   id: string; nombre: string; email: string | null; role: "ADMIN" | "VENDEDOR"
@@ -822,6 +825,7 @@ const medioPagoSchema = z.object({
   mpDispositivo: z.enum(["qr", "posnet"]),
   mpExternalPosId: z.string(),
   mpTerminalId: z.string(),
+  facturarAutomaticamente: z.boolean(),
 })
 type MedioPagoForm = z.infer<typeof medioPagoSchema>
 
@@ -829,6 +833,7 @@ const MEDIO_PAGO_DEFAULTS: MedioPagoForm = {
   nombre: "", comisionPct: 0, tipo: "digital", cajaId: null,
   recargoTipo: "PORCENTUAL", recargoVirtualPct: 0, recargoVirtualFijoPesos: 0,
   mpDispositivo: "qr", mpExternalPosId: "", mpTerminalId: "",
+  facturarAutomaticamente: false,
 }
 
 function MediosPagoSection({ onMutate }: { onMutate: () => void }) {
@@ -860,6 +865,7 @@ function MediosPagoSection({ onMutate }: { onMutate: () => void }) {
       mpDispositivo: m.mpTerminalId ? "posnet" : "qr",
       mpExternalPosId: m.mpExternalPosId ?? "",
       mpTerminalId: m.mpTerminalId ?? "",
+      facturarAutomaticamente: m.facturarAutomaticamente,
     })
     setSheetOpen(true)
   }
@@ -876,6 +882,7 @@ function MediosPagoSection({ onMutate }: { onMutate: () => void }) {
       recargoVirtualFijoCentavos: Math.round(data.recargoVirtualFijoPesos * 100),
       mpExternalPosId: data.mpDispositivo === "qr" ? (data.mpExternalPosId.trim() || null) : null,
       mpTerminalId: data.mpDispositivo === "posnet" ? (data.mpTerminalId.trim() || null) : null,
+      facturarAutomaticamente: data.facturarAutomaticamente,
     }
     try {
       if (editing) {
@@ -1110,6 +1117,14 @@ function MediosPagoSection({ onMutate }: { onMutate: () => void }) {
                 </p>
               </div>
             )}
+
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <Checkbox
+                checked={watch("facturarAutomaticamente")}
+                onCheckedChange={(c) => setValue("facturarAutomaticamente", c === true)}
+              />
+              <span>Facturar automáticamente por AFIP las ventas cobradas con este medio</span>
+            </label>
 
             <Button type="submit" className="w-full" disabled={isSubmitting}>
               {isSubmitting ? <Loader2 className="size-4 animate-spin" /> : editing ? "Guardar cambios" : "Crear"}
@@ -1991,6 +2006,8 @@ const negocioSchema = z.object({
   cuit: z.string().optional(),
   condicionIva: z.enum(["RESPONSABLE_INSCRIPTO", "MONOTRIBUTO", "EXENTO", "CONSUMIDOR_FINAL"]).optional(),
   puntoDeVenta: z.number().int().positive().optional(),
+  facturacionModoProduccion: z.boolean(),
+  imprimirTicketPosnet: z.boolean(),
   stockMinimoDefault: z.number().int().min(0),
   horariosArqueo: z.string().regex(/^\d{2}:\d{2}(,\d{2}:\d{2})*$/, "Formato: 14:00,19:00").optional().or(z.literal("")),
 })
@@ -2011,25 +2028,40 @@ function NegocioSection({ onMutate }: { onMutate: () => void }) {
 }
 
 function NegocioForm({ data, onMutate }: { data: Organizacion; onMutate: () => void }) {
-  const { register, handleSubmit, setValue, formState: { errors, isSubmitting } } = useForm<NegocioFormData>({
+  const { register, handleSubmit, setValue, watch, formState: { errors, isSubmitting } } = useForm<NegocioFormData>({
     resolver: zodResolver(negocioSchema),
     defaultValues: {
       nombre: data.nombre,
       cuit: data.cuit ?? "",
       condicionIva: (data.condicionIva as NegocioFormData["condicionIva"]) ?? undefined,
       puntoDeVenta: data.puntoDeVenta ?? undefined,
+      facturacionModoProduccion: data.facturacionModoProduccion,
+      imprimirTicketPosnet: data.imprimirTicketPosnet,
       stockMinimoDefault: data.stockMinimoDefault,
       horariosArqueo: data.horariosArqueo ?? "",
     },
   })
+  const facturacionModoProduccion = watch("facturacionModoProduccion")
+  const imprimirTicketPosnet = watch("imprimirTicketPosnet")
 
   async function onSubmit(formData: NegocioFormData) {
+    if (
+      formData.facturacionModoProduccion &&
+      !data.facturacionModoProduccion &&
+      !window.confirm(
+        "Vas a activar la facturación en modo PRODUCCIÓN. A partir de ahora, las ventas que disparen facturación automática van a generar comprobantes fiscales reales con AFIP (CAE real, no anulable). ¿Confirmás?"
+      )
+    ) {
+      return
+    }
     try {
       await actualizarNegocioAction({
         nombre: formData.nombre,
         cuit: formData.cuit || null,
         condicionIva: formData.condicionIva || null,
         puntoDeVenta: formData.puntoDeVenta || null,
+        facturacionModoProduccion: formData.facturacionModoProduccion,
+        imprimirTicketPosnet: formData.imprimirTicketPosnet,
         stockMinimoDefault: formData.stockMinimoDefault,
         horariosArqueo: formData.horariosArqueo || null,
       })
@@ -2067,6 +2099,33 @@ function NegocioForm({ data, onMutate }: { data: Organizacion; onMutate: () => v
           {...register("puntoDeVenta", { valueAsNumber: true })}
           error={errors.puntoDeVenta?.message}
         />
+        <div className="space-y-1.5 rounded-xl border p-3">
+          <label className="flex items-center gap-2 text-sm cursor-pointer">
+            <Checkbox
+              checked={facturacionModoProduccion}
+              onCheckedChange={(c) => setValue("facturacionModoProduccion", c === true)}
+            />
+            <span className="font-medium">Facturación AFIP en modo producción</span>
+          </label>
+          <p className="text-xs text-muted-foreground">
+            {facturacionModoProduccion
+              ? "Activado: las facturas automáticas son reales, con CAE real de AFIP, no anulables."
+              : "Desactivado (homologación): las facturas se emiten contra el ambiente de pruebas de AFIP, sin validez fiscal."}
+          </p>
+        </div>
+        <div className="space-y-1.5 rounded-xl border p-3">
+          <label className="flex items-center gap-2 text-sm cursor-pointer">
+            <Checkbox
+              checked={imprimirTicketPosnet}
+              onCheckedChange={(c) => setValue("imprimirTicketPosnet", c === true)}
+            />
+            <span className="font-medium">Imprimir tiquet en el posnet al confirmar la venta</span>
+          </label>
+          <p className="text-xs text-muted-foreground">
+            Manda el detalle de cada venta (ítems y total) a imprimir en la terminal Point configurada como
+            posnet, sin importar con qué medio se pagó. Requiere tener un medio de pago Posnet activo.
+          </p>
+        </div>
         <Field
           label="Stock mínimo default (unidades)"
           type="number" min="0"

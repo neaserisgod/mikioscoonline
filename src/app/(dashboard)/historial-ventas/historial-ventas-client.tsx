@@ -1,8 +1,10 @@
 "use client"
 
 import { useState } from "react"
-import { useQuery } from "@tanstack/react-query"
-import { AlertTriangle, Receipt } from "lucide-react"
+import Link from "next/link"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { AlertTriangle, Loader2, Receipt, RotateCw } from "lucide-react"
+import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
@@ -12,6 +14,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { EmptyState } from "@/components/ui/empty-state"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { formatearARS } from "@/domain/dinero"
+import { facturarVentaAction } from "@/app/actions/facturacion.actions"
 
 interface MedioPago {
   id: string
@@ -37,6 +40,7 @@ interface VentaListado {
   cliente: string | null
   medios: { nombre: string; montoCentavos: number }[]
   cantidadLineas: number
+  comprobante: { estado: string; tipo: string; numero: number | null } | null
   flags: VentaFlags
   tieneProblema: boolean
 }
@@ -69,13 +73,22 @@ function fechaHoraLocal(iso: string) {
   return new Date(iso).toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" })
 }
 
+const FACTURA_ESTADO_OPCIONES = [
+  { value: "EMITIDO", label: "Facturadas" },
+  { value: "ERROR", label: "Con error" },
+  { value: "SIN_FACTURAR", label: "Sin facturar" },
+]
+
 export default function HistorialVentasClient() {
   const rangoDefault = getRangoDefault()
   const [desde, setDesde] = useState(rangoDefault.desde)
   const [hasta, setHasta] = useState(rangoDefault.hasta)
   const [medioPagoId, setMedioPagoId] = useState<string>("")
+  const [facturaEstado, setFacturaEstado] = useState<string>("")
   const [soloProblemas, setSoloProblemas] = useState(false)
   const [page, setPage] = useState(1)
+  const [facturandoId, setFacturandoId] = useState<string | null>(null)
+  const queryClient = useQueryClient()
 
   const { data: medios } = useQuery<MedioPago[]>({
     queryKey: ["medios-pago"],
@@ -84,14 +97,27 @@ export default function HistorialVentasClient() {
   })
 
   const { data, isLoading } = useQuery<RespuestaVentas>({
-    queryKey: ["historial-ventas", desde, hasta, medioPagoId, soloProblemas, page],
+    queryKey: ["historial-ventas", desde, hasta, medioPagoId, facturaEstado, soloProblemas, page],
     queryFn: () => {
       const params = new URLSearchParams({ desde, hasta, page: String(page), pageSize: String(PAGE_SIZE) })
       if (medioPagoId) params.set("medioPagoId", medioPagoId)
+      if (facturaEstado) params.set("facturaEstado", facturaEstado)
       if (soloProblemas) params.set("soloProblemas", "1")
       return fetch(`/api/ventas?${params}`).then((r) => r.json())
     },
     placeholderData: (prev) => prev,
+  })
+
+  const facturar = useMutation({
+    mutationFn: async (saleId: string) => {
+      setFacturandoId(saleId)
+      return facturarVentaAction(saleId)
+    },
+    onSuccess: (res) => {
+      if (!res.ok) toast.error(res.error)
+      queryClient.invalidateQueries({ queryKey: ["historial-ventas"] })
+    },
+    onSettled: () => setFacturandoId(null),
   })
 
   const ventas = data?.ventas ?? []
@@ -147,6 +173,21 @@ export default function HistorialVentasClient() {
             </SelectContent>
           </Select>
         </div>
+        <div className="space-y-1">
+          <label className="text-xs text-muted-foreground">Factura</label>
+          <Select
+            value={facturaEstado || "__todas__"}
+            onValueChange={(v) => actualizarFiltro(() => setFacturaEstado(v === "__todas__" ? "" : (v ?? "")))}
+          >
+            <SelectTrigger className="w-40"><SelectValue placeholder="Todas" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__todas__">Todas</SelectItem>
+              {FACTURA_ESTADO_OPCIONES.map((o) => (
+                <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
         <label className="flex items-center gap-2 pb-2 text-sm">
           <Checkbox
             checked={soloProblemas}
@@ -196,13 +237,18 @@ export default function HistorialVentasClient() {
                 <TableHead>Costo</TableHead>
                 <TableHead>Medios de pago</TableHead>
                 <TableHead>Items</TableHead>
+                <TableHead>Factura</TableHead>
                 <TableHead>Estado</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {ventas.map((v) => (
                 <TableRow key={v.id} className={v.tieneProblema ? "bg-destructive/5" : undefined}>
-                  <TableCell className="text-muted-foreground">{fechaHoraLocal(v.fecha)}</TableCell>
+                  <TableCell className="text-muted-foreground">
+                    <Link href={`/historial-ventas/${v.id}`} className="hover:underline">
+                      {fechaHoraLocal(v.fecha)}
+                    </Link>
+                  </TableCell>
                   <TableCell>{v.usuario}</TableCell>
                   <TableCell>{formatearARS(v.totalCentavos)}</TableCell>
                   <TableCell className="text-muted-foreground">{formatearARS(v.costoTotalCentavos)}</TableCell>
@@ -223,6 +269,35 @@ export default function HistorialVentasClient() {
                     )}
                   </TableCell>
                   <TableCell>{v.cantidadLineas}</TableCell>
+                  <TableCell>
+                    {v.comprobante?.estado === "EMITIDO" ? (
+                      <Badge variant="outline">{v.comprobante.tipo.replace("FACTURA_", "")} Nº{v.comprobante.numero}</Badge>
+                    ) : v.comprobante?.estado === "ERROR" ? (
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        className="h-6 px-2 text-xs"
+                        disabled={facturandoId === v.id}
+                        onClick={() => facturar.mutate(v.id)}
+                      >
+                        {facturandoId === v.id ? <Loader2 className="size-3 animate-spin" /> : <RotateCw className="size-3" />}
+                        Reintentar
+                      </Button>
+                    ) : v.esConsumoInterno ? (
+                      <span className="text-xs text-muted-foreground">—</span>
+                    ) : (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-6 px-2 text-xs"
+                        disabled={facturandoId === v.id}
+                        onClick={() => facturar.mutate(v.id)}
+                      >
+                        {facturandoId === v.id ? <Loader2 className="size-3 animate-spin" /> : null}
+                        Facturar
+                      </Button>
+                    )}
+                  </TableCell>
                   <TableCell>
                     {v.tieneProblema ? (
                       <div className="flex flex-wrap gap-1">

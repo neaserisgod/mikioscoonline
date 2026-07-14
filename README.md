@@ -278,10 +278,11 @@ El switch por entorno ya existe en `src/lib/providers/pagos/` (`getPagosProvider
 
 ## Integración AFIP/ARCA
 
-Mismo patrón en `src/lib/providers/facturacion/` (`getFacturacionProvider()`). `AfipFacturacionProvider` (`afip.ts`) ya está implementado con `@afipsdk/afip.js` y probado contra homologación (CAE real obtenido con el CUIT de prueba `20409378472`) — falta únicamente conectarlo a un flujo real de venta (todavía no hay ningún caller de `getFacturacionProvider()` en la app) y, para producción, el certificado digital propio.
+Implementada y en uso en producción (`src/lib/providers/facturacion/`, `AfipFacturacionProvider` en `afip.ts` con `@afipsdk/afip.js`).
 
-- **Homologación (ya funciona):** con `AFIP_ACCESS_TOKEN` (gratis en https://app.afipsdk.com) y `AFIP_CUIT=20409378472` alcanza — no hace falta certificado.
-- **Producción:** CUIT real + certificado de https://auth.afip.gob.ar/ codificado en base64 en `AFIP_CERT`/`AFIP_PRIVATE_KEY`, y `AFIP_ENVIRONMENT="production"`.
-- Cambiar `FACTURACION_PROVIDER="afip"` para activar el provider real (usa `"mock"` mientras tanto).
+- **Credenciales** (`AFIP_ACCESS_TOKEN`, `AFIP_CUIT`, `AFIP_CERT`/`AFIP_PRIVATE_KEY` en base64) van por variable de entorno — `FACTURACION_PROVIDER="afip"` activa el provider real (`"mock"` para desarrollo). Sin `AFIP_CERT`/`AFIP_PRIVATE_KEY`, usa el CUIT de prueba de AfipSDK (`20409378472`) sin certificado.
+- **El switch homologación/producción NO es una env var** — es `Organization.facturacionModoProduccion` (por organización, en Config > Negocio de la app), porque con certificado propio cargado la elección de ambiente es una decisión de negocio, no de deploy.
+- **Disparo:** `ventaService.crear()` llama a `facturacionService.facturarVenta()` en segundo plano (no bloquea la venta) cuando algún medio de pago usado tiene `PaymentMethod.facturarAutomaticamente = true`. El resultado (CAE, número, estado) se guarda en el modelo `Comprobante`, visible en `/historial-ventas/[id]` (con el QR de verificación de AFIP, RG 4291) y reintentable manualmente desde ahí o desde el listado si quedó en `ERROR`.
+- **Impresión en posnet** (`src/lib/mercadopago-print.ts`, `impresionService`): si `Organization.imprimirTicketPosnet` está activo, cada venta manda un tiquet con ítems/total/recargo y, si ya hay CAE, los datos fiscales + QR, a la terminal Point marcada como posnet — vía `POST /terminals/v1/actions` de MercadoPago (independiente de cualquier cobro). Ver el comentario en `mercadopago-print.ts` sobre el comportamiento no documentado del tag `{left}` (alinea a la derecha, no a la izquierda) verificado a mano contra una terminal Newland N950 real.
 - Mapeos hardcodeados en `afip.ts` a verificar contra la tabla oficial de ARCA si se agregan más casos: tipos de comprobante (A/B/C), condición de IVA del receptor, alícuotas de IVA.
-- Pendiente: decidir en qué punto del flujo de venta se dispara `emitir()`, y qué hacer con el `cae`/`caeFechaVencimiento` resultante (guardarlo en la `Sale`, mostrarlo/imprimirlo).
+- **Pendiente de confirmar con un contador:** si hace falta agregar el domicilio comercial del negocio (hoy no existe ese campo en ningún lado de la app) y si la entrega impresa del comprobante es obligatoria o alcanza con la emisión electrónica.

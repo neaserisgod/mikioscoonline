@@ -23,6 +23,9 @@ export interface DatosFactura {
   subtotalCentavos: number
   ivaTotalCentavos: number
   totalCentavos: number
+  // false = homologación (comprobante de prueba), true = producción real (CAE
+  // real, no anulable). Viene de Organization.facturacionModoProduccion.
+  modoProduccion: boolean
 }
 
 export interface ResultadoFacturacion {

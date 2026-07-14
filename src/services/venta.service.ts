@@ -3,6 +3,8 @@ import { calcularComision } from "@/domain/comisiones"
 import { calcularRecargoCigarrillos } from "@/domain/recargo-cigarrillos"
 import { resolverCajaId } from "@/domain/cajas"
 import { precioUnitarioEfectivo, costoUnitarioEfectivo, subtotalLinea } from "@/domain/pesables"
+import { facturacionService } from "@/services/facturacion.service"
+import { impresionService } from "@/services/impresion.service"
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -72,7 +74,7 @@ async function efectivoDisponibleCajaPrincipal(organizationId: string): Promise<
 
 export const ventaService = {
   async crear(input: CrearVentaInput) {
-    return prisma.$transaction(async (tx) => {
+    const venta = await prisma.$transaction(async (tx) => {
       // 0. Replay idempotente: si el cliente ya mandó este id antes (reintento de la
       // cola offline de Flutter tras perder la respuesta), devolvemos la venta ya
       // creada tal cual en vez de reprocesar y duplicar stock/movimientos de caja.
@@ -536,6 +538,27 @@ export const ventaService = {
 
       return venta
     })
+
+    // Facturación AFIP — fuera de la transacción (es una llamada de red, no debe
+    // tener el lock de la venta abierto mientras espera) y en segundo plano: si
+    // AFIP falla o está caído, la venta ya quedó confirmada igual y el
+    // comprobante queda en ERROR para reintentar después (ver
+    // facturacionService, historial de ventas). Consumo interno no factura:
+    // no es una venta real a un cliente.
+    // Si la venta dispara facturación, esperamos el CAE antes de imprimir —
+    // así el tiquet del posnet sale con los datos fiscales completos en un
+    // solo papel, en vez de un segundo tiquet aparte. Ninguna de las dos
+    // etapas debe bloquear la venta ya confirmada ni abortar por un error.
+    const disparaFacturacion =
+      !venta.esConsumoInterno && venta.payments.some((p) => p.paymentMethod.facturarAutomaticamente)
+    ;(async () => {
+      if (disparaFacturacion) {
+        await facturacionService.facturarVenta(venta.id, input.organizationId).catch(() => {})
+      }
+      await impresionService.imprimirTicketVenta(venta.id, input.organizationId).catch(() => {})
+    })()
+
+    return venta
   },
 
   /**
@@ -630,6 +653,9 @@ export const ventaService = {
         lines: { include: { product: { include: { category: true, provider: true } } } },
         payments: { include: { paymentMethod: true } },
         user: { select: { id: true, nombre: true, email: true } },
+        customer: { select: { id: true, nombre: true } },
+        comprobante: true,
+        organization: { select: { cuit: true, nombre: true } },
       },
     })
   },
@@ -671,7 +697,11 @@ export const ventaService = {
    */
   async listarPaginado(
     organizationId: string,
-    opts: { fechaDesde?: Date; fechaHasta?: Date; medioPagoId?: string; page: number; pageSize: number }
+    opts: {
+      fechaDesde?: Date; fechaHasta?: Date; medioPagoId?: string
+      facturaEstado?: "EMITIDO" | "ERROR" | "SIN_FACTURAR"
+      page: number; pageSize: number
+    }
   ) {
     const where = {
       organizationId,
@@ -684,6 +714,11 @@ export const ventaService = {
           }
         : {}),
       ...(opts.medioPagoId ? { payments: { some: { paymentMethodId: opts.medioPagoId } } } : {}),
+      ...(opts.facturaEstado === "SIN_FACTURAR"
+        ? { comprobante: null }
+        : opts.facturaEstado
+          ? { comprobante: { estado: opts.facturaEstado } }
+          : {}),
     }
 
     const [ventas, total] = await Promise.all([
@@ -701,6 +736,7 @@ export const ventaService = {
           customer: { select: { nombre: true } },
           user: { select: { nombre: true, email: true } },
           payments: { select: { montoCentavos: true, paymentMethod: { select: { nombre: true } } } },
+          comprobante: { select: { estado: true, tipo: true, numero: true } },
           _count: { select: { lines: true, payments: true, movimientosCaja: true, stockMovements: true } },
         },
         orderBy: { fecha: "desc" },

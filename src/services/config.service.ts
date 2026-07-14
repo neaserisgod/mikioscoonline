@@ -197,6 +197,7 @@ export const medioPagoService = {
       nombre: string; comisionBp: number; esEfectivo?: boolean; esMercadoPago?: boolean; cajaId?: string | null
       recargoTipo?: "PORCENTUAL" | "FIJO"; recargoVirtualBp?: number; recargoVirtualFijoCentavos?: number
       mpExternalPosId?: string | null; mpTerminalId?: string | null
+      facturarAutomaticamente?: boolean
     }
   ) {
     const maxOrden = await prisma.paymentMethod.aggregate({
@@ -214,6 +215,9 @@ export const medioPagoService = {
         recargoTipo: data.recargoTipo ?? "PORCENTUAL",
         recargoVirtualBp: data.recargoVirtualBp ?? 0,
         recargoVirtualFijoCentavos: data.recargoVirtualFijoCentavos ?? 0,
+        // Default sensato: un medio de MercadoPago (QR/Posnet) casi siempre
+        // se quiere facturar automáticamente; el dueño lo puede destildar.
+        facturarAutomaticamente: data.facturarAutomaticamente ?? data.esMercadoPago ?? false,
         esDefault: false,
         orden: (maxOrden._max.orden ?? -1) + 1,
         organizationId,
@@ -228,6 +232,7 @@ export const medioPagoService = {
       nombre?: string; comisionBp?: number; esEfectivo?: boolean; esMercadoPago?: boolean; activo?: boolean; cajaId?: string | null
       recargoTipo?: "PORCENTUAL" | "FIJO"; recargoVirtualBp?: number; recargoVirtualFijoCentavos?: number
       mpExternalPosId?: string | null; mpTerminalId?: string | null
+      facturarAutomaticamente?: boolean
     }
   ) {
     await prisma.paymentMethod.findFirstOrThrow({ where: { id, organizationId } })
@@ -421,6 +426,8 @@ export const organizacionService = {
       cuit?: string | null
       condicionIva?: string | null
       puntoDeVenta?: number | null
+      facturacionModoProduccion?: boolean
+      imprimirTicketPosnet?: boolean
       stockMinimoDefault?: number
       horariosArqueo?: string | null
     }

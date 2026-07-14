@@ -2,7 +2,8 @@ import Afip from "@afipsdk/afip.js"
 import type { DatosFactura, FacturacionProvider, ResultadoFacturacion } from "./types"
 
 // Tabla oficial ARCA — tipos de comprobante WSFE relevantes (facturas, no notas de crédito/débito).
-const CBTE_TIPO: Record<string, number> = { A: 1, B: 6, C: 11 }
+// Claves iguales al TipoComprobante de fiscal.ts (determinarTipoComprobante).
+const CBTE_TIPO: Record<string, number> = { FACTURA_A: 1, FACTURA_B: 6, FACTURA_C: 11 }
 
 // Tabla oficial ARCA — "Condición frente al IVA del receptor" (RG 5616/2024).
 // Mapea el mismo enum que ya usa el resto de la app (Organization.condicionIva,
@@ -17,7 +18,7 @@ const CONDICION_IVA_RECEPTOR: Record<string, number> = {
 // Tabla oficial ARCA — alícuotas de IVA, % → Id.
 const ALICUOTA_ID: Record<number, number> = { 0: 3, 10.5: 4, 21: 5, 27: 6, 5: 8, 2.5: 9 }
 
-function afipClient(): Afip {
+function afipClient(modoProduccion: boolean): Afip {
   const CUIT = process.env.AFIP_CUIT
   const access_token = process.env.AFIP_ACCESS_TOKEN
   if (!CUIT || !access_token) {
@@ -30,7 +31,7 @@ function afipClient(): Afip {
   return new Afip({
     CUIT: Number(CUIT),
     access_token,
-    ...(cert && key ? { cert, key, production: process.env.AFIP_ENVIRONMENT === "production" } : {}),
+    ...(cert && key ? { cert, key, production: modoProduccion } : {}),
   })
 }
 
@@ -44,7 +45,7 @@ function fechaWSFE(fecha: Date): number {
 
 export class AfipFacturacionProvider implements FacturacionProvider {
   async emitir(datos: DatosFactura): Promise<ResultadoFacturacion> {
-    const afip = afipClient()
+    const afip = afipClient(datos.modoProduccion)
 
     const cbteTipo = CBTE_TIPO[datos.tipo]
     if (!cbteTipo) throw new Error(`Tipo de comprobante desconocido: "${datos.tipo}"`)
@@ -65,6 +66,14 @@ export class AfipFacturacionProvider implements FacturacionProvider {
 
     const esConsumidorFinal = !datos.cuitCliente
 
+    const ivaItems = [...porAlicuota.entries()]
+      .filter(([alicuota]) => alicuota > 0)
+      .map(([alicuota, { neto, iva }]) => {
+        const id = ALICUOTA_ID[alicuota]
+        if (!id) throw new Error(`Alícuota de IVA sin mapear en la tabla ARCA: ${alicuota}%`)
+        return { Id: id, BaseImp: neto / 100, Importe: iva / 100 }
+      })
+
     const data = {
       PtoVta: datos.puntoVenta,
       CbteTipo: cbteTipo,
@@ -81,13 +90,9 @@ export class AfipFacturacionProvider implements FacturacionProvider {
       ImpTrib: 0,
       MonId: "PES",
       MonCotiz: 1,
-      Iva: [...porAlicuota.entries()]
-        .filter(([alicuota]) => alicuota > 0)
-        .map(([alicuota, { neto, iva }]) => {
-          const id = ALICUOTA_ID[alicuota]
-          if (!id) throw new Error(`Alícuota de IVA sin mapear en la tabla ARCA: ${alicuota}%`)
-          return { Id: id, BaseImp: neto / 100, Importe: iva / 100 }
-        }),
+      // AFIP rechaza el comprobante si se manda el objeto Iva (aunque sea vacío)
+      // en un tipo C — un monotributista no discrimina IVA, no hay que informarlo.
+      ...(ivaItems.length > 0 ? { Iva: ivaItems } : {}),
     }
 
     // createNextVoucher pide a AFIP el próximo número de comprobante y lo crea en el
