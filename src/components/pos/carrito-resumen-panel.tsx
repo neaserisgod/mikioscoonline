@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import { motion } from "framer-motion"
 import { useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
-import { Loader2, CheckCircle2, AlertTriangle } from "lucide-react"
+import { Loader2, CheckCircle2, AlertTriangle, Download } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { Input } from "@/components/ui/input"
@@ -240,9 +240,17 @@ export function CarritoResumenPanel({ checkout, mostrarItems = false, expandActi
             {formatearARS(successInfo.totalCentavos)} · {successInfo.nombreMedioPago}
           </p>
         </div>
-        <Button onClick={() => setSuccessInfo(null)} size="sm" className="min-w-32">
-          Listo
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline" size="sm" className="min-w-32"
+            render={<a href={`/api/ventas/${successInfo.ventaId}/ticket-pdf`} download />}
+          >
+            <Download className="size-4" /> Ticket (PDF)
+          </Button>
+          <Button onClick={() => setSuccessInfo(null)} size="sm" className="min-w-32">
+            Listo
+          </Button>
+        </div>
       </motion.div>
     )
   }

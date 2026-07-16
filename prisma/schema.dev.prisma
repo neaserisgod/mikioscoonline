@@ -424,6 +424,8 @@ model Sale {
   organizationId     String
   organization       Organization @relation(fields: [organizationId], references: [id])
   createdAt          DateTime     @default(now())
+  // PDF del ticket NO fiscal — ver schema.prisma para el detalle completo.
+  ticketPdf Bytes?
 
   lines           SaleLine[]
   payments        Payment[]
@@ -480,6 +482,10 @@ model Comprobante {
   subtotalCentavos Int
   ivaTotalCentavos Int
   totalCentavos    Int
+
+  // PDF de la representación impresa del comprobante — ver schema.prisma para
+  // el detalle de por qué es best-effort y nullable.
+  pdf Bytes?
 
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id])

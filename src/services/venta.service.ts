@@ -611,21 +611,29 @@ export const ventaService = {
     // comprobante queda en ERROR para reintentar después (ver
     // facturacionService, historial de ventas). Consumo interno no factura:
     // no es una venta real a un cliente.
-    // Si la venta dispara facturación, esperamos el CAE antes de imprimir —
-    // así el tiquet del posnet sale con los datos fiscales completos en un
-    // solo papel, en vez de un segundo tiquet aparte. Ninguna de las dos
-    // etapas debe bloquear la venta ya confirmada ni abortar por un error.
+    // Regla de facturación por medio de pago (Fase B): una venta 100% efectivo
+    // NUNCA factura (facturarAutomaticamente=true está forzado a false para
+    // medios esEfectivo en medioPagoService) — con al menos un pago no-efectivo
+    // (QR/Posnet/Transferencia) sí se factura y se guarda el CAE + PDF fiscal
+    // en Comprobante.pdf (ver facturacionService).
+    const esVenta100PorCientoEfectivo =
+      venta.payments.length > 0 && venta.payments.every((p) => p.paymentMethod.esEfectivo)
     const disparaFacturacion =
-      !venta.esConsumoInterno && venta.payments.some((p) => p.paymentMethod.facturarAutomaticamente)
+      !venta.esConsumoInterno &&
+      !esVenta100PorCientoEfectivo &&
+      venta.payments.some((p) => p.paymentMethod.facturarAutomaticamente)
     ;(async () => {
       if (disparaFacturacion) {
         await facturacionService
           .facturarVenta(venta.id, input.organizationId)
           .catch((error) => logError("venta.facturarVenta", error, { saleId: venta.id }))
       }
+      // El ticket NO fiscal (PDF en Sale.ticketPdf + impresión térmica si
+      // corresponde) se genera SIEMPRE, en paralelo a la facturación de
+      // arriba si la hubo — ver impresionService.procesarTicketVenta.
       await impresionService
-        .imprimirTicketVenta(venta.id, input.organizationId)
-        .catch((error) => logError("venta.imprimirTicket", error, { saleId: venta.id }))
+        .procesarTicketVenta(venta.id, input.organizationId)
+        .catch((error) => logError("venta.procesarTicket", error, { saleId: venta.id }))
     })()
 
     return venta
@@ -725,7 +733,7 @@ export const ventaService = {
         user: { select: { id: true, nombre: true, email: true } },
         customer: { select: { id: true, nombre: true } },
         comprobante: true,
-        organization: { select: { cuit: true, nombre: true } },
+        organization: { select: { cuit: true, nombre: true, condicionIva: true } },
       },
     })
   },

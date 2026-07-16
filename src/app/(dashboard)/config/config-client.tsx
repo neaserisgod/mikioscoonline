@@ -45,6 +45,7 @@ import {
   desactivarCajaAction, reactivarCajaAction, asignarCategoriasCajaAction,
 } from "@/app/actions/caja.actions"
 import { resetearOnboardingAction } from "@/app/actions/onboarding.actions"
+import { descargarTicketPruebaAction } from "@/app/actions/impresion.actions"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -661,6 +662,14 @@ function MediosPagoSection({ onMutate }: { onMutate: () => void }) {
   const mpDispositivo = watch("mpDispositivo") ?? "qr"
 
   function abrirCrear() { setEditing(null); reset(MEDIO_PAGO_DEFAULTS); setSheetOpen(true) }
+  // Forma guiada de crear "Transferencia": mismo tipo "digital" (esEfectivo=false,
+  // esMercadoPago=false) que ya soporta el form, con el nombre precargado — evita
+  // que el dueño tenga que pensar qué tipo elegir para un medio tan común.
+  function abrirCrearTransferencia() {
+    setEditing(null)
+    reset({ ...MEDIO_PAGO_DEFAULTS, nombre: "Transferencia", tipo: "digital" })
+    setSheetOpen(true)
+  }
   function abrirEditar(m: MedioPago) {
     setEditing(m)
     reset({
@@ -717,7 +726,14 @@ function MediosPagoSection({ onMutate }: { onMutate: () => void }) {
   return (
     <SectionShell
       title="Medios de pago"
-      action={<Button size="sm" onClick={abrirCrear} className="gap-1.5"><Plus className="size-3.5" /> Nuevo</Button>}
+      action={
+        <div className="flex gap-1.5">
+          <Button size="sm" variant="outline" onClick={abrirCrearTransferencia} className="gap-1.5">
+            <Plus className="size-3.5" /> Transferencia
+          </Button>
+          <Button size="sm" onClick={abrirCrear} className="gap-1.5"><Plus className="size-3.5" /> Nuevo</Button>
+        </div>
+      }
     >
       {isLoading ? <SkeletonList /> : (
         <ListCard>
@@ -927,12 +943,16 @@ function MediosPagoSection({ onMutate }: { onMutate: () => void }) {
               </div>
             )}
 
-            <label className="flex items-center gap-2 text-sm cursor-pointer">
-              <Checkbox
-                checked={watch("facturarAutomaticamente")}
-                onCheckedChange={(c) => setValue("facturarAutomaticamente", c === true)}
-              />
-              <span>Facturar automáticamente por AFIP las ventas cobradas con este medio</span>
+            {/* Regla fija, no editable: efectivo NUNCA factura, cualquier otro
+                medio (MercadoPago o Transferencia/QR) SIEMPRE factura automático
+                — ver medioPagoService.crear/editar. El checkbox es solo informativo. */}
+            <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-not-allowed">
+              <Checkbox checked={tipo !== "efectivo"} disabled />
+              <span>
+                {tipo === "efectivo"
+                  ? "Efectivo nunca factura automáticamente"
+                  : "Este medio factura automáticamente cada venta (regla fija)"}
+              </span>
             </label>
 
             <Button type="submit" className="w-full" disabled={isSubmitting}>
@@ -1858,6 +1878,66 @@ function NegocioSection({ onMutate }: { onMutate: () => void }) {
   return <NegocioForm data={data} onMutate={onMutate} />
 }
 
+/** Descarga un PDF (base64) generado en el servidor, sin pasar por ninguna
+ * ruta/venta real — usado por el botón de prueba de ticket (no hay un Sale
+ * de verdad al que apuntar una ruta GET). */
+function descargarPdfBase64(base64: string, filename: string) {
+  const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0))
+  const blob = new Blob([bytes], { type: "application/pdf" })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement("a")
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+/** Botón de prueba de ticket — arma un ticket NO fiscal con datos reales del
+ * negocio pero ítems inventados (ver descargarTicketPruebaAction). NO crea
+ * ninguna venta ni toca la base más que leer Organization/PaymentMethod: baja
+ * el PDF para ver el formato y, si hay un posnet configurado, SIEMPRE lo
+ * intenta imprimir ahí también (sin importar el toggle "Imprimir tiquet en el
+ * posnet" de arriba, que solo aplica a ventas reales) — útil para probar el
+ * hardware sin tener que activar ese toggle. */
+function BotonesPruebaImpresion() {
+  const [loading, setLoading] = useState(false)
+
+  async function probar() {
+    setLoading(true)
+    try {
+      const res = await descargarTicketPruebaAction()
+      if (!res.ok) { toast.error(res.error); return }
+      descargarPdfBase64(res.pdfBase64, "ticket-prueba.pdf")
+      if (res.posnetEstado === "enviado") toast.success("PDF descargado + enviado al posnet")
+      else if (res.posnetEstado === "error") toast.error("PDF descargado, pero falló el envío al posnet — revisá el terminal/token de MercadoPago")
+      else toast.info("PDF descargado — no hay un posnet activo configurado")
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "No se pudo generar el ticket de prueba")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="space-y-1.5 border-t border-border/60 pt-2.5 mt-1">
+      <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+        Prueba de ticket — no genera venta
+      </p>
+      <Button
+        type="button" variant="outline" size="sm" className="gap-1.5"
+        disabled={loading}
+        onClick={probar}
+      >
+        {loading ? <Loader2 className="size-3.5 animate-spin" /> : <Download className="size-3.5" />}
+        Descargar PDF de ticket de prueba (+ posnet)
+      </Button>
+      <p className="text-xs text-muted-foreground">
+        Ítems inventados, solo para ver el formato — no crea ninguna venta ni requiere activar el toggle de arriba.
+      </p>
+    </div>
+  )
+}
+
 function NegocioForm({ data, onMutate }: { data: Organizacion; onMutate: () => void }) {
   const { register, handleSubmit, setValue, watch, formState: { errors, isSubmitting } } = useForm<NegocioFormData>({
     resolver: zodResolver(negocioSchema),
@@ -1956,6 +2036,7 @@ function NegocioForm({ data, onMutate }: { data: Organizacion; onMutate: () => v
             Manda el detalle de cada venta (ítems y total) a imprimir en la terminal Point configurada como
             posnet, sin importar con qué medio se pagó. Requiere tener un medio de pago Posnet activo.
           </p>
+          <BotonesPruebaImpresion />
         </div>
         <Field
           label="Stock mínimo default (unidades)"

@@ -363,17 +363,19 @@ export const medioPagoService = {
     if (data.cajaId) {
       await prisma.caja.findFirstOrThrow({ where: { id: data.cajaId, organizationId } })
     }
+    const esEfectivo = data.esEfectivo ?? false
     return prisma.paymentMethod.create({
       data: {
         ...data,
-        esEfectivo: data.esEfectivo ?? false,
+        esEfectivo,
         esMercadoPago: data.esMercadoPago ?? false,
         recargoTipo: data.recargoTipo ?? "PORCENTUAL",
         recargoVirtualBp: data.recargoVirtualBp ?? 0,
         recargoVirtualFijoCentavos: data.recargoVirtualFijoCentavos ?? 0,
-        // Default sensato: un medio de MercadoPago (QR/Posnet) casi siempre
-        // se quiere facturar automáticamente; el dueño lo puede destildar.
-        facturarAutomaticamente: data.facturarAutomaticamente ?? data.esMercadoPago ?? false,
+        // Regla de negocio (no una preferencia editable): efectivo NUNCA
+        // factura, cualquier medio no-efectivo (QR, Posnet, Transferencia)
+        // SIEMPRE factura automático — ver Fase B de facturación/tickets.
+        facturarAutomaticamente: !esEfectivo,
         esDefault: false,
         orden: (maxOrden._max.orden ?? -1) + 1,
         organizationId,
@@ -391,11 +393,18 @@ export const medioPagoService = {
       facturarAutomaticamente?: boolean
     }
   ) {
-    await prisma.paymentMethod.findFirstOrThrow({ where: { id, organizationId } })
+    const actual = await prisma.paymentMethod.findFirstOrThrow({ where: { id, organizationId } })
     if (data.cajaId) {
       await prisma.caja.findFirstOrThrow({ where: { id: data.cajaId, organizationId } })
     }
-    return prisma.paymentMethod.update({ where: { id }, data })
+    const esEfectivo = data.esEfectivo ?? actual.esEfectivo
+    return prisma.paymentMethod.update({
+      where: { id },
+      // Misma regla obligatoria que en `crear`: recalculada acá para que un
+      // cambio de tipo (ej. de "digital" a "efectivo") no deje colgado un
+      // facturarAutomaticamente que ya no corresponde.
+      data: { ...data, facturarAutomaticamente: !esEfectivo },
+    })
   },
 
   async desactivar(id: string, organizationId: string) {

@@ -2,12 +2,13 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
-import { Printer, RotateCw, AlertTriangle, CheckCircle2, Clock } from "lucide-react"
+import { RotateCw, AlertTriangle, CheckCircle2, Clock, Download } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { formatearARS } from "@/domain/dinero"
 import { facturarVentaAction } from "@/app/actions/facturacion.actions"
 import type { ventaService } from "@/services/venta.service"
+import type { TicketModel } from "@/domain/ticket"
 
 type Venta = NonNullable<Awaited<ReturnType<typeof ventaService.obtener>>>
 
@@ -17,7 +18,13 @@ const NOMBRE_TIPO: Record<string, string> = {
   FACTURA_C: "Factura C",
 }
 
-export default function TicketClient({ venta, qrDataUrl }: { venta: Venta; qrDataUrl: string | null }) {
+export default function TicketClient({
+  venta, ticket, qrDataUrl,
+}: {
+  venta: Venta
+  ticket: TicketModel
+  qrDataUrl: string | null
+}) {
   const router = useRouter()
   const [reintentando, setReintentando] = useState(false)
   const comprobante = venta.comprobante
@@ -48,8 +55,11 @@ export default function TicketClient({ venta, qrDataUrl }: { venta: Venta; qrDat
               <RotateCw className={reintentando ? "size-4 animate-spin" : "size-4"} /> Facturar
             </Button>
           )}
-          <Button size="sm" onClick={() => window.print()}>
-            <Printer className="size-4" /> Imprimir
+          <Button
+            size="sm"
+            render={<a href={`/api/ventas/${venta.id}/ticket-pdf`} download />}
+          >
+            <Download className="size-4" /> Descargar ticket (PDF)
           </Button>
         </div>
       </div>
@@ -64,12 +74,10 @@ export default function TicketClient({ venta, qrDataUrl }: { venta: Venta; qrDat
         </div>
 
         <div className="divide-y divide-border/60 border-y border-border/60">
-          {venta.lines.map((l) => (
-            <div key={l.id} className="flex items-center justify-between gap-2 py-1.5">
-              <span className="min-w-0 truncate">
-                {l.product.esPesable ? `${((l.gramos ?? 0) / 1000).toFixed(3)}kg` : `${l.cantidad}x`} {l.product.nombre}
-              </span>
-              <span className="shrink-0 tabular-nums">{formatearARS(l.precioUnitarioCentavos * (l.product.esPesable ? 1 : l.cantidad))}</span>
+          {ticket.items.map((item, i) => (
+            <div key={i} className="flex items-center justify-between gap-2 py-1.5">
+              <span className="min-w-0 truncate">{item.descripcion}</span>
+              <span className="shrink-0 tabular-nums">{formatearARS(item.subtotalCentavos)}</span>
             </div>
           ))}
         </div>
@@ -81,15 +89,15 @@ export default function TicketClient({ venta, qrDataUrl }: { venta: Venta; qrDat
               <span>−{formatearARS(venta.descuentoCentavos)}</span>
             </div>
           )}
-          {venta.recargoCentavos > 0 && (
+          {ticket.recargoCentavos > 0 && (
             <div className="flex justify-between text-xs text-muted-foreground">
               <span>Recargo</span>
-              <span>+{formatearARS(venta.recargoCentavos)}</span>
+              <span>+{formatearARS(ticket.recargoCentavos)}</span>
             </div>
           )}
           <div className="flex justify-between font-medium">
             <span>Total</span>
-            <span className="tabular-nums">{formatearARS(venta.totalCentavos + venta.recargoCentavos)}</span>
+            <span className="tabular-nums">{formatearARS(ticket.totalCentavos)}</span>
           </div>
           <p className="text-xs text-muted-foreground">
             {venta.payments.map((p) => p.paymentMethod.nombre).join(" + ") || (venta.fiadoCentavos > 0 ? "Fiado" : "—")}
@@ -114,6 +122,12 @@ export default function TicketClient({ venta, qrDataUrl }: { venta: Venta; qrDat
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={qrDataUrl} alt="Código QR de AFIP" className="size-32" />
               )}
+              <Button
+                variant="outline" size="sm" className="print:hidden"
+                render={<a href={`/api/ventas/${venta.id}/factura-pdf`} download />}
+              >
+                <Download className="size-4" /> Descargar factura (PDF)
+              </Button>
             </div>
           ) : comprobante.estado === "ERROR" ? (
             <div className="flex items-start gap-1.5 text-destructive">

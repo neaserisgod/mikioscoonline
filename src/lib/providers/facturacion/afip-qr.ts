@@ -1,5 +1,3 @@
-import QRCode from "qrcode"
-
 // Códigos de tipo de comprobante WSFE — mismos que afip.ts (facturas, no notas de crédito/débito).
 const CBTE_TIPO: Record<string, number> = { FACTURA_A: 1, FACTURA_B: 6, FACTURA_C: 11 }
 
@@ -37,9 +35,4 @@ export function urlQrAfip(datos: DatosQrAfip): string {
   }
   const base64 = Buffer.from(JSON.stringify(payload)).toString("base64")
   return `https://www.afip.gob.ar/fe/qr/?p=${base64}`
-}
-
-/** Imagen del QR como data URL PNG, lista para <img src=...> en el ticket. */
-export async function qrAfipDataUrl(datos: DatosQrAfip): Promise<string> {
-  return QRCode.toDataURL(urlQrAfip(datos), { margin: 1, width: 200 })
 }

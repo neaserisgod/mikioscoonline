@@ -38,6 +38,14 @@ export type NombreTabla = (typeof ORDEN_TABLAS)[number]
 // backup para no dejar huérfanos en Neon.
 export const MODELOS_CON_BORRADO = new Set<NombreTabla>(["category", "provider", "location"])
 
+// Campos a excluir de la sincronización (en las dos direcciones) por modelo —
+// hoy solo Sale.ticketPdf: es regenerable a partir de la propia venta (no un
+// comprobante legal como Comprobante.pdf, que SÍ se sincroniza entero) y no
+// tiene sentido inflar el backup/la descarga con un PDF por cada venta.
+const CAMPOS_EXCLUIDOS: Partial<Record<NombreTabla, Record<string, true>>> = {
+  sale: { ticketPdf: true },
+}
+
 export function whereOrg(modelo: NombreTabla, organizationId: string): Record<string, unknown> {
   switch (modelo) {
     case "organization":
@@ -55,8 +63,17 @@ export function whereOrg(modelo: NombreTabla, organizationId: string): Record<st
 }
 
 interface ModeloPrisma {
-  findMany: (args: { where: Record<string, unknown>; select?: Record<string, unknown> }) => Promise<Record<string, unknown>[]>
-  upsert: (args: { where: { id: string }; create: Record<string, unknown>; update: Record<string, unknown> }) => Promise<unknown>
+  findMany: (args: {
+    where: Record<string, unknown>
+    select?: Record<string, unknown>
+    omit?: Record<string, unknown>
+  }) => Promise<Record<string, unknown>[]>
+  upsert: (args: {
+    where: { id: string }
+    create: Record<string, unknown>
+    update: Record<string, unknown>
+    omit?: Record<string, unknown>
+  }) => Promise<unknown>
   deleteMany: (args: { where: Record<string, unknown> }) => Promise<unknown>
 }
 
@@ -64,21 +81,25 @@ const TAMANO_LOTE = 20
 
 /**
  * Copia todas las filas que matchean `where` de `origen` a `destino`, por
- * upsert (id). Idempotente: correrlo de nuevo no duplica nada.
+ * upsert (id). Idempotente: correrlo de nuevo no duplica nada. Excluye los
+ * campos de CAMPOS_EXCLUIDOS para el modelo dado (hoy solo Sale.ticketPdf).
  */
 export async function copiarTabla(
-  nombre: string,
+  nombre: NombreTabla,
   origen: ModeloPrisma,
   destino: ModeloPrisma,
   where: Record<string, unknown>
 ): Promise<{ count: number; ids: string[] }> {
-  const filas = await origen.findMany({ where })
+  const omit = CAMPOS_EXCLUIDOS[nombre]
+  const filas = await origen.findMany({ where, ...(omit ? { omit } : {}) })
   const ids: string[] = []
 
   for (let i = 0; i < filas.length; i += TAMANO_LOTE) {
     const lote = filas.slice(i, i + TAMANO_LOTE)
     await Promise.all(
-      lote.map((fila) => destino.upsert({ where: { id: fila.id as string }, create: fila, update: fila }))
+      lote.map((fila) =>
+        destino.upsert({ where: { id: fila.id as string }, create: fila, update: fila, ...(omit ? { omit } : {}) })
+      )
     )
     for (const fila of lote) ids.push(fila.id as string)
   }

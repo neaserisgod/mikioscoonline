@@ -483,6 +483,12 @@ model Sale {
   organizationId     String
   organization       Organization @relation(fields: [organizationId], references: [id])
   createdAt          DateTime     @default(now())
+  // PDF del ticket NO fiscal, generado y guardado best-effort en TODA venta
+  // confirmada (ver impresionService.procesarTicketVenta) — independiente de
+  // si la venta también facturó por AFIP en paralelo (eso vive aparte en
+  // Comprobante.pdf). Regenerable a partir de la venta; no es un comprobante
+  // legal, por eso NO se sincroniza al backup de Neon (ver kiosco-sync.ts).
+  ticketPdf Bytes?
 
   lines           SaleLine[]
   payments        Payment[]
@@ -550,6 +556,13 @@ model Comprobante {
   subtotalCentavos Int
   ivaTotalCentavos Int
   totalCentavos    Int
+
+  // PDF de la representación impresa del comprobante (con CAE + QR de AFIP),
+  // archivado por reglamento — generado best-effort en facturacionService
+  // JUSTO DESPUÉS de EMITIDO (nunca antes: si la generación fallara no debe
+  // tirar la emisión, que es lo que importa). null hasta que se genera, o si
+  // la generación falló (se puede reintentar/regenerar más adelante).
+  pdf Bytes?
 
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id])

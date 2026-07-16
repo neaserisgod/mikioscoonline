@@ -1,7 +1,10 @@
 import { prisma } from "@/lib/prisma"
 import { getFacturacionProvider } from "@/lib/providers/facturacion"
 import type { DatosFactura } from "@/lib/providers/facturacion"
+import { generarPdfTicket } from "@/lib/pdf-ticket"
 import { determinarTipoComprobante, type CondicionIVA } from "@/lib/fiscal"
+import { construirTicket } from "@/domain/ticket"
+import { logError } from "@/lib/log"
 
 export const facturacionService = {
   /**
@@ -14,7 +17,7 @@ export const facturacionService = {
   async facturarVenta(saleId: string, organizationId: string): Promise<void> {
     const sale = await prisma.sale.findFirst({
       where: { id: saleId, organizationId },
-      include: { lines: true, customer: true, organization: true, comprobante: true },
+      include: { lines: { include: { product: true } }, customer: true, organization: true, comprobante: true },
     })
     if (!sale) return
     if (sale.comprobante?.estado === "EMITIDO") return
@@ -94,6 +97,40 @@ export const facturacionService = {
           error: null,
         },
       })
+
+      // Archivo del PDF por reglamento — DESPUÉS de EMITIDO a propósito: el CAE
+      // ya está confirmado y a salvo en la base, así que un fallo acá (fuente
+      // tipográfica rara, QR, lo que sea) nunca debe convertir una emisión
+      // exitosa en un ERROR. Se puede regenerar más adelante si hiciera falta.
+      try {
+        const ticket = construirTicket({
+          organization: { nombre: org.nombre, cuit: org.cuit, condicionIva: org.condicionIva },
+          fecha: sale.fecha,
+          lines: sale.lines.map((l) => ({
+            nombre: l.product.nombre,
+            esPesable: l.product.esPesable,
+            cantidad: l.cantidad,
+            gramos: l.gramos,
+            precioUnitarioCentavos: l.precioUnitarioCentavos,
+          })),
+          recargoCentavos: sale.recargoCentavos,
+          comprobante: {
+            estado: "EMITIDO",
+            tipo,
+            puntoVenta: org.puntoDeVenta!,
+            numero: resultado.numeroComprobante,
+            cae: resultado.cae,
+            caeFechaVencimiento: resultado.caeFechaVencimiento,
+            cuitCliente: null,
+            totalCentavos: datos.totalCentavos,
+          },
+          fiscal: true,
+        })
+        const pdf = await generarPdfTicket(ticket)
+        await prisma.comprobante.update({ where: { saleId: sale.id }, data: { pdf: new Uint8Array(pdf) } })
+      } catch (error) {
+        logError("facturacion.generarPdf", error, { saleId: sale.id })
+      }
     } catch (e) {
       await guardarError(sale.id, organizationId, sale, e instanceof Error ? e.message : "Error desconocido al facturar")
     }
