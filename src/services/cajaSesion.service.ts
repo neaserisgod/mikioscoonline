@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client"
 import { prisma } from "@/lib/prisma"
 
 export interface AbrirCajaInput {
@@ -79,7 +80,8 @@ function calcEfectivoEsperado(fondoInicialCentavos: number, movimientos: Array<{
 
 export const cajaSesionService = {
   async abrirCaja(organizationId: string, cajaId: string, userId: string, fondoInicialCentavos: number, id?: string) {
-    return prisma.$transaction(async (tx) => {
+    const ejecutarTx = () =>
+      prisma.$transaction(async (tx) => {
       // Replay idempotente: reintento de la cola offline de Flutter tras perder la
       // respuesta de un "abrir caja" que sí se proceso.
       if (id) {
@@ -121,7 +123,27 @@ export const cajaSesionService = {
         },
         include: SESION_INCLUDE,
       })
-    })
+      })
+
+    // Mismo patrón que ventaService.crear: el check de replay de arriba cubre
+    // el reintento secuencial, pero dos reintentos del mismo `id` en vuelo a la
+    // vez pueden pasar ambos ese check y chocar recién en el INSERT — el que
+    // pierde recibe una violación de unicidad de la PK. Se captura y se
+    // devuelve la sesión ya creada (idempotencia real) en vez de propagar el
+    // error crudo.
+    let sesion: Awaited<ReturnType<typeof ejecutarTx>>
+    try {
+      sesion = await ejecutarTx()
+    } catch (error) {
+      if (id && error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+        const existente = await prisma.cajaSesion.findUnique({ where: { id }, include: SESION_INCLUDE })
+        if (!existente) throw error
+        sesion = existente
+      } else {
+        throw error
+      }
+    }
+    return sesion
   },
 
   async cerrarCaja(cajaSesionId: string, organizationId: string, userId: string, efectivoContadoCentavos: number, nota?: string) {
@@ -162,7 +184,8 @@ export const cajaSesionService = {
   },
 
   async registrarMovimiento(cajaSesionId: string, organizationId: string, data: RegistrarMovimientoInput, id?: string) {
-    return prisma.$transaction(async (tx) => {
+    const ejecutarTx = () =>
+      prisma.$transaction(async (tx) => {
       if (id) {
         const existente = await tx.movimientoCaja.findUnique({ where: { id } })
         if (existente) return existente
@@ -188,7 +211,23 @@ export const cajaSesionService = {
           organizationId,
         },
       })
-    })
+      })
+
+    // Misma red de seguridad que abrirCaja/ventaService.crear ante dos
+    // reintentos concurrentes del mismo `id` (ver comentario de abrirCaja).
+    let movimiento: Awaited<ReturnType<typeof ejecutarTx>>
+    try {
+      movimiento = await ejecutarTx()
+    } catch (error) {
+      if (id && error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+        const existente = await prisma.movimientoCaja.findUnique({ where: { id } })
+        if (!existente) throw error
+        movimiento = existente
+      } else {
+        throw error
+      }
+    }
+    return movimiento
   },
 
   async getSesionAbierta(cajaId: string, organizationId: string) {
