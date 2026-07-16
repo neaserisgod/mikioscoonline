@@ -37,7 +37,17 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
   return (
     <PersistQueryClientProvider
       client={queryClient}
-      persistOptions={{ persister, maxAge: 24 * 60 * 60_000 }}
+      persistOptions={{
+        persister,
+        maxAge: 24 * 60 * 60_000,
+        // Atado al build id (ver next.config.ts — SHA de commit, no el semver
+        // de package.json), así que CUALQUIER deploy nuevo cambia el buster y
+        // descarta el cache persistido entero en vez de reutilizarlo — evita
+        // que datos de un build viejo (ej. un shape de resumen anterior a un
+        // cambio reciente) se muestren un instante antes de que el fetch
+        // fresco los reemplace ("flash de versión vieja").
+        buster: process.env.NEXT_PUBLIC_BUILD_ID,
+      }}
     >
       {children}
       <ReactQueryDevtools initialIsOpen={false} />

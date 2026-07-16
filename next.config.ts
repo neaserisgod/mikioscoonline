@@ -1,7 +1,39 @@
 import type { NextConfig } from "next";
+import { execSync } from "node:child_process";
+import { version } from "./package.json";
+
+// Identificador único de ESTE build — no el semver de package.json (que solo
+// cambia cuando alguien se acuerda de bumpearlo). Se usa para el buildId de
+// Next y para invalidar cachés atadas al build (persistencia de React Query,
+// Service Worker — ver query-provider.tsx y sw-provider.tsx): cualquier deploy
+// nuevo, aunque no toque package.json ni el código, tiene que descartar lo que
+// haya quedado persistido/cacheado del build anterior.
+//
+// Se arma como `${base}-${timestamp}`: `base` identifica el commit (SHA de
+// Vercel, o de git local, o la versión de package.json si no hay .git — ej.
+// un build fuera de un checkout de git) y el timestamp garantiza que DOS
+// builds seguidos del MISMO commit (típico en local, sin commitear entre
+// medio) generen igual buster/CACHE_NAME distintos entre sí.
+//
+// Se calcula UNA sola vez por proceso: generateBuildId (abajo) y el valor
+// expuesto al cliente vía `env` tienen que coincidir, así que no puede
+// recalcularse por separado en cada uno.
+function resolveBuildIdBase(): string {
+  if (process.env.VERCEL_GIT_COMMIT_SHA) return process.env.VERCEL_GIT_COMMIT_SHA;
+  try {
+    return execSync("git rev-parse HEAD", { cwd: __dirname }).toString().trim();
+  } catch {
+    return version;
+  }
+}
+const BUILD_ID = `${resolveBuildIdBase()}-${Date.now()}`;
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  generateBuildId: async () => BUILD_ID,
+  env: {
+    NEXT_PUBLIC_BUILD_ID: BUILD_ID,
+  },
   // El file tracing no detecta el require dinámico del client de SQLite solo — hay que incluirlo a mano.
   outputFileTracingIncludes: {
     "/*": [
