@@ -70,8 +70,7 @@ export function ClientesClient() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="font-heading text-2xl font-medium">Clientes</h1>
+      <div className="flex items-center justify-end">
         <Button size="sm" onClick={abrirCrear} className="gap-1.5"><Plus className="size-3.5" /> Nuevo</Button>
       </div>
 
@@ -199,6 +198,7 @@ function CuentaCorrienteSheet({ cliente, onSuccess }: { cliente: Cliente; onSucc
 
   // Si hay una sola caja abierta no tiene sentido obligar a elegirla del dropdown.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- autoselección única de la caja abierta, no re-render en loop
     if (cajasAbiertas.length === 1 && !cajaId) setCajaId(cajasAbiertas[0].id)
   }, [cajasAbiertas, cajaId])
 
@@ -224,13 +224,13 @@ function CuentaCorrienteSheet({ cliente, onSuccess }: { cliente: Cliente; onSucc
   return (
     <>
       <SheetHeader><SheetTitle>Cuenta corriente — {cliente.nombre}</SheetTitle></SheetHeader>
-      <div className="mt-4 rounded-xl border border-border/60 bg-card px-4 py-3 flex items-center justify-between">
+      <div className="mt-4 rounded-xl bg-card shadow-[var(--shadow-card)] ring-1 ring-foreground/[0.04] px-4 py-3 flex items-center justify-between">
         <p className="text-sm text-muted-foreground">Nos debe</p>
         <p className="text-lg font-semibold tabular-nums text-k-loss">{formatearARS(cliente.saldoCuentaCorrienteCentavos)}</p>
       </div>
 
       {ventasFiadas && ventasFiadas.length > 0 && (
-        <div className="mt-2 rounded-xl border border-border/60 bg-card px-4 py-3 space-y-1.5">
+        <div className="mt-2 rounded-xl bg-card shadow-[var(--shadow-card)] ring-1 ring-foreground/[0.04] px-4 py-3 space-y-1.5">
           <p className="text-[11px] text-muted-foreground/70">Ventas con saldo fiado</p>
           {ventasFiadas.map((v) => (
             <div key={v.id} className="flex items-center justify-between text-sm">

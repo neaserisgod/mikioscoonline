@@ -44,8 +44,8 @@ export function CajaEstadoBar({ compact = false }: { compact?: boolean }) {
     <>
       <div
         className={cn(
-          "flex flex-col gap-2 rounded-xl border border-k-loss/30 bg-k-loss/8 px-3 py-2.5",
-          compact && "px-2.5 py-2"
+          "flex flex-col gap-2 rounded-2xl border border-k-loss/25 bg-k-loss/8 px-4 py-3",
+          compact && "px-3 py-2.5"
         )}
       >
         {cerradas.map((c) => (

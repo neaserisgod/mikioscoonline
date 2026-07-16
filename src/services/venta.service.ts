@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client"
 import { prisma } from "@/lib/prisma"
 import { calcularComision } from "@/domain/comisiones"
 import { calcularRecargoCigarrillos } from "@/domain/recargo-cigarrillos"
@@ -5,6 +6,7 @@ import { resolverCajaId } from "@/domain/cajas"
 import { precioUnitarioEfectivo, costoUnitarioEfectivo, subtotalLinea } from "@/domain/pesables"
 import { facturacionService } from "@/services/facturacion.service"
 import { impresionService } from "@/services/impresion.service"
+import { logError } from "@/lib/log"
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -74,7 +76,8 @@ async function efectivoDisponibleCajaPrincipal(organizationId: string): Promise<
 
 export const ventaService = {
   async crear(input: CrearVentaInput) {
-    const venta = await prisma.$transaction(async (tx) => {
+    const ejecutarTx = () =>
+      prisma.$transaction(async (tx) => {
       // 0. Replay idempotente: si el cliente ya mandó este id antes (reintento de la
       // cola offline de Flutter tras perder la respuesta), devolvemos la venta ya
       // creada tal cual en vez de reprocesar y duplicar stock/movimientos de caja.
@@ -537,7 +540,36 @@ export const ventaService = {
       }
 
       return venta
-    })
+      })
+
+    // El check idempotente del paso 0 cubre el reintento secuencial (el más
+    // común en la cola offline). Pero dos reintentos del mismo `id` en vuelo a
+    // la vez pueden pasar ambos ese check y chocar recién en el INSERT: el que
+    // pierde recibe una violación de unicidad de la PK. En vez de propagar ese
+    // error crudo, tratamos la carrera como lo que es —una venta ya creada— y
+    // devolvemos la existente (idempotencia real, sin duplicar stock ni caja).
+    let venta: Awaited<ReturnType<typeof ejecutarTx>>
+    try {
+      venta = await ejecutarTx()
+    } catch (error) {
+      if (
+        input.id &&
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === "P2002"
+      ) {
+        const existente = await prisma.sale.findUnique({
+          where: { id: input.id },
+          include: {
+            lines: { include: { product: true } },
+            payments: { include: { paymentMethod: true } },
+          },
+        })
+        if (!existente) throw error
+        venta = existente
+      } else {
+        throw error
+      }
+    }
 
     // Facturación AFIP — fuera de la transacción (es una llamada de red, no debe
     // tener el lock de la venta abierto mientras espera) y en segundo plano: si
@@ -553,9 +585,13 @@ export const ventaService = {
       !venta.esConsumoInterno && venta.payments.some((p) => p.paymentMethod.facturarAutomaticamente)
     ;(async () => {
       if (disparaFacturacion) {
-        await facturacionService.facturarVenta(venta.id, input.organizationId).catch(() => {})
+        await facturacionService
+          .facturarVenta(venta.id, input.organizationId)
+          .catch((error) => logError("venta.facturarVenta", error, { saleId: venta.id }))
       }
-      await impresionService.imprimirTicketVenta(venta.id, input.organizationId).catch(() => {})
+      await impresionService
+        .imprimirTicketVenta(venta.id, input.organizationId)
+        .catch((error) => logError("venta.imprimirTicket", error, { saleId: venta.id }))
     })()
 
     return venta

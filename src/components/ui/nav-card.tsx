@@ -1,4 +1,5 @@
 import type { LucideIcon } from "lucide-react"
+import { ChevronRight } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 interface NavCardProps {
@@ -18,7 +19,7 @@ export function NavCard({ title, sub, icon: Icon, badge, onClick }: NavCardProps
       type="button"
       onClick={onClick}
       className={cn(
-        "rounded-2xl border border-border/60 bg-card hover:bg-muted/30 transition-colors p-4",
+        "group rounded-2xl bg-card shadow-[var(--shadow-card)] ring-1 ring-foreground/[0.04] hover:bg-muted/30 transition-colors p-4",
         "flex items-center gap-3 text-left w-full"
       )}
     >
@@ -30,6 +31,7 @@ export function NavCard({ title, sub, icon: Icon, badge, onClick }: NavCardProps
         {sub && <p className="text-xs text-muted-foreground truncate">{sub}</p>}
       </div>
       {badge}
+      <ChevronRight className="size-4 text-muted-foreground/40 group-hover:text-foreground transition-colors shrink-0" />
     </button>
   )
 }

@@ -76,7 +76,6 @@ export function OnboardingWizard({ orgNombre }: { orgNombre: string }) {
   const [gastos, setGastos] = useState<GastoRow[]>([{ nombre: "", montoCentavos: 0 }])
 
   const totalSteps = STEPS.length
-  const progress = Math.round(((step + 1) / totalSteps) * 100)
   const currentStep = STEPS[step]
 
   function run(fn: () => Promise<void>) {

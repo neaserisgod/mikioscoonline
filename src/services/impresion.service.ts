@@ -1,6 +1,8 @@
 import { prisma } from "@/lib/prisma"
 import { imprimirTicketEnPosnet } from "@/lib/mercadopago-print"
 import { urlQrAfip } from "@/lib/providers/facturacion/afip-qr"
+import { subtotalLinea } from "@/domain/pesables"
+import { logError } from "@/lib/log"
 
 const NOMBRE_TIPO_COMPROBANTE: Record<string, string> = {
   FACTURA_A: "Factura A",
@@ -65,14 +67,23 @@ export const impresionService = {
           descripcion: l.product.esPesable
             ? `${((l.gramos ?? 0) / 1000).toFixed(3)}kg ${l.product.nombre}`
             : `${l.cantidad}x ${l.product.nombre}`,
-          precioCentavos: l.precioUnitarioCentavos * (l.product.esPesable ? 1 : l.cantidad),
+          // Subtotal real de la línea. Para pesables es precioPorKg × gramos/1000
+          // (no el precio por kg a secas), así las líneas suman el total del ticket.
+          precioCentavos: subtotalLinea({
+            esPesable: l.product.esPesable,
+            precioUnitarioCentavos: l.precioUnitarioCentavos,
+            cantidad: l.cantidad,
+            gramos: l.gramos,
+          }),
         })),
         totalCentavos: sale.totalCentavos,
         recargoCentavos: sale.recargoCentavos,
         comprobante,
       })
-    } catch {
-      // Best-effort — si falla, la venta ya quedó confirmada igual.
+    } catch (error) {
+      // Best-effort — si falla, la venta ya quedó confirmada igual. Se registra
+      // para poder diagnosticar fallos de impresión sin romper la venta.
+      logError("impresion.imprimirTicketVenta", error, { saleId })
     }
   },
 }

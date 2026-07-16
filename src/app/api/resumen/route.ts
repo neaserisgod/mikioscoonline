@@ -18,12 +18,13 @@ export async function GET(req: NextRequest) {
 
   // hoy/mes son cifras de ganancia — VENDEDOR no debe verlas, solo el stock bajo
   // (operativo, no financiero) le sirve para cualquiera.
-  const [hoy, real, reparto, valorInventario, stockBajo] = await Promise.all([
+  const [hoy, real, reparto, valorInventario, stockBajo, serie] = await Promise.all([
     role === "ADMIN" ? resumenService.hoy(organizationId) : null,
     role === "ADMIN" ? resumenService.equilibrioReal(organizationId, mesFecha) : null,
     role === "ADMIN" ? resumenService.reparto(organizationId, mesFecha) : null,
     role === "ADMIN" ? productoService.valorInventario(organizationId) : null,
     productoService.stockBajo(organizationId),
+    role === "ADMIN" ? resumenService.serieDiaria(organizationId, 14) : null,
   ])
 
   return NextResponse.json({
@@ -35,5 +36,6 @@ export async function GET(req: NextRequest) {
     reparto,
     valorInventario,
     stockBajo,
+    serie,
   })
 }

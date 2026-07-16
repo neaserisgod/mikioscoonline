@@ -71,7 +71,7 @@ interface VentasActions {
   activarVenta: (id: string) => void
   descartarVenta: (id: string) => void
   setOverlay: (open: boolean) => void
-  agregarProducto: (p: ProductoParaCarrito) => void
+  agregarProducto: (p: ProductoParaCarrito, cantidad?: number) => void
   cambiarCantidad: (productId: string, delta: number) => void
   setCantidad: (productId: string, cantidad: number) => void
   setGramos: (productId: string, gramos: number) => void
@@ -149,22 +149,27 @@ export const useVentasStore = create<VentasState & VentasActions>((set, get) => 
       set({ overlayAbierto: open })
     },
 
-    agregarProducto(p) {
+    agregarProducto(p, cantidad) {
       set((s) => {
         const activa = ventaActiva(s)
         if (!activa) return s
         const existe = activa.carrito.find((l) => l.productId === p.productId)
 
         if (p.esPesable) {
-          // Pesable: una sola línea por producto, el peso se carga a mano en el carrito. Si
-          // ya estaba en el carrito, igual refrescamos el stock cacheado en la línea (re-buscar
-          // o re-escanear el mismo producto es la única señal que tenemos de que el stock
-          // pudo haber cambiado desde que se agregó) — si no, el peso queda clampeado para
-          // siempre contra el valor viejo aunque se reponga stock del lado de Config.
+          // Pesable: una sola línea por producto. El peso se carga a mano en el carrito,
+          // salvo que venga por prefijo ("200 queso" = 200 g). Si ya estaba en el carrito,
+          // refrescamos el stock cacheado (re-buscar/re-escanear es la única señal de que el
+          // stock pudo cambiar) y, si vino un prefijo, se SUMAN esos gramos.
           if (existe) {
             const nuevoCarrito = activa.carrito.map((l) =>
               l.productId === p.productId
-                ? { ...l, stockGramos: p.stockGramos, gramos: Math.min(l.gramos ?? 0, p.stockGramos ?? 0) }
+                ? {
+                    ...l,
+                    stockGramos: p.stockGramos,
+                    gramos: cantidad != null
+                      ? (l.gramos ?? 0) + cantidad
+                      : Math.min(l.gramos ?? 0, p.stockGramos ?? 0),
+                  }
                 : l
             )
             return {
@@ -172,7 +177,7 @@ export const useVentasStore = create<VentasState & VentasActions>((set, get) => 
             }
           }
           if ((p.stockGramos ?? 0) <= 0) return s
-          const nuevoCarrito = [...activa.carrito, { ...p, cantidad: 1, gramos: 0 }]
+          const nuevoCarrito = [...activa.carrito, { ...p, cantidad: 1, gramos: cantidad ?? 0 }]
           return {
             ventas: s.ventas.map((v) => (v.id === activa.id ? { ...v, carrito: nuevoCarrito } : v)),
           }
@@ -188,12 +193,12 @@ export const useVentasStore = create<VentasState & VentasActions>((set, get) => 
             )
           } else {
             nuevoCarrito = activa.carrito.map((l) =>
-              l.productId === p.productId ? { ...l, cantidad: l.cantidad + 1, stock: p.stock } : l
+              l.productId === p.productId ? { ...l, cantidad: l.cantidad + (cantidad ?? 1), stock: p.stock } : l
             )
           }
         } else {
           if (p.stock < 1) return s
-          nuevoCarrito = [...activa.carrito, { ...p, cantidad: 1, gramos: null }]
+          nuevoCarrito = [...activa.carrito, { ...p, cantidad: cantidad ?? 1, gramos: null }]
         }
         return {
           ventas: s.ventas.map((v) =>

@@ -205,7 +205,7 @@ export default function HistorialVentasClient() {
         </label>
       </div>
 
-      <div className="flex flex-wrap gap-4 rounded-2xl border bg-card p-4 text-sm">
+      <div className="flex flex-wrap gap-4 rounded-2xl bg-card shadow-[var(--shadow-card)] ring-1 ring-foreground/[0.04] p-4 text-sm">
         <div>
           <p className="text-muted-foreground">Ventas en esta página</p>
           <p className="font-heading text-lg font-medium">{ventas.length} de {total}</p>

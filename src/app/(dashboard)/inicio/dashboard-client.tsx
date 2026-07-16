@@ -1,10 +1,10 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { motion } from "framer-motion"
 import { stagger } from "@/lib/motion"
-import { ShoppingCart, AlertTriangle, TrendingUp, Zap, Wallet, ArrowDownLeft, ArrowUpRight, Loader2, FileText, ClipboardCheck } from "lucide-react"
+import { ShoppingCart, AlertTriangle, TrendingUp, Zap, ArrowDownLeft, ArrowUpRight, Loader2, FileText, ClipboardCheck, ChevronDown } from "lucide-react"
 import Link from "next/link"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
@@ -85,6 +85,27 @@ interface ResumenData {
   reparto: Reparto | null
   valorInventario: ValorInventario | null
   stockBajo: { id: string; nombre: string; stock: number; stockMinimo: number }[]
+  serie: { fecha: string; netoCentavos: number }[] | null
+}
+
+/** Sparkline minimalista para el hero: polyline normalizada, sin ejes ni grilla. */
+function Sparkline({ valores, className }: { valores: number[]; className?: string }) {
+  if (valores.length < 2) return null
+  const w = 100
+  const h = 28
+  const min = Math.min(...valores, 0)
+  const max = Math.max(...valores, 0)
+  const rango = max - min || 1
+  const pts = valores.map((v, i) => {
+    const x = (i / (valores.length - 1)) * w
+    const y = h - ((v - min) / rango) * h
+    return `${x.toFixed(1)},${y.toFixed(1)}`
+  })
+  return (
+    <svg viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" className={className} aria-hidden="true">
+      <polyline points={pts.join(" ")} fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+    </svg>
+  )
 }
 
 function RepartoFila({
@@ -239,14 +260,11 @@ function CajasPanel() {
 
   return (
     <>
-      <div className="rounded-2xl border border-border/60 bg-card overflow-hidden">
-        <div className="px-4 pt-3.5 pb-2.5 border-b border-border/40 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Wallet className="size-3.5 text-muted-foreground" />
-            <p className="text-sm font-medium">Cajas</p>
-          </div>
+      <div className="rounded-2xl bg-card shadow-[var(--shadow-card)] ring-1 ring-foreground/[0.04] overflow-hidden">
+        <div className="px-5 pt-4 pb-3 flex items-center justify-between">
+          <p className="text-[15px] font-semibold tracking-tight">Cajas</p>
           {lastUpdate && (
-            <p className="text-[10px] text-muted-foreground/50">{lastUpdate}</p>
+            <p className="text-[11px] text-muted-foreground">{lastUpdate}</p>
           )}
         </div>
 
@@ -301,10 +319,10 @@ function CajasPanel() {
 
                   {abierta && (
                     <div className="text-right shrink-0">
-                      <p className={cn("text-sm font-semibold tabular-nums", enCaja >= 0 ? "text-k-gain" : "text-k-loss")}>
+                      <p className={cn("text-[15px] font-semibold tabular-nums tracking-tight", enCaja >= 0 ? "text-k-gain" : "text-k-loss")}>
                         {formatearARS(enCaja)}
                       </p>
-                      <p className="text-[10px] text-muted-foreground">en caja</p>
+                      <p className="text-[11px] text-muted-foreground">en caja</p>
                     </div>
                   )}
 
@@ -487,9 +505,10 @@ function CerrarCajaSheet({ cajaNombre, sesionId, efectivoEsperado, onSuccess }: 
         <div className="space-y-1.5">
           <label className="text-sm font-medium">Efectivo contado ($)</label>
           <input
-            type="number" step="0.01" min="0"
+            type="number" step="0.01" min="0" inputMode="decimal" autoFocus
             {...register("pesos", { valueAsNumber: true })}
-            className="w-full rounded-xl border border-border/60 bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+            onFocus={(e) => e.currentTarget.select()}
+            className="w-full h-10 rounded-xl border border-border/60 bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
           />
           {errors.pesos && <p className="text-xs text-k-loss">{errors.pesos.message}</p>}
         </div>
@@ -566,9 +585,10 @@ function MovimientoCajaSheet({ cajaNombre, sesionId, onSuccess }: {
         <div className="space-y-1.5">
           <label className="text-sm font-medium">Monto ($)</label>
           <input
-            type="number" step="0.01" min="0"
+            type="number" step="0.01" min="0" inputMode="decimal" autoFocus
             {...register("pesos", { valueAsNumber: true })}
-            className="w-full rounded-xl border border-border/60 bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+            onFocus={(e) => e.currentTarget.select()}
+            className="w-full h-10 rounded-xl border border-border/60 bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
           />
           {errors.pesos && <p className="text-xs text-k-loss">{errors.pesos.message}</p>}
         </div>
@@ -713,7 +733,7 @@ function InicioVendedor({ stockBajo }: { stockBajo: { id: string; nombre: string
 
       <motion.div variants={stagger.item}>
         <Link href="/vender" className="block">
-          <div className="rounded-2xl border border-border/60 bg-card hover:bg-muted/30 transition-colors p-5 flex items-center gap-3">
+          <div className="rounded-2xl bg-card shadow-[var(--shadow-card)] ring-1 ring-foreground/[0.04] hover:bg-muted/30 transition-colors p-5 flex items-center gap-3">
             <div className="rounded-xl bg-foreground/8 p-2.5 shrink-0">
               <Zap className="size-4 text-foreground/70" />
             </div>
@@ -766,6 +786,17 @@ function getToday() {
 export default function DashboardClient() {
   const qc = useQueryClient()
   const [retirandoOpen, setRetirandoOpen] = useState(false)
+  // Saludo + fecha por hora local. Se calculan en el cliente (useEffect) para no
+  // romper la hidratación: el server no sabe la hora/zona del navegador.
+  const [saludo, setSaludo] = useState<{ hola: string; fecha: string } | null>(null)
+  useEffect(() => {
+    const now = new Date()
+    const h = now.getHours()
+    const hola = h < 12 ? "Buen día" : h < 20 ? "Buenas tardes" : "Buenas noches"
+    const fecha = now.toLocaleDateString("es-AR", { weekday: "long", day: "numeric", month: "long" })
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- inicialización única en mount, no re-render en loop
+    setSaludo({ hola, fecha: fecha.charAt(0).toUpperCase() + fecha.slice(1) })
+  }, [])
   const { data, isLoading } = useQuery<ResumenData>({
     queryKey: ["resumen"],
     queryFn: () => fetch("/api/resumen").then((r) => r.json()),
@@ -813,6 +844,7 @@ export default function DashboardClient() {
   }
 
   const { hoy, mes, reparto, valorInventario } = data
+  const serie = (data.serie ?? []).map((d) => d.netoCentavos)
   const stockBajo = data.stockBajo ?? []
   const margenPct =
     hoy.ventasCentavos > 0
@@ -827,36 +859,111 @@ export default function DashboardClient() {
   return (
     <motion.div className="space-y-5" variants={stagger.container} initial="hidden" animate="show">
 
-      {/* ── Hero inline: ganancia neta + chips del día ─────────────────────────── */}
-      <motion.div
-        variants={stagger.item}
-        className="flex items-end justify-between gap-4 flex-wrap"
-      >
-        <div>
-          <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1">
-            Hoy · Ganancia neta
-          </p>
-          <h1 className={cn(
-            "text-4xl font-semibold tabular-nums tracking-tight font-mono",
-            hoy.gananciaNeta > 0 ? "text-k-gain" : hoy.gananciaNeta < 0 ? "text-k-loss" : ""
-          )}>
-            {formatearARS(hoy.gananciaNeta)}
-          </h1>
+      {/* ── Saludo ──────────────────────────────────────────────────────────────── */}
+      <motion.div variants={stagger.item} className="flex items-baseline justify-between gap-4">
+        <div className="min-h-[3.25rem]">
+          {saludo && (
+            <>
+              <p className="text-[13px] text-muted-foreground">{saludo.fecha}</p>
+              <h1 className="text-2xl font-semibold tracking-tight">{saludo.hola}</h1>
+            </>
+          )}
         </div>
-        <div className="flex items-center gap-4 pb-0.5 shrink-0">
-          <div className="text-right">
-            <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Ventas</p>
-            <p className="text-sm font-semibold tabular-nums">{formatearARS(hoy.ventasCentavos)}</p>
+      </motion.div>
+
+      {/* ── Hero oscuro: ganancia neta del día — fila única para bajar altura ───── */}
+      <motion.div variants={stagger.item}>
+        <Link
+          href="/clientes?tab=rentabilidad&periodo=hoy&agrupador=proveedor"
+          className="group block rounded-3xl bg-[#1c1c1e] text-white p-6 sm:p-7 transition-colors hover:bg-[#252527]"
+        >
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
+            <div className="shrink-0">
+              <p className="flex items-center gap-1.5 text-sm text-white/55 mb-1.5">
+                Ganancia neta de hoy
+                <ArrowUpRight className="size-3.5 text-white/30 group-hover:text-white/70 transition-colors" />
+              </p>
+              <p className={cn(
+                "text-5xl lg:text-6xl leading-none font-semibold tabular-nums tracking-[-0.035em]",
+                hoy.gananciaNeta < 0 ? "text-[#ff6b6b]" : "text-white"
+              )}>
+                {formatearARS(hoy.gananciaNeta)}
+              </p>
+            </div>
+            <div className="flex items-center gap-8 lg:gap-10">
+              {serie.length >= 2 && serie.some((v) => v !== 0) && (
+                <div className="hidden md:block w-40 lg:w-52">
+                  <p className="text-[11px] text-white/40 mb-1.5">Últimos 14 días</p>
+                  <Sparkline valores={serie} className="h-10 w-full text-[#30d158]" />
+                </div>
+              )}
+              <div className="flex items-center gap-8">
+                <div>
+                  <p className="text-xs text-white/50 mb-1">Ventas</p>
+                  <p className="text-lg font-semibold tabular-nums tracking-tight">{formatearARS(hoy.ventasCentavos)}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-white/50 mb-1">Tickets</p>
+                  <p className="text-lg font-semibold tabular-nums tracking-tight">{hoy.cantidadVentas}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-white/50 mb-1">Margen</p>
+                  <p className="text-lg font-semibold tabular-nums tracking-tight">{margenPct}%</p>
+                </div>
+              </div>
+            </div>
           </div>
-          <div className="w-px h-7 bg-border/60" />
-          <div className="text-right">
-            <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Tickets</p>
-            <p className="text-sm font-semibold tabular-nums">{hoy.cantidadVentas}</p>
+        </Link>
+      </motion.div>
+
+      {/* ── Objetivo del mes (anillo) + ganancia retirable ──────────────────────── */}
+      <motion.div variants={stagger.item} className="grid sm:grid-cols-2 gap-4">
+        <Link href="/clientes?tab=rentabilidad" className="group rounded-3xl bg-card shadow-[var(--shadow-card)] ring-1 ring-foreground/[0.04] p-6 flex items-center gap-5 transition-colors hover:bg-muted/30">
+          <div className="relative size-[104px] shrink-0">
+            <svg viewBox="0 0 120 120" className="size-[104px] -rotate-90">
+              <circle cx="60" cy="60" r="52" fill="none" className="stroke-foreground/[0.07]" strokeWidth="13" />
+              <circle
+                cx="60" cy="60" r="52" fill="none"
+                className={cn(mes.cubierto ? "stroke-k-gain" : "stroke-primary")}
+                strokeWidth="13" strokeLinecap="round"
+                strokeDasharray={2 * Math.PI * 52}
+                strokeDashoffset={2 * Math.PI * 52 * (1 - Math.max(0, Math.min(100, mes.pctAvance)) / 100)}
+              />
+            </svg>
+            <div className="absolute inset-0 flex flex-col items-center justify-center">
+              <span className="text-xl font-semibold tabular-nums tracking-tight">{mes.pctAvance}%</span>
+              <span className="text-[11px] text-muted-foreground">del mes</span>
+            </div>
           </div>
-          <div className="w-px h-7 bg-border/60" />
-          <div className="text-right">
-            <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Margen</p>
-            <p className="text-sm font-semibold tabular-nums">{margenPct}%</p>
+          <div className="min-w-0">
+            <p className="flex items-center gap-1.5 text-[15px] font-semibold tracking-tight mb-1">
+              Objetivo de {nombreMes(mes.mesAnio)}
+              <ArrowUpRight className="size-3.5 text-muted-foreground/50 group-hover:text-foreground transition-colors" />
+            </p>
+            <p className="text-[13px] text-muted-foreground leading-relaxed">
+              {mes.cubierto
+                ? "Ya cubrís los gastos fijos del mes que viene."
+                : <>Falta <span className="text-foreground font-medium tabular-nums">{formatearARS(mes.faltanteCentavos)}</span> para cubrir los gastos del mes que viene.</>}
+            </p>
+          </div>
+        </Link>
+
+        <div className="rounded-3xl bg-card shadow-[var(--shadow-card)] ring-1 ring-foreground/[0.04] p-6 flex flex-col">
+          <p className="text-[13px] text-muted-foreground mb-1">Es tuyo, te lo podés llevar</p>
+          <p className={cn(
+            "text-3xl font-semibold tabular-nums tracking-[-0.02em]",
+            reparto.gananciaDisponibleCentavos > 0 ? "text-k-gain" : "text-muted-foreground"
+          )}>
+            {formatearARS(reparto.gananciaDisponibleCentavos)}
+          </p>
+          <div className="mt-auto pt-4">
+            <Button
+              className="w-full"
+              disabled={reparto.gananciaDisponibleCentavos <= 0}
+              onClick={() => setRetirandoOpen(true)}
+            >
+              Retirar ganancia
+            </Button>
           </div>
         </div>
       </motion.div>
@@ -884,9 +991,12 @@ export default function DashboardClient() {
               real" cada una — se fusionó para bajar el ruido visual (feedback
               del dueño 2026-07-10: "no lo entiendo ni yo que tuve la idea").
               Ver resumenService.reparto / equilibrioReal / productoService.valorInventario. */}
-          <div className="rounded-2xl border border-border/60 bg-card p-5 space-y-3">
+          <div className="rounded-2xl bg-card shadow-[var(--shadow-card)] ring-1 ring-foreground/[0.04] p-5 space-y-3">
             <div className="flex items-center justify-between gap-3">
-              <p className="text-sm font-medium">¿Cómo estamos?</p>
+              <Link href="/clientes?tab=rentabilidad" className="group flex items-center gap-1.5 text-sm font-medium hover:text-foreground/70 transition-colors">
+                ¿Cómo estamos?
+                <ArrowUpRight className="size-3.5 text-muted-foreground/50 group-hover:text-foreground transition-colors" />
+              </Link>
               <span className={cn(
                 "shrink-0 text-xs font-medium px-2 py-0.5 rounded-full",
                 reparto.gastosFijosCubiertos ? "bg-k-gain-muted text-k-gain" : "bg-muted text-muted-foreground"
@@ -895,126 +1005,86 @@ export default function DashboardClient() {
               </span>
             </div>
 
+            {/* Foco único: la plata líquida que hay ahora. El resto del desglose
+                (obligaciones + patrimonio) queda detrás de "Ver desglose" para
+                bajar la carga cognitiva — un solo número manda la sección. */}
             <div>
               <p className="text-xs text-muted-foreground">Plata que tenés ahora, en la mano</p>
-              <p className="text-2xl font-semibold tabular-nums">{formatearARS(reparto.disponibleRealCentavos)}</p>
-            </div>
-
-            <div className="space-y-2 pt-1">
-              <RepartoFila
-                label={`Para pagar este mes (alquiler, luz, etc.)`}
-                cubierto={reparto.gastosFijosCubiertos}
-                monto={reparto.gastosFijosCubiertos ? reparto.gastosFijosPendientesCentavos : reparto.gastosFijosFaltanteCentavos}
-                faltaLabel="Todavía falta"
-                okLabel="Ya lo tenés cubierto"
-              />
-              {reparto.reservaReposicionCentavos > 0 && (
-                <RepartoFila
-                  label="Para reponer mercadería"
-                  cubierto={reparto.reposicionCubierta}
-                  monto={reparto.reposicionCubierta ? reparto.reservaReposicionCentavos : reparto.reposicionFaltanteCentavos}
-                  faltaLabel="Todavía falta"
-                  okLabel="Ya tenés lo necesario"
-                />
-              )}
-            </div>
-
-            <div className="rounded-xl bg-foreground/5 px-3 py-2.5 flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <p className="text-xs text-muted-foreground">Esto es tuyo, te lo podés llevar</p>
-                <p className={cn(
-                  "text-sm font-semibold tabular-nums",
-                  reparto.gananciaDisponibleCentavos > 0 ? "text-k-gain" : "text-muted-foreground"
-                )}>
-                  {formatearARS(reparto.gananciaDisponibleCentavos)}
-                </p>
-              </div>
-              {reparto.gananciaDisponibleCentavos > 0 && (
-                <Button size="sm" variant="outline" className="shrink-0" onClick={() => setRetirandoOpen(true)}>
-                  Retirar
-                </Button>
-              )}
-            </div>
-            {reparto.reservaReposicionCentavos > 0 && !reparto.reposicionCubierta && (
-              <p className="text-[11px] text-muted-foreground">
-                Te falta juntar para reponer: {reparto.proveedoresPiso.filter((p) => p.pisoReposicionCentavos > 0).map((p) => p.nombre).join(", ")}.
+              <p className="text-[2rem] leading-none font-semibold tabular-nums tracking-[-0.02em] mt-1">
+                {formatearARS(reparto.disponibleRealCentavos)}
               </p>
-            )}
-
-            <div className="border-t border-border/60 pt-3 flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">+ Lo que tenés en la estantería</span>
-              <span className="font-medium tabular-nums">{formatearARS(valorInventario.valorCostoCentavos)}</span>
             </div>
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">= Todo lo que tiene tu negocio</span>
-              <span className="font-semibold tabular-nums">
-                {formatearARS(reparto.disponibleRealCentavos + valorInventario.valorCostoCentavos)}
-              </span>
-            </div>
-          </div>
 
-          {/* Progreso del mes en curso — esto es lo que se está generando ahora y va a
-              pagar los gastos fijos del mes que viene, no los de este mes */}
-          <div className="rounded-2xl border border-border/60 bg-card p-4">
-            <div className="flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <p className="text-xs text-muted-foreground truncate">
-                  Progreso de {nombreMes(mes.mesAnio)} (para pagar el mes que viene)
-                </p>
-                <p className="font-semibold tabular-nums text-lg text-k-gain mt-0.5">
-                  {formatearARS(mes.gananciaBrutaCentavos - mes.comisionesTotalesCentavos)}
-                </p>
+            <details className="group/desglose">
+              <summary className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer list-none select-none hover:text-foreground transition-colors [&::-webkit-details-marker]:hidden">
+                <ChevronDown className="size-3.5 transition-transform group-open/desglose:rotate-180" />
+                <span>Ver desglose</span>
+              </summary>
+              <div className="mt-3 space-y-2">
+                <RepartoFila
+                  label={`Para pagar este mes (alquiler, luz, etc.)`}
+                  cubierto={reparto.gastosFijosCubiertos}
+                  monto={reparto.gastosFijosCubiertos ? reparto.gastosFijosPendientesCentavos : reparto.gastosFijosFaltanteCentavos}
+                  faltaLabel="Todavía falta"
+                  okLabel="Ya lo tenés cubierto"
+                />
+                {reparto.reservaReposicionCentavos > 0 && (
+                  <RepartoFila
+                    label="Para reponer mercadería"
+                    cubierto={reparto.reposicionCubierta}
+                    monto={reparto.reposicionCubierta ? reparto.reservaReposicionCentavos : reparto.reposicionFaltanteCentavos}
+                    faltaLabel="Todavía falta"
+                    okLabel="Ya tenés lo necesario"
+                  />
+                )}
+                {reparto.reservaReposicionCentavos > 0 && !reparto.reposicionCubierta && (
+                  <p className="text-[11px] text-muted-foreground">
+                    Te falta juntar para reponer: {reparto.proveedoresPiso.filter((p) => p.pisoReposicionCentavos > 0).map((p) => p.nombre).join(", ")}.
+                  </p>
+                )}
+                <div className="border-t border-border/60 pt-2.5 mt-1 flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">+ Lo que tenés en la estantería</span>
+                  <span className="font-medium tabular-nums">{formatearARS(valorInventario.valorCostoCentavos)}</span>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">= Todo lo que tiene tu negocio</span>
+                  <span className="font-semibold tabular-nums">
+                    {formatearARS(reparto.disponibleRealCentavos + valorInventario.valorCostoCentavos)}
+                  </span>
+                </div>
               </div>
-            </div>
+            </details>
           </div>
+
 
           {/* Métricas bruta + comisiones */}
           <div className="grid grid-cols-2 gap-3">
-            <div className="rounded-2xl border border-border/60 bg-card p-4">
-              <p className="text-xs text-muted-foreground">Ganancia bruta hoy</p>
+            <Link href="/clientes?tab=rentabilidad&periodo=hoy" className="group rounded-2xl bg-card shadow-[var(--shadow-card)] ring-1 ring-foreground/[0.04] p-4 transition-colors hover:bg-muted/30">
+              <p className="flex items-center gap-1 text-xs text-muted-foreground">
+                Ganancia bruta hoy
+                <ArrowUpRight className="size-3 text-muted-foreground/40 group-hover:text-foreground transition-colors" />
+              </p>
               <p className={cn(
                 "text-lg font-semibold tabular-nums mt-1",
                 hoy.gananciaBrutaCentavos > 0 ? "text-k-gain" : ""
               )}>
                 {formatearARS(hoy.gananciaBrutaCentavos)}
               </p>
-            </div>
-            <div className="rounded-2xl border border-border/60 bg-card p-4">
-              <p className="text-xs text-muted-foreground">Comisiones hoy</p>
+            </Link>
+            <Link href="/clientes?tab=rentabilidad&periodo=hoy" className="group rounded-2xl bg-card shadow-[var(--shadow-card)] ring-1 ring-foreground/[0.04] p-4 transition-colors hover:bg-muted/30">
+              <p className="flex items-center gap-1 text-xs text-muted-foreground">
+                Comisiones hoy
+                <ArrowUpRight className="size-3 text-muted-foreground/40 group-hover:text-foreground transition-colors" />
+              </p>
               <p className={cn(
                 "text-lg font-semibold tabular-nums mt-1",
                 hoy.comisionesTotalesCentavos > 0 ? "text-k-loss" : ""
               )}>
                 {formatearARS(hoy.comisionesTotalesCentavos)}
               </p>
-            </div>
+            </Link>
           </div>
 
-          {/* Accesos rápidos */}
-          <div className="grid grid-cols-2 gap-3">
-            <Link href="/vender" className="block">
-              <div className="rounded-2xl border border-border/60 bg-card hover:bg-muted/30 transition-colors p-4 flex items-center gap-3">
-                <div className="rounded-xl bg-foreground/8 p-2.5 shrink-0">
-                  <Zap className="size-4 text-foreground/70" />
-                </div>
-                <div>
-                  <p className="text-sm font-medium">Vender</p>
-                  <p className="text-xs text-muted-foreground">Nueva venta</p>
-                </div>
-              </div>
-            </Link>
-            <Link href="/clientes?tab=rentabilidad" className="block">
-              <div className="rounded-2xl border border-border/60 bg-card hover:bg-muted/30 transition-colors p-4 flex items-center gap-3">
-                <div className="rounded-xl bg-foreground/8 p-2.5 shrink-0">
-                  <TrendingUp className="size-4 text-foreground/70" />
-                </div>
-                <div>
-                  <p className="text-sm font-medium">Rentabilidad</p>
-                  <p className="text-xs text-muted-foreground">Ver análisis</p>
-                </div>
-              </div>
-            </Link>
-          </div>
         </div>
 
         {/* Columna derecha */}
@@ -1023,7 +1093,7 @@ export default function DashboardClient() {
           {/* Dónde ganás hoy — el header linkea a Rentabilidad con período "Hoy"
               ya seleccionado, para ver el desglose completo (unidades, costo,
               markup, u otros agrupadores) sin reimplementar esa tabla acá. */}
-          <div className="rounded-2xl border border-border/60 bg-card overflow-hidden">
+          <div className="rounded-2xl bg-card shadow-[var(--shadow-card)] ring-1 ring-foreground/[0.04] overflow-hidden">
             <Link
               href="/clientes?tab=rentabilidad&periodo=hoy&agrupador=proveedor"
               className="flex items-center justify-between px-4 pt-4 pb-2.5 border-b border-border/40 hover:bg-muted/30 transition-colors"
@@ -1059,13 +1129,14 @@ export default function DashboardClient() {
 
           {/* Stock bajo */}
           {stockBajo.length > 0 ? (
-            <div className="space-y-2.5">
-              <div className="flex items-center gap-2 px-1">
-                <AlertTriangle className="size-3.5 text-k-loss" />
+            <Link href="/productos" className="group block rounded-2xl bg-card shadow-[var(--shadow-card)] ring-1 ring-foreground/[0.04] overflow-hidden transition-colors hover:bg-muted/20">
+              <div className="flex items-center gap-2 px-4 pt-4 pb-2.5 border-b border-border/40">
+                <AlertTriangle className="size-3.5 text-k-loss shrink-0" />
                 <p className="text-sm font-medium">Stock bajo</p>
                 <span className="text-xs text-muted-foreground">({stockBajo.length})</span>
+                <ArrowUpRight className="size-3.5 text-muted-foreground/50 group-hover:text-foreground transition-colors ml-auto shrink-0" />
               </div>
-              <div className="rounded-2xl border border-k-loss/15 bg-k-loss-muted/15 overflow-hidden divide-y divide-border/40">
+              <div className="divide-y divide-border/40">
                 {stockBajo.slice(0, 5).map((p) => (
                   <div key={p.id} className="flex items-center justify-between px-4 py-2.5">
                     <p className="text-sm truncate">{p.nombre}</p>
@@ -1080,7 +1151,7 @@ export default function DashboardClient() {
                   </div>
                 )}
               </div>
-            </div>
+            </Link>
           ) : hoy.cantidadVentas === 0 && topProveedores.length === 0 ? (
             <EmptyState
               icon={ShoppingCart}
@@ -1149,9 +1220,10 @@ function RetirarGananciaForm({
         <div className="space-y-1.5">
           <Label>¿Cuánto te llevás? ($)</Label>
           <input
-            type="number" step="0.01" min="0"
+            type="number" step="0.01" min="0" inputMode="decimal" autoFocus
             value={monto} onChange={(e) => setMonto(e.target.value)}
-            className="w-full rounded-xl border border-border/60 bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+            onFocus={(e) => e.currentTarget.select()}
+            className="w-full h-10 rounded-xl border border-border/60 bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
           />
         </div>
         <div className="space-y-1.5">

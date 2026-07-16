@@ -1,26 +1,14 @@
 "use client"
 
 import { useState } from "react"
-import { usePathname } from "next/navigation"
 import { Menu } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { ThemeToggle } from "./theme-toggle"
 import { NavDrawer } from "./nav-drawer"
 import { TabsBar } from "./tabs-bar"
 
-const titles: [string, string][] = [
-  ["/vender", "Vender"],
-  ["/productos", "Productos"],
-  ["/clientes", "Clientes"],
-  ["/config", "Configuración"],
-  ["/inicio", "Inicio"],
-]
-
 export function TopBar() {
-  const pathname = usePathname()
   const [drawerOpen, setDrawerOpen] = useState(false)
-
-  const title = titles.find(([path]) => pathname.startsWith(path))?.[1] ?? "Kiosco"
 
   return (
     <>
@@ -35,7 +23,6 @@ export function TopBar() {
           >
             <Menu className="size-4 xl:size-5" />
           </Button>
-          <h1 className="text-base xl:text-lg font-semibold truncate">{title}</h1>
         </div>
 
         <div className="flex justify-center min-w-0 overflow-x-auto scrollbar-none">

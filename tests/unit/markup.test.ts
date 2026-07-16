@@ -14,8 +14,8 @@ describe("precioDesdeCosoYMarkup", () => {
     expect(precioDesdeCosoYMarkup(1000, 7000)).toBe(1700)
   })
 
-  it("costo 1000 + markup 5% → precio 1050", () => {
-    expect(precioDesdeCosoYMarkup(1000, 500)).toBe(1050)
+  it("costo 1000 + markup 5% → precio 1050 redondeado para arriba al peso entero (1100)", () => {
+    expect(precioDesdeCosoYMarkup(1000, 500)).toBe(1100)
   })
 
   it("costo 0 + markup 0% → precio 0", () => {

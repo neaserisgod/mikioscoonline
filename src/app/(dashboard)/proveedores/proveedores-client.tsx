@@ -96,8 +96,7 @@ export default function ProveedoresClient() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="font-heading text-2xl font-medium">Proveedores</h1>
+      <div className="flex items-center justify-end">
         <Button size="sm" onClick={abrirCrear} className="gap-1.5"><Plus className="size-3.5" /> Nuevo</Button>
       </div>
 
@@ -246,6 +245,7 @@ function AjusteCostoSheet({ proveedor, onSuccess }: { proveedor: Proveedor; onSu
   }
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- inicialización única desde datos async, no re-render en loop
     if (filas) setSeleccionados(new Set(filas.map((f) => f.id)))
   }, [filas])
 
@@ -298,7 +298,7 @@ function AjusteCostoSheet({ proveedor, onSuccess }: { proveedor: Proveedor; onSu
           <p className="mt-4 text-sm text-muted-foreground">Ningún producto activo de este proveedor tiene costo cargado.</p>
         ) : (
           <>
-            <div className="mt-4 rounded-xl border border-border/60 bg-card divide-y divide-border/40 max-h-[45vh] overflow-y-auto">
+            <div className="mt-4 rounded-xl bg-card shadow-[var(--shadow-card)] ring-1 ring-foreground/[0.04] divide-y divide-border/40 max-h-[45vh] overflow-y-auto">
               {filas.map((f) => (
                 <label key={f.id} className="flex items-center gap-3 px-3 py-2.5 cursor-pointer">
                   <Checkbox checked={seleccionados.has(f.id)} onCheckedChange={() => toggle(f.id)} />
@@ -405,6 +405,7 @@ function CuentaCorrienteSheet({ proveedor, onSuccess }: { proveedor: Proveedor; 
 
   // Si hay una sola caja abierta no tiene sentido obligar a elegirla del dropdown.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- autoselección única de la caja abierta, no re-render en loop
     if (cajasAbiertas.length === 1 && !cajaId) setCajaId(cajasAbiertas[0].id)
   }, [cajasAbiertas, cajaId])
 
@@ -443,7 +444,7 @@ function CuentaCorrienteSheet({ proveedor, onSuccess }: { proveedor: Proveedor; 
 
       <Link
         href={`/productos?proveedorId=${proveedor.id}`}
-        className="mt-4 flex items-center justify-between rounded-xl border border-border/60 bg-card px-4 py-2.5 text-sm hover:bg-muted/30 transition-colors"
+        className="mt-4 flex items-center justify-between rounded-xl bg-card shadow-[var(--shadow-card)] ring-1 ring-foreground/[0.04] px-4 py-2.5 text-sm hover:bg-muted/30 transition-colors"
       >
         <span className="text-muted-foreground">Ver catálogo de este proveedor</span>
         <ArrowRight className="size-3.5 text-muted-foreground" />
@@ -475,7 +476,7 @@ function CuentaCorrienteSheet({ proveedor, onSuccess }: { proveedor: Proveedor; 
         </Link>
       )}
 
-      <div className="mt-2 rounded-xl border border-border/60 bg-card px-4 py-3 flex items-center justify-between">
+      <div className="mt-2 rounded-xl bg-card shadow-[var(--shadow-card)] ring-1 ring-foreground/[0.04] px-4 py-3 flex items-center justify-between">
         <p className="text-sm text-muted-foreground">
           {proveedor.saldoCuentaCorrienteCentavos >= 0 ? "Le debemos" : "Saldo a favor"}
         </p>
@@ -487,7 +488,7 @@ function CuentaCorrienteSheet({ proveedor, onSuccess }: { proveedor: Proveedor; 
         </p>
       </div>
 
-      <div className="mt-2 rounded-xl border border-border/60 bg-card px-4 py-3">
+      <div className="mt-2 rounded-xl bg-card shadow-[var(--shadow-card)] ring-1 ring-foreground/[0.04] px-4 py-3">
         <div className="flex items-center justify-between">
           <div>
             <p className="text-sm text-muted-foreground">Piso de reinversión</p>
@@ -513,7 +514,7 @@ function CuentaCorrienteSheet({ proveedor, onSuccess }: { proveedor: Proveedor; 
         )}
       </div>
 
-      <div className="mt-2 rounded-xl border border-border/60 bg-card px-4 py-3 space-y-2">
+      <div className="mt-2 rounded-xl bg-card shadow-[var(--shadow-card)] ring-1 ring-foreground/[0.04] px-4 py-3 space-y-2">
         <p className="text-[11px] text-muted-foreground/70">Para decidir el piso: lo que tenés y lo que vendés de este proveedor</p>
         <div className="flex items-center justify-between text-sm">
           <span className="text-muted-foreground">Costo del stock que tenés ahora</span>
@@ -580,7 +581,7 @@ function CuentaCorrienteSheet({ proveedor, onSuccess }: { proveedor: Proveedor; 
       </form>
 
       {movimientos && movimientos.length > 0 && (
-        <div className="mt-4 rounded-xl border border-border/60 bg-card px-4 py-3 space-y-1.5">
+        <div className="mt-4 rounded-xl bg-card shadow-[var(--shadow-card)] ring-1 ring-foreground/[0.04] px-4 py-3 space-y-1.5">
           <p className="text-[11px] text-muted-foreground/70">Historial de cuenta corriente</p>
           {movimientos.slice(0, 6).map((m) => (
             <div key={m.id} className="flex items-center justify-between text-sm">
@@ -602,7 +603,7 @@ function CuentaCorrienteSheet({ proveedor, onSuccess }: { proveedor: Proveedor; 
       )}
 
       {pedidos && pedidos.length > 0 && (
-        <div className="mt-2 rounded-xl border border-border/60 bg-card px-4 py-3 space-y-1.5">
+        <div className="mt-2 rounded-xl bg-card shadow-[var(--shadow-card)] ring-1 ring-foreground/[0.04] px-4 py-3 space-y-1.5">
           <p className="text-[11px] text-muted-foreground/70 flex items-center gap-1.5">
             <Package className="size-3" /> Historial de pedidos (entradas de stock)
           </p>

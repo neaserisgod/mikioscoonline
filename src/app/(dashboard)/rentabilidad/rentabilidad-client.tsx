@@ -121,7 +121,7 @@ export default function RentabilidadClient() {
 
       {/* Totales — 2 cols mobile, 4 (o 5 en proveedor) cols desktop */}
       <div className={cn("grid grid-cols-2 gap-3", agrupador === "proveedor" ? "lg:grid-cols-5" : "lg:grid-cols-4")}>
-        <div className="rounded-2xl border border-border/60 bg-card p-4">
+        <div className="rounded-2xl bg-card shadow-[var(--shadow-card)] ring-1 ring-foreground/[0.04] p-4">
           <p className="text-xs text-muted-foreground">
             {periodo === "hoy" ? "Ventas de hoy" : periodo === "mes" ? "Ventas del mes" : "Ventas totales"}
           </p>
@@ -133,13 +133,13 @@ export default function RentabilidadClient() {
             {formatearARS(totalGanancia)}
           </p>
         </div>
-        <div className="rounded-2xl border border-border/60 bg-card p-4">
+        <div className="rounded-2xl bg-card shadow-[var(--shadow-card)] ring-1 ring-foreground/[0.04] p-4">
           <p className="text-xs text-muted-foreground">Unidades</p>
           <p className="text-xl font-semibold tabular-nums mt-1">
             {totalUnidades.toLocaleString("es-AR")}
           </p>
         </div>
-        <div className="rounded-2xl border border-border/60 bg-card p-4">
+        <div className="rounded-2xl bg-card shadow-[var(--shadow-card)] ring-1 ring-foreground/[0.04] p-4">
           <p className="text-xs text-muted-foreground">Markup prom.</p>
           <p className="text-xl font-semibold tabular-nums mt-1">
             {totalCosto > 0 ? `${(markupPromBp / 100).toFixed(1)}%` : "—"}
@@ -192,7 +192,7 @@ export default function RentabilidadClient() {
         />
       ) : (
         <motion.div
-          className="rounded-2xl border border-border/60 bg-card overflow-hidden divide-y divide-border/40"
+          className="rounded-2xl bg-card shadow-[var(--shadow-card)] ring-1 ring-foreground/[0.04] overflow-hidden divide-y divide-border/40"
           variants={stagger.container}
           initial="hidden"
           animate="show"

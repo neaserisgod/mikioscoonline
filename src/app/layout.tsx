@@ -10,13 +10,15 @@ import { Toaster } from "@/components/ui/sonner"
 // Fuentes autoalojadas (src/assets/fonts) en vez de next/font/google: el build no
 // debe depender de la red — clave para poder compilar sin internet y evitar
 // problemas de conectividad con fonts.gstatic.com.
-// UI/datos/tablas — grotesk moderna, alta legibilidad a tamaño chico.
+// UI/datos — Inter variable (SF-like: geométrica, upright, altísima legibilidad).
+// Se reemplazó el woff2 anterior, que estaba guardado en itálica y hacía que toda
+// la app se viera inclinada. Fallback a la fuente del sistema (ver globals.css).
 const inter = localFont({
   src: [
-    { path: "../assets/fonts/inter-regular.woff2", weight: "100 900", style: "normal" },
-    { path: "../assets/fonts/inter-italic.woff2", weight: "100 900", style: "italic" },
+    { path: "../assets/fonts/inter-variable.woff2", weight: "100 900", style: "normal" },
+    { path: "../assets/fonts/inter-variable-italic.woff2", weight: "100 900", style: "italic" },
   ],
-  variable: "--font-sans",
+  variable: "--font-inter",
   display: "swap",
 })
 // Títulos — condensada y con peso, tipo cartel de almacén/oferta.

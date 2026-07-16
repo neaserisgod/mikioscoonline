@@ -39,7 +39,9 @@ export default async function DashboardLayout({ children }: { children: React.Re
       <main className="flex-1 overflow-hidden">
         <PageTransition>
           <div className="h-full overflow-y-auto">
-            <div className="max-w-6xl mx-auto px-4 lg:px-8 py-6 pb-24 lg:pb-8">
+            {/* Ancho completo en desktop (cap suave solo en pantallas 4K+) para
+                aprovechar el espacio y reducir el scroll. */}
+            <div className="max-w-[1800px] mx-auto px-4 lg:px-8 py-6 pb-24 lg:pb-8">
               {children}
             </div>
           </div>

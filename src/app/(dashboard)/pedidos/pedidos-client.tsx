@@ -85,6 +85,7 @@ export default function PedidosClient() {
   })
   useEffect(() => {
     if (prefillHecho || !stockBajoSugerido || stockBajoSugerido.length === 0) return
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- prefill único desde datos async, no re-render en loop
     setLineas(
       stockBajoSugerido.map((p) => ({
         key: crypto.randomUUID(),
@@ -228,7 +229,7 @@ export default function PedidosClient() {
               const calculo = costoYPrecioSugerido(linea)
               const yaElegidos = new Set(lineas.filter((l) => l.key !== linea.key).map((l) => l.productId))
               return (
-                <div key={linea.key} className="grid grid-cols-2 gap-2 rounded-2xl border bg-card p-3 lg:grid-cols-[2fr_1fr_1fr_1fr_1fr_auto] lg:items-end">
+                <div key={linea.key} className="grid grid-cols-2 gap-2 rounded-2xl bg-card shadow-[var(--shadow-card)] ring-1 ring-foreground/[0.04] p-3 lg:grid-cols-[2fr_1fr_1fr_1fr_1fr_auto] lg:items-end">
                   <div className="col-span-2 space-y-1 lg:col-span-1">
                     <Label className="text-xs">Producto</Label>
                     <Select
@@ -298,7 +299,7 @@ export default function PedidosClient() {
             </Button>
           </div>
 
-          <div className="grid grid-cols-1 gap-4 rounded-2xl border bg-card p-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 rounded-2xl bg-card shadow-[var(--shadow-card)] ring-1 ring-foreground/[0.04] p-4 sm:grid-cols-2">
             <div className="space-y-3">
               <div className="space-y-1">
                 <Label className="text-xs">IVA — monto ($)</Label>
@@ -324,7 +325,7 @@ export default function PedidosClient() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 gap-4 rounded-2xl border bg-card p-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 rounded-2xl bg-card shadow-[var(--shadow-card)] ring-1 ring-foreground/[0.04] p-4 sm:grid-cols-2">
             <div className="space-y-1">
               <div className="flex items-center justify-between">
                 <Label className="text-xs">Pagás ahora ($)</Label>

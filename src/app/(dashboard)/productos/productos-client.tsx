@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useSession } from "next-auth/react"
@@ -65,6 +65,8 @@ export default function ProductosClient() {
   const [sheetOpen, setSheetOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [barcodePreset, setBarcodePreset] = useState<string | undefined>()
+  const searchRef = useRef<HTMLInputElement>(null)
+  const [highlightedIndex, setHighlightedIndex] = useState(0)
   const qc = useQueryClient()
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -81,6 +83,7 @@ export default function ProductosClient() {
     const barcode = searchParams.get("barcode")
     const abrirId = searchParams.get("abrir")
     if (barcode) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- sincroniza con el query param del scanner, no re-render en loop
       setBarcodePreset(barcode)
       setEditingId(null)
       setSheetOpen(true)
@@ -137,6 +140,32 @@ export default function ProductosClient() {
     enabled: !!filtroEspecial || !!q || (!!proveedorId && !!categoriaId),
     staleTime: 30_000,
   })
+
+  // ── Flujo por teclado (mismos parámetros que Vender) ──────────────────────
+  const sheetOpenRef = useRef(sheetOpen)
+  sheetOpenRef.current = sheetOpen
+  // El buscador se enfoca al cargar. Nueva búsqueda → resetea el resaltado.
+  useEffect(() => { searchRef.current?.focus() }, [])
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- resetea el resaltado al cambiar la lista, no re-render en loop
+  useEffect(() => { setHighlightedIndex(0) }, [productos])
+  // Tipear una LETRA en cualquier parte enfoca el buscador y la captura (los
+  // dígitos se dejan para el escáner, que en Productos suma stock). No roba el
+  // foco cuando hay un diálogo abierto (alta/edición de producto).
+  useEffect(() => {
+    function onDocKeyDown(e: KeyboardEvent) {
+      if (e.ctrlKey || e.metaKey || e.altKey) return
+      if (sheetOpenRef.current) return
+      if (!/^\p{L}$/u.test(e.key)) return
+      const a = document.activeElement as HTMLElement | null
+      const tag = a?.tagName
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || a?.isContentEditable) return
+      e.preventDefault()
+      setQ((prev) => prev + e.key)
+      searchRef.current?.focus()
+    }
+    document.addEventListener("keydown", onDocKeyDown)
+    return () => document.removeEventListener("keydown", onDocKeyDown)
+  }, [])
 
   // Contadores para los chips de "revisar" — solo ADMIN, ven costo/precio real.
   const { data: costoProvisionalList } = useQuery<Producto[]>({
@@ -239,7 +268,7 @@ export default function ProductosClient() {
       )
     }
     return (
-      <div className="rounded-2xl border border-border/60 bg-card overflow-hidden">
+      <div className="rounded-2xl bg-card shadow-[var(--shadow-card)] ring-1 ring-foreground/[0.04] overflow-hidden">
         {/* Cabecera de tabla — solo desktop */}
         <div className={cn(
           "hidden lg:grid gap-x-4 px-4 py-2 text-xs text-muted-foreground font-medium bg-muted/20 border-b border-border/40",
@@ -258,7 +287,7 @@ export default function ProductosClient() {
           initial="hidden"
           animate="show"
         >
-          {lista.map((p) => {
+          {lista.map((p, i) => {
             const precioDisplay = p.esPesable ? (p.precioPorKgCentavos ?? 0) : p.precioCentavos
             const costoDisplay = p.esPesable ? (p.costoPorKgCentavos ?? 0) : p.costoCentavos
             const stockDisplay = p.esPesable ? (p.stockGramos ?? 0) / 1000 : p.stock
@@ -269,15 +298,20 @@ export default function ProductosClient() {
                 ? Math.round(((precioDisplay - costoDisplay) / costoDisplay) * 10_000)
                 : 0
             const esBajo = stockDisplay <= stockMinimoDisplay
+            // Resaltado del teclado — solo durante una búsqueda activa (con `q`).
+            const resaltado = !!q && i === highlightedIndex
 
             return (
               <motion.button
                 key={p.id}
                 variants={stagger.item}
                 type="button"
+                ref={(el) => { if (resaltado) el?.scrollIntoView({ block: "nearest" }) }}
                 onClick={() => abrirEditar(p.id)}
+                onMouseEnter={() => { if (q) setHighlightedIndex(i) }}
                 className={cn(
-                  "w-full flex items-center lg:grid gap-3 lg:gap-x-4 px-4 py-3 text-left hover:bg-muted/20 transition-colors",
+                  "w-full flex items-center lg:grid gap-3 lg:gap-x-4 px-4 py-3 text-left transition-colors",
+                  resaltado ? "bg-primary/10 ring-1 ring-inset ring-primary/20" : "hover:bg-muted/20",
                   PROD_COLS
                 )}
               >
@@ -341,24 +375,35 @@ export default function ProductosClient() {
 
   return (
     <div className="space-y-5">
-      {/* Header */}
-      <div className="flex items-center justify-between gap-3">
-        <h1 className="font-heading text-2xl font-medium">Productos</h1>
-        <Button onClick={abrirNuevo} size="sm" className="gap-1.5">
-          <Plus className="size-3.5" />
+      {/* Búsqueda + acción (el título "Productos" ya está en las tabs y el nav) */}
+      <div className="flex items-center gap-3">
+        <div className="relative flex-1">
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 size-5 text-muted-foreground pointer-events-none" />
+          <Input
+            ref={searchRef}
+            autoFocus
+            placeholder="Buscar por nombre, SKU o código de barras..."
+            className="pl-11 h-14 text-base rounded-2xl bg-card border-transparent shadow-[var(--shadow-card)] ring-1 ring-foreground/[0.04] focus-visible:ring-2 focus-visible:ring-ring"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            onKeyDown={(e) => {
+              const lista = productos ?? []
+              if (e.key === "Escape") { setQ("") }
+              else if (e.key === "ArrowDown" && lista.length > 0) {
+                e.preventDefault(); setHighlightedIndex((i) => Math.min(i + 1, lista.length - 1))
+              } else if (e.key === "ArrowUp" && lista.length > 0) {
+                e.preventDefault(); setHighlightedIndex((i) => Math.max(i - 1, 0))
+              } else if (e.key === "Enter" && lista.length > 0) {
+                // Abre el producto resaltado para editar — sin soltar el teclado.
+                e.preventDefault(); abrirEditar((lista[highlightedIndex] ?? lista[0]).id)
+              }
+            }}
+          />
+        </div>
+        <Button onClick={abrirNuevo} className="h-14 rounded-2xl gap-1.5 px-5 shrink-0">
+          <Plus className="size-4" />
           Nuevo
         </Button>
-      </div>
-
-      {/* Búsqueda */}
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground pointer-events-none" />
-        <Input
-          placeholder="Buscar por nombre, SKU o código de barras..."
-          className="pl-9 rounded-xl bg-card border-border/60"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-        />
       </div>
 
       {/* Chips de "revisar" — solo ADMIN, solo cuando no hay filtro/búsqueda activa */}
@@ -453,7 +498,7 @@ export default function ProductosClient() {
       ) : !proveedorId ? (
         // Nivel 1: cards de proveedores
         loadingProveedores ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3">
             {Array.from({ length: 4 }).map((_, i) => (
               <Skeleton key={i} className="h-16 rounded-2xl" />
             ))}
@@ -462,7 +507,7 @@ export default function ProductosClient() {
           <EmptyState icon={Package} title="Sin productos" description="Creá tu primer producto" />
         ) : (
           <motion.div
-            className="grid grid-cols-1 sm:grid-cols-2 gap-3"
+            className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3"
             variants={stagger.container}
             initial="hidden"
             animate="show"
@@ -521,7 +566,7 @@ export default function ProductosClient() {
           )}
 
           {loadingCategorias ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3">
               {Array.from({ length: 4 }).map((_, i) => (
                 <Skeleton key={i} className="h-16 rounded-2xl" />
               ))}
@@ -530,7 +575,7 @@ export default function ProductosClient() {
             <EmptyState icon={Package} title="Sin productos para este proveedor" />
           ) : (
             <motion.div
-              className="grid grid-cols-1 sm:grid-cols-2 gap-3"
+              className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3"
               variants={stagger.container}
               initial="hidden"
               animate="show"

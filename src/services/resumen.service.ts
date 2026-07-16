@@ -24,7 +24,43 @@ export interface ResumenMes {
   cubierto: boolean
 }
 
+function claveDiaLocal(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+}
+
 export const resumenService = {
+  /** Serie diaria de ganancia neta (bruta − comisiones) de los últimos `dias`
+   * días, para el sparkline del Inicio. Cada día siempre presente (0 si no hubo
+   * ventas), en orden cronológico. Excluye consumo interno. */
+  async serieDiaria(organizationId: string, dias = 14): Promise<{ fecha: string; netoCentavos: number }[]> {
+    const desde = inicioDia(new Date(Date.now() - (dias - 1) * 24 * 60 * 60 * 1000))
+    const hasta = finDia(new Date())
+    const ventas = await prisma.sale.findMany({
+      where: { organizationId, fecha: { gte: desde, lte: hasta }, esConsumoInterno: false },
+      select: {
+        fecha: true,
+        totalCentavos: true,
+        costoTotalCentavos: true,
+        payments: { select: { comisionCentavos: true } },
+      },
+    })
+
+    const porDia = new Map<string, number>()
+    for (let i = 0; i < dias; i++) {
+      const d = new Date(desde)
+      d.setDate(d.getDate() + i)
+      porDia.set(claveDiaLocal(d), 0)
+    }
+    for (const v of ventas) {
+      const key = claveDiaLocal(v.fecha)
+      const comisiones = v.payments.reduce((s, p) => s + p.comisionCentavos, 0)
+      const neto = v.totalCentavos - v.costoTotalCentavos - comisiones
+      porDia.set(key, (porDia.get(key) ?? 0) + neto)
+    }
+
+    return [...porDia.entries()].map(([fecha, netoCentavos]) => ({ fecha, netoCentavos }))
+  },
+
   async hoy(organizationId: string): Promise<ResumenHoy> {
     const ahora = new Date()
     const desde = inicioDia(ahora)

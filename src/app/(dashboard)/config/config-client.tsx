@@ -163,7 +163,7 @@ export function ConfigClient() {
     <div className="space-y-4">
       <h1 className="font-heading text-2xl font-medium">Configuración</h1>
 
-      <div className="flex flex-col lg:grid lg:grid-cols-[200px_1fr] lg:gap-6">
+      <div className="flex flex-col lg:grid lg:grid-cols-[224px_minmax(0,720px)] lg:gap-6">
         {/* ── Navegación lateral ─────────────────────────────────────────────── */}
         <nav className="lg:sticky lg:top-4">
           {/* Mobile: pills horizontales */}
@@ -187,7 +187,7 @@ export function ConfigClient() {
           </div>
 
           {/* Desktop: lista vertical con grupos */}
-          <div className="hidden lg:flex flex-col gap-0.5">
+          <div className="hidden lg:flex flex-col gap-0.5 rounded-2xl bg-card shadow-[var(--shadow-card)] ring-1 ring-foreground/[0.04] p-2">
             {SECCIONES.map((s, i) => {
               const prevGroup = i > 0 ? SECCIONES[i - 1].group : null
               const showGroupLabel = s.group && s.group !== prevGroup
@@ -218,7 +218,7 @@ export function ConfigClient() {
         </nav>
 
         {/* ── Panel de contenido ─────────────────────────────────────────────── */}
-        <div className="mt-4 lg:mt-0">
+        <div className="mt-4 lg:mt-0 rounded-2xl bg-card shadow-[var(--shadow-card)] ring-1 ring-foreground/[0.04] p-5 lg:p-7">
           <AnimatePresence mode="wait">
             <motion.div
               key={seccion}
@@ -460,6 +460,7 @@ function RecalculoPreciosSheet({ categoria, onSuccess }: { categoria: Categoria;
 
   useEffect(() => {
     if (filas && !yaInicializado) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- inicialización única desde datos async, no re-render en loop
       setSeleccionados(new Set(filas.map((f) => f.id)))
       setYaInicializado(true)
     }
@@ -583,7 +584,7 @@ function HeladerasSection({ onMutate }: { onMutate: () => void }) {
       title="Heladeras / Ubicaciones"
       action={<Button size="sm" onClick={abrirCrear} className="gap-1.5"><Plus className="size-3.5" /> Nueva</Button>}
     >
-      <p className="text-xs text-muted-foreground -mt-2">Definen la lente "Por heladera" en Rentabilidad.</p>
+      <p className="text-xs text-muted-foreground -mt-2">Definen la lente &quot;Por heladera&quot; en Rentabilidad.</p>
       {isLoading ? <SkeletonList /> : (
         <ListCard>
           {data?.length === 0 && <EmptyRow label="Sin ubicaciones" />}

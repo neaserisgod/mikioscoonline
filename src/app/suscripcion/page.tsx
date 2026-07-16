@@ -24,7 +24,8 @@ export default async function SuscripcionPage() {
 
   const diasRestantes =
     org.estadoPago === "TRIAL" && org.trialTerminaEl
-      ? Math.max(0, Math.ceil((org.trialTerminaEl.getTime() - Date.now()) / 86_400_000))
+      ? // eslint-disable-next-line react-hooks/purity -- server component: se evalúa una vez por request, no hay re-render a memoizar
+        Math.max(0, Math.ceil((org.trialTerminaEl.getTime() - Date.now()) / 86_400_000))
       : 0
 
   return (

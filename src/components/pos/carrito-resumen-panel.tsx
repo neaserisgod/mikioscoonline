@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { motion } from "framer-motion"
 import { useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
@@ -154,6 +154,20 @@ export function CarritoResumenPanel({ checkout, mostrarItems = false, expandActi
     clientes, clienteFiadoId, setClienteFiadoId,
   } = checkout
 
+  // Vuelto: cuánto paga el cliente en efectivo (solo display, no afecta la venta).
+  const [pagaConCentavos, setPagaConCentavos] = useState<number | null>(null)
+
+  // Auto-cerrar la pantalla de "Venta registrada" a ~1,8s y limpiar el vuelto —
+  // el cajero no tiene que clickear "Listo" en cada venta (el foco ya vuelve
+  // solo al buscador, ver vender-client). Sigue estando el botón "Listo" por si
+  // quiere cerrarla antes.
+  useEffect(() => {
+    if (!successInfo) return
+    setPagaConCentavos(null)
+    const t = setTimeout(() => setSuccessInfo(null), 1800)
+    return () => clearTimeout(t)
+  }, [successInfo, setSuccessInfo])
+
   if (!venta) return null
 
   // ── Esperando pago con MercadoPago (QR o posnet) ─────────────────────────────
@@ -234,12 +248,12 @@ export function CarritoResumenPanel({ checkout, mostrarItems = false, expandActi
   }
 
   return (
-    <div className="flex flex-col gap-4 h-full">
+    <div className="flex flex-col gap-5 h-full">
       {/* Total */}
       <div>
-        <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Total</p>
-        <p className="text-3xl font-semibold tabular-nums mt-0.5">{formatearARS(totalACobrarCentavos)}</p>
-        <p className="text-xs text-muted-foreground mt-0.5">
+        <p className="text-[13px] text-muted-foreground">Total a cobrar</p>
+        <p className="text-[2.5rem] leading-none font-semibold tabular-nums tracking-[-0.03em] mt-1.5">{formatearARS(totalACobrarCentavos)}</p>
+        <p className="text-xs text-muted-foreground mt-1.5">
           {carrito.length === 0
             ? "Sin productos"
             : `${carrito.reduce((s, l) => s + l.cantidad, 0)} unidades`}
@@ -341,17 +355,17 @@ export function CarritoResumenPanel({ checkout, mostrarItems = false, expandActi
             )}
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-1.5">
+          <div className="grid grid-cols-1 gap-2">
             {mediosPago?.map((m) => (
               <button
                 key={m.id}
                 type="button"
                 onClick={() => setMedioPago(m.id)}
                 className={cn(
-                  "flex items-center justify-between px-3 py-2 rounded-xl border text-sm font-medium transition-all",
+                  "flex items-center justify-between px-4 py-3 rounded-2xl border text-sm font-medium transition-all",
                   medioPagoId === m.id
-                    ? "border-primary bg-primary/8 text-foreground"
-                    : "border-border/60 bg-background hover:bg-muted/30 text-muted-foreground"
+                    ? "border-primary bg-primary/10 text-foreground ring-1 ring-primary/30"
+                    : "border-border/60 bg-background hover:bg-muted/40 text-foreground/80"
                 )}
               >
                 <span>{m.nombre}</span>
@@ -363,6 +377,18 @@ export function CarritoResumenPanel({ checkout, mostrarItems = false, expandActi
               </button>
             ))}
           </div>
+        )}
+
+        {/* Hint del flujo por teclado (descubrimiento) — solo con carrito cargado. */}
+        {!pagosSplit && carrito.length > 0 && (
+          <p className="flex items-center justify-center gap-1.5 text-[11px] text-muted-foreground pt-0.5">
+            <kbd className="rounded border border-border/70 bg-muted/50 px-1.5 py-0.5 text-[10px] font-medium">↑</kbd>
+            <kbd className="rounded border border-border/70 bg-muted/50 px-1.5 py-0.5 text-[10px] font-medium">↓</kbd>
+            elegir medio
+            <span className="text-muted-foreground/50">·</span>
+            <kbd className="rounded border border-border/70 bg-muted/50 px-1.5 py-0.5 text-[10px] font-medium">Enter</kbd>
+            cobrar
+          </p>
         )}
       </div>
 
@@ -420,15 +446,6 @@ export function CarritoResumenPanel({ checkout, mostrarItems = false, expandActi
               <span className="tabular-nums">+{formatearARS(recargoTotalCentavos)}</span>
             </div>
           )}
-          <div className="flex items-center justify-between text-base font-semibold">
-            <span>Total</span>
-            <span className="tabular-nums">{formatearARS(totalACobrarCentavos)}</span>
-          </div>
-          <div className="flex items-center justify-between text-xs text-muted-foreground">
-            <span>Medio de pago</span>
-            <span>{pagosSplit ? "Dividido" : (medioPagoSeleccionado?.nombre ?? "Sin elegir")}</span>
-          </div>
-
           {!pagosSplit && comisionCentavos > 0 && (
             <>
               <Separator className="bg-border/40" />
@@ -454,11 +471,61 @@ export function CarritoResumenPanel({ checkout, mostrarItems = false, expandActi
         </div>
       )}
 
+      {/* Vuelto — solo efectivo, solo display (no afecta la venta). Con billetes
+          rápidos y "Justo" para no tener que tipear ni sacar la cuenta. */}
+      {!pagosSplit && medioPagoSeleccionado?.esEfectivo && carrito.length > 0 && (
+        <div className="rounded-xl bg-muted/20 border border-border/60 p-3 space-y-2.5">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[13px] font-medium">Paga con</span>
+            <div className="flex items-center rounded-lg border border-border/60 bg-background">
+              <span className="pl-2.5 text-muted-foreground text-sm">$</span>
+              <input
+                type="number"
+                inputMode="numeric"
+                min={0}
+                value={pagaConCentavos != null ? pagaConCentavos / 100 : ""}
+                onFocus={(e) => e.currentTarget.select()}
+                onChange={(e) => setPagaConCentavos(e.target.value === "" ? null : Math.round((Number(e.target.value) || 0) * 100))}
+                placeholder="0"
+                className="h-8 w-24 rounded-lg border-0 bg-transparent px-1.5 text-right tabular-nums text-sm focus:outline-none"
+              />
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            <button
+              type="button"
+              onClick={() => setPagaConCentavos(totalACobrarCentavos)}
+              className="rounded-lg border border-border/60 bg-background px-2.5 py-1 text-xs font-medium hover:bg-muted/40 transition-colors"
+            >
+              Justo
+            </button>
+            {[200000, 500000, 1000000, 2000000].filter((m) => m > totalACobrarCentavos).slice(0, 4).map((m) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => setPagaConCentavos(m)}
+                className="rounded-lg border border-border/60 bg-background px-2.5 py-1 text-xs font-medium tabular-nums hover:bg-muted/40 transition-colors"
+              >
+                {formatearARS(m).replace(",00", "")}
+              </button>
+            ))}
+          </div>
+          {pagaConCentavos != null && (
+            <div className="flex items-center justify-between border-t border-border/40 pt-2 text-sm">
+              <span className="font-medium">{pagaConCentavos >= totalACobrarCentavos ? "Vuelto" : "Falta"}</span>
+              <span className={cn("text-base font-semibold tabular-nums", pagaConCentavos >= totalACobrarCentavos ? "text-k-gain" : "text-k-loss")}>
+                {formatearARS(Math.abs(pagaConCentavos - totalACobrarCentavos))}
+              </span>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Acciones */}
       <div className="space-y-2 mt-auto">
         {expandAction}
         <Button
-          className="w-full h-10 rounded-xl"
+          className="w-full h-12 rounded-2xl text-[15px] font-semibold"
           disabled={
             carrito.length === 0 || loading || faltaPeso ||
             (pagosSplit
@@ -467,7 +534,7 @@ export function CarritoResumenPanel({ checkout, mostrarItems = false, expandActi
           }
           onClick={confirmar}
         >
-          {loading ? <Loader2 className="size-4 animate-spin" /> : "Confirmar venta"}
+          {loading ? <Loader2 className="size-5 animate-spin" /> : "Confirmar venta"}
         </Button>
         {!pagosSplit && medioPagoSeleccionado?.esMercadoPago && carrito.length > 0 && !faltaPeso && (
           <Button

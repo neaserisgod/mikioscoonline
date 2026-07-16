@@ -51,9 +51,12 @@ export function AbrirCajaSheet({ cajaNombre, cajaId, fondoSugerido, manejaEfecti
             <label className="text-sm font-medium">Fondo inicial ($)</label>
             <input
               type="number" step="0.01" min="0"
+              inputMode="decimal"
+              autoFocus
               {...register("pesos", { valueAsNumber: true })}
+              onFocus={(e) => e.currentTarget.select()}
               placeholder="0"
-              className="w-full rounded-xl border border-border/60 bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+              className="w-full h-10 rounded-xl border border-border/60 bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
             />
             {errors.pesos && <p className="text-xs text-k-loss">{errors.pesos.message}</p>}
             {fondoSugerido !== null && (

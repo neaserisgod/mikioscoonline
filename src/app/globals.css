@@ -7,9 +7,15 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-sans);
+  /* Inter variable (autoalojada, correcta y upright) con la fuente del sistema
+     como fallback — estética "Apple": geométrica, nítida, cero fricción. */
+  --font-sans: var(--font-inter), -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", Roboto, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono);
-  --font-heading: var(--font-oswald);
+  /* Títulos: se pasaron de Oswald condensada a la sans (Inter) para un look
+     más limpio y "Apple" — tipografía cuidada, tracking ajustado, sin el
+     aire de cartel de oferta. La variable --font-oswald sigue disponible por
+     si algún cartel puntual la quiere. */
+  --font-heading: var(--font-sans);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -53,36 +59,38 @@
 }
 
 /* ── Light theme ──────────────────────────────────────────────── */
-/* Fondo gris parejo (#ebebeb) para que las cards blancas floten encima —
-   no blanco-sobre-blanco. El ámbar (--primary) es el color de identidad:
-   cartel de almacén / etiqueta esmaltada, con bastante más saturación que
-   un acento de dashboard SaaS típico. */
+/* Estética "Apple": fondo gris frío y parejo (#f5f5f7) para que las cards
+   BLANCAS PURAS floten encima con una sombra suave — jerarquía por elevación,
+   no por bordes duros. El ámbar (--primary) sigue siendo el color de
+   identidad, pero usado con intención (acento puntual), no de relleno. */
 :root {
-  --background: oklch(0.928 0.003 75);
-  --foreground: oklch(0.16 0.008 55);
-  --card: oklch(0.99 0.002 75);
-  --card-foreground: oklch(0.16 0.008 55);
-  --popover: oklch(0.99 0.002 75);
-  --popover-foreground: oklch(0.16 0.008 55);
+  --background: oklch(0.966 0.0015 286);
+  --foreground: oklch(0.16 0.006 271);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.16 0.006 271);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.16 0.006 271);
   --primary: oklch(0.74 0.18 58);
   --primary-foreground: oklch(0.18 0.04 50);
-  --secondary: oklch(0.9 0.004 70);
-  --secondary-foreground: oklch(0.26 0.01 55);
-  --muted: oklch(0.9 0.004 70);
-  --muted-foreground: oklch(0.48 0.012 55);
-  --accent: oklch(0.9 0.004 70);
-  --accent-foreground: oklch(0.16 0.008 55);
+  --secondary: oklch(0.922 0.002 286);
+  --secondary-foreground: oklch(0.26 0.006 271);
+  --muted: oklch(0.922 0.002 286);
+  --muted-foreground: oklch(0.545 0.008 286);
+  --accent: oklch(0.922 0.002 286);
+  --accent-foreground: oklch(0.16 0.006 271);
   --destructive: oklch(0.57 0.22 29);
-  --border: oklch(0.2 0.02 55 / 10%);
-  --input: oklch(0.2 0.02 55 / 9%);
+  --border: oklch(0.2 0.02 271 / 8%);
+  --input: oklch(0.2 0.02 271 / 8%);
   --ring: oklch(0.74 0.18 58 / 45%);
   --chart-1: oklch(0.74 0.18 58);
   --chart-2: oklch(0.61 0.15 162);
   --chart-3: oklch(0.48 0.09 162);
   --chart-4: oklch(0.62 0.13 220);
   --chart-5: oklch(0.58 0.14 290);
-  --radius: 0.875rem;
-  --sidebar: oklch(0.9 0.004 70);
+  --radius: 1rem;
+  /* Sombra suave de tarjeta (elevación tipo iOS/macOS), no un box duro. */
+  --shadow-card: 0 1px 2px oklch(0.2 0.02 271 / 4%), 0 4px 12px oklch(0.2 0.02 271 / 5%);
+  --sidebar: oklch(0.94 0.002 286);
   --sidebar-foreground: oklch(0.16 0.008 55);
   --sidebar-primary: oklch(0.74 0.18 58);
   --sidebar-primary-foreground: oklch(0.18 0.04 50);
@@ -175,6 +183,12 @@
 }
 
 @layer base {
+  /* En temas oscuros la elevación se ve con una sombra más marcada (el fondo
+     casi negro se traga las sombras claras). */
+  .gray,
+  .dark {
+    --shadow-card: 0 1px 2px oklch(0 0 0 / 22%), 0 6px 18px oklch(0 0 0 / 26%);
+  }
   * {
     @apply border-border outline-ring/50;
   }
@@ -183,6 +197,15 @@
   }
   html {
     @apply font-sans;
+  }
+  /* Títulos estilo Apple: sans (Inter) con tracking ajustado y balance de línea.
+     Reemplaza el look condensado de Oswald en todos los h1–h3 y card titles. */
+  h1,
+  h2,
+  h3,
+  [data-slot="card-title"] {
+    letter-spacing: -0.021em;
+    text-wrap: balance;
   }
   /* Custom scrollbar — subtle in dark mode */
   ::-webkit-scrollbar {

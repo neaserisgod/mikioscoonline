@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma"
 import { firmaValida, parseDataId, parseTopic } from "@/lib/mp-webhook-firma"
 import { obtenerPreapproval } from "@/lib/mercadopago-suscripcion"
 import { completarComisionReal } from "@/lib/mercadopago-comisiones"
+import { logError } from "@/lib/log"
 import type { EstadoPago } from "@prisma/client"
 
 const ESTADO_MP_A_ESTADO_PAGO: Record<string, EstadoPago> = {
@@ -35,8 +36,11 @@ export async function POST(req: NextRequest) {
     } else {
       await completarComisionReal(dataId)
     }
-  } catch {
-    // Nunca relanzar: MP reintenta las notificaciones, y un 500 dispara backoff agresivo.
+  } catch (error) {
+    // Nunca relanzar: MP reintenta las notificaciones, y un 500 dispara backoff
+    // agresivo. Pero sí registrar: un webhook que falla en silencio deja la
+    // comisión/suscripción sin sincronizar sin ningún rastro.
+    logError("mp-webhook", error, { topic, dataId })
   }
 
   return NextResponse.json({ received: true })
@@ -67,4 +71,3 @@ async function sincronizarEstadoSuscripcion(preapprovalId: string) {
     data: { estadoPago, mpPreapprovalId: preapproval.id },
   })
 }
-

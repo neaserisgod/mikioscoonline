@@ -285,7 +285,7 @@ export default function ProductoForm({ producto, barcodePreset, defaultsNuevo, o
 
       <div className="space-y-1.5">
         <Label htmlFor="nombre">Nombre</Label>
-        <Input id="nombre" {...register("nombre")} className="rounded-xl" />
+        <Input id="nombre" autoFocus {...register("nombre")} className="rounded-xl" />
         {errors.nombre && <p className="text-xs text-k-loss">{errors.nombre.message}</p>}
       </div>
 
