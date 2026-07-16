@@ -139,12 +139,17 @@ export const stockService = {
       })
     }
 
-    // AJUSTE: mismo razonamiento que en el caso pesable — set absoluto
-    // intencional, resuelto contra el dueño cuando la fila elegida es una
-    // variante (stockAnterior se relee del dueño, no del valor ya obtenido
-    // arriba, que corresponde a esta fila y puede ser irrelevante).
-    if (cantidadBase < 0) {
-      throw new Error(`Stock resultante no puede ser negativo: ${cantidadBase}`)
+    // AJUSTE: a diferencia de ENTRADA, NO se aplica unidadesPorVenta. Un
+    // ajuste corrige el stock contra un conteo físico real, y ese conteo ya
+    // está en unidades base del dueño (si contás la heladera, contás
+    // unidades sueltas, no "docenas") — por eso se usa input.cantidad
+    // directo como set absoluto, ignorando cantidadBase (que solo tiene
+    // sentido para convertir presentaciones en ENTRADA). Igual que en el
+    // caso pesable, se resuelve contra el dueño cuando la fila elegida es
+    // una variante (stockAnterior se relee del dueño, no del valor ya
+    // obtenido arriba, que corresponde a esta fila y puede ser irrelevante).
+    if (input.cantidad < 0) {
+      throw new Error(`Stock resultante no puede ser negativo: ${input.cantidad}`)
     }
 
     return prisma.$transaction(async (tx) => {
@@ -153,7 +158,7 @@ export const stockService = {
         select: { stock: true },
       })
       const stockAnterior = dueñoActual.stock
-      const stockPosterior = cantidadBase
+      const stockPosterior = input.cantidad
 
       await tx.product.update({
         where: { id: stockOwnerId },

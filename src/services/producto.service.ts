@@ -66,10 +66,20 @@ export interface FilaCSV {
 }
 
 // Solo se usa `nombre` de cada relación en las pantallas que consumen estas queries.
+// `variantes` (Fase 2): siempre presente pero vacío en productos que no son
+// dueños de nadie — el listado principal solo muestra dueños (variantOfId:
+// null en el where de cada función de abajo), así que esto alcanza para que
+// tanto la edición en Productos como el selector del POS tengan el precio de
+// cada variante sin un fetch aparte.
 const incluirRelaciones = {
   category: { select: { nombre: true } },
   provider: { select: { nombre: true } },
   location: { select: { nombre: true } },
+  variantes: {
+    where: { activo: true },
+    select: { id: true, nombre: true, unidadesPorVenta: true, precioCentavos: true, costoCentavos: true, barcode: true, sku: true },
+    orderBy: { unidadesPorVenta: "asc" as const },
+  },
 } as const
 
 /** Productos sin código de barras (raros) necesitan igual un SKU único — se
@@ -314,9 +324,12 @@ export const productoService = {
     })
   },
 
+  /** Listado principal — solo dueños (variantOfId: null). Las variantes se
+   * ven/gestionan desde la edición de su dueño (ver `variantes` en
+   * incluirRelaciones), no como filas sueltas acá. */
   async listar(organizationId: string) {
     return prisma.product.findMany({
-      where: { organizationId, activo: true },
+      where: { organizationId, activo: true, variantOfId: null },
       include: incluirRelaciones,
       orderBy: { nombre: "asc" },
     })
@@ -333,6 +346,10 @@ export const productoService = {
     })
   },
 
+  /** Buscador del POS y de Productos — solo dueños (ver `listar`). Una variante
+   * nunca aparece como fila propia acá: se llega a ella eligiéndola en el
+   * selector del dueño (POS) o escaneando su código de barras directo
+   * (buscarPorCodigo, sin este filtro — ver use-barcode-handler.ts). */
   async buscar(organizationId: string, query: string) {
     // Filtro en JS (no `mode: "insensitive"`, exclusivo del conector Postgres/MongoDB
     // de Prisma) para funcionar igual en SQLite y Postgres. El catálogo es chico
@@ -340,7 +357,7 @@ export const productoService = {
     // es instantáneo y evita depender de una feature específica del motor.
     const q = normalizarTexto(query)
     const productos = await prisma.product.findMany({
-      where: { organizationId, activo: true },
+      where: { organizationId, activo: true, variantOfId: null },
       include: incluirRelaciones,
       orderBy: { nombre: "asc" },
     })
@@ -361,21 +378,47 @@ export const productoService = {
    * consumo interno: no es una preferencia real de clientes. */
   async masVendidos(organizationId: string, dias: number, limit: number) {
     const desde = new Date(Date.now() - dias * 24 * 60 * 60 * 1000)
+    // Se trae un buffer de `limit × 5` productId distintos: varias filas se
+    // van a fusionar bajo un mismo dueño al resolver variantes (ver abajo),
+    // así que hay que rankear sobre un universo más grande que `limit` para
+    // no perder un dueño que solo vendió a través de sus variantes.
     const ranking = await prisma.saleLine.groupBy({
       by: ["productId"],
       where: { sale: { organizationId, fecha: { gte: desde }, esConsumoInterno: false } },
       _count: { productId: true },
       orderBy: { _count: { productId: "desc" } },
-      take: limit,
+      take: limit * 5,
     })
     if (ranking.length === 0) return []
 
+    // El ranking cuenta por productId real de la línea (variantes incluidas),
+    // pero el acceso rápido del POS solo muestra dueños (ver `buscar`) — se
+    // resuelve cada productId a su dueño (variantOfId ?? id, mismo criterio
+    // que rentabilidadService.porAgrupador) y se fusionan los conteos, para
+    // que el dueño aparezca en el ranking aunque solo se haya vendido a
+    // través de sus variantes.
+    const productosRankeados = await prisma.product.findMany({
+      where: { id: { in: ranking.map((r) => r.productId) }, organizationId },
+      select: { id: true, variantOfId: true },
+    })
+    const dueñoPorId = new Map(productosRankeados.map((p) => [p.id, p.variantOfId ?? p.id]))
+
+    const conteoPorDueño = new Map<string, number>()
+    for (const r of ranking) {
+      const dueñoId = dueñoPorId.get(r.productId) ?? r.productId
+      conteoPorDueño.set(dueñoId, (conteoPorDueño.get(dueñoId) ?? 0) + r._count.productId)
+    }
+    const topDueños = Array.from(conteoPorDueño.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, limit)
+      .map(([id]) => id)
+
     const productos = await prisma.product.findMany({
-      where: { id: { in: ranking.map((r) => r.productId) }, organizationId, activo: true },
+      where: { id: { in: topDueños }, organizationId, activo: true, variantOfId: null },
       include: incluirRelaciones,
     })
     const porId = new Map(productos.map((p) => [p.id, p]))
-    return ranking.map((r) => porId.get(r.productId)).filter((p) => p !== undefined)
+    return topDueños.map((id) => porId.get(id)).filter((p) => p !== undefined)
   },
 
   async buscarPorCodigo(barcode: string, organizationId: string) {
@@ -390,8 +433,10 @@ export const productoService = {
    * productos por organización como mucho). "Sin proveedor" usa el mismo
    * sentinel que ya usa rentabilidad.service.ts para consistencia. */
   async resumenProveedores(organizationId: string) {
+    // Solo dueños (ver `listar`) — el stock/valor de una variante ya está
+    // contado en su dueño, sumarla aparte duplicaría el conteo.
     const productos = await prisma.product.findMany({
-      where: { organizationId, activo: true },
+      where: { organizationId, activo: true, variantOfId: null },
       select: {
         providerId: true,
         provider: { select: { nombre: true } },
@@ -432,8 +477,9 @@ export const productoService = {
   /** Cards de nivel 2 en Productos (Categorías dentro de un proveedor).
    * `providerId: null` = bucket "Sin proveedor" del nivel 1. */
   async resumenCategorias(organizationId: string, providerId: string | null) {
+    // Solo dueños (ver resumenProveedores) — mismo motivo: evitar doble conteo.
     const productos = await prisma.product.findMany({
-      where: { organizationId, activo: true, providerId },
+      where: { organizationId, activo: true, providerId, variantOfId: null },
       select: {
         categoryId: true,
         category: { select: { nombre: true } },
@@ -464,6 +510,7 @@ export const productoService = {
       where: {
         organizationId,
         activo: true,
+        variantOfId: null,
         ...(opts?.providerId !== undefined && {
           providerId: opts.providerId === "__sin_proveedor__" ? null : opts.providerId,
         }),
@@ -475,7 +522,9 @@ export const productoService = {
   },
 
   async stockBajo(organizationId: string) {
-    // Prisma no soporta comparar dos columnas en where → raw query
+    // Prisma no soporta comparar dos columnas en where → raw query. Solo
+    // dueños: el stock real vive ahí (ver `listar`), una variante siempre
+    // tiene su propia columna `stock` en 0/irrelevante.
     return prisma.$queryRaw<
       Array<{ id: string; sku: string; nombre: string; stock: number; stockMinimo: number }>
     >`
@@ -483,6 +532,7 @@ export const productoService = {
       FROM "Product"
       WHERE "organizationId" = ${organizationId}
         AND activo = true
+        AND "variantOfId" IS NULL
         AND stock <= "stockMinimo"
       ORDER BY nombre
     `
@@ -526,7 +576,7 @@ export const productoService = {
    * pedidos no los soporta todavía (ver pedido-proveedor.service.ts). */
   async stockBajoPorProveedor(organizationId: string, providerId: string) {
     const productos = await prisma.product.findMany({
-      where: { organizationId, providerId, activo: true, esPesable: false },
+      where: { organizationId, providerId, activo: true, esPesable: false, variantOfId: null },
       select: { id: true, sku: true, nombre: true, stock: true, stockMinimo: true },
     })
     return productos.filter((p) => p.stock <= p.stockMinimo)
@@ -557,7 +607,17 @@ export const productoService = {
   },
 
   async desactivar(id: string, organizationId: string) {
-    await prisma.product.findFirstOrThrow({ where: { id, organizationId } })
+    const producto = await prisma.product.findFirstOrThrow({ where: { id, organizationId } })
+    // Si es dueño (variantOfId null), sus variantes quedarían huérfanas y
+    // seguirían apareciendo activas en la edición de un dueño ya desactivado
+    // — se desactivan en cascada. Una variante no tiene variantes propias
+    // (ver validarVariante), así que no hay que recursar más de un nivel.
+    if (producto.variantOfId === null) {
+      return prisma.$transaction(async (tx) => {
+        await tx.product.updateMany({ where: { variantOfId: id }, data: { activo: false } })
+        return tx.product.update({ where: { id }, data: { activo: false } })
+      })
+    }
     return prisma.product.update({ where: { id }, data: { activo: false } })
   },
 

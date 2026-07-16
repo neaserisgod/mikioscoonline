@@ -3,7 +3,7 @@ import { requireAdminApi } from "@/lib/api-auth"
 import { rentabilidadService, type AgrupadorRentabilidad } from "@/services/rentabilidad.service"
 import { parseFechaQuery, finDia } from "@/domain/dinero"
 
-const agrupadores: AgrupadorRentabilidad[] = ["proveedor", "heladera", "categoria", "caja"]
+const agrupadores: AgrupadorRentabilidad[] = ["proveedor", "heladera", "categoria", "caja", "producto"]
 
 export async function GET(req: NextRequest) {
   const result = await requireAdminApi()

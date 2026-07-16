@@ -7,6 +7,7 @@ import { Search, Camera } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { useCarritoCheckout } from "@/components/pos/use-carrito-checkout"
 import { CarritoItemsList } from "@/components/pos/carrito-items-list"
 import { CarritoResumenPanel } from "@/components/pos/carrito-resumen-panel"
@@ -17,6 +18,16 @@ import { useBarcodeHandler } from "@/components/scanner/use-barcode-handler"
 import { useVentasStore } from "@/stores/ventas.store"
 import { useState } from "react"
 import { cn } from "@/lib/utils"
+
+interface VarianteProducto {
+  id: string
+  nombre: string
+  unidadesPorVenta: number
+  precioCentavos: number
+  costoCentavos: number
+  barcode: string | null
+  sku: string | null
+}
 
 interface Producto {
   id: string
@@ -30,6 +41,7 @@ interface Producto {
   stockGramos: number | null
   esCigarroSuelto: boolean
   category: { nombre: string }
+  variantes?: VarianteProducto[]
 }
 
 /** Número por prefijo en el buscador. Para productos por unidad son unidades
@@ -54,6 +66,7 @@ export default function VenderClient() {
   const [showDropdown, setShowDropdown] = useState(false)
   const [cameraOpen, setCameraOpen] = useState(false)
   const [highlightedIndex, setHighlightedIndex] = useState(0)
+  const [selectorProducto, setSelectorProducto] = useState<Producto | null>(null)
 
   const { agregarProducto } = useVentasStore()
   const checkout = useCarritoCheckout()
@@ -146,7 +159,7 @@ export default function VenderClient() {
     return () => document.removeEventListener("keydown", onDocKeyDown)
   }, [])
 
-  const agregar = useCallback(
+  const agregarDirecto = useCallback(
     (p: Producto) => {
       const esCigarrillo = p.category.nombre === "Cigarrillos"
       if (p.esPesable) {
@@ -181,9 +194,50 @@ export default function VenderClient() {
       }
       setQuery("")
       setShowDropdown(false)
+      setSelectorProducto(null)
       inputRef.current?.focus()
     },
     [agregarProducto]
+  )
+
+  // Variante elegida en el selector — el stock que se muestra/valida es el del
+  // DUEÑO convertido a unidades de esta presentación (el stock real vive en
+  // el dueño, ver stock.service.ts; acá solo se pinta/chequea el equivalente).
+  const agregarVariante = useCallback(
+    (dueño: Producto, v: VarianteProducto) => {
+      if (dueño.stock < v.unidadesPorVenta) { toast.warning("Sin stock disponible"); return }
+      agregarProducto({
+        productId: v.id,
+        nombre: v.nombre,
+        sku: v.sku ?? dueño.sku,
+        precioUnitarioCentavos: v.precioCentavos,
+        stock: Math.floor(dueño.stock / v.unidadesPorVenta),
+        stockGramos: null,
+        esPesable: false,
+        esCigarrillo: dueño.category.nombre === "Cigarrillos",
+        esCigarroSuelto: dueño.esCigarroSuelto,
+      }, cantidadRef.current ?? undefined)
+      setQuery("")
+      setShowDropdown(false)
+      setSelectorProducto(null)
+      inputRef.current?.focus()
+    },
+    [agregarProducto]
+  )
+
+  // Punto de entrada único desde la búsqueda/escaneo por texto, Más vendidos y
+  // el Enter del buscador — si el producto tiene variantes, abre el selector
+  // en vez de agregar directo (el escaneo de código de barras de una VARIANTE
+  // puntual no pasa por acá, ver use-barcode-handler.ts).
+  const agregar = useCallback(
+    (p: Producto) => {
+      if (p.variantes && p.variantes.length > 0) {
+        setSelectorProducto(p)
+        return
+      }
+      agregarDirecto(p)
+    },
+    [agregarDirecto]
   )
 
   // Cambiar el medio de pago con el teclado (↑/↓) cuando el buscador está vacío
@@ -344,7 +398,75 @@ export default function VenderClient() {
       </div>
 
       <CameraScannerSheet open={cameraOpen} onOpenChange={setCameraOpen} />
+
+      <SelectorVarianteDialog
+        producto={selectorProducto}
+        onOpenChange={(open) => { if (!open) setSelectorProducto(null) }}
+        onElegirDueño={agregarDirecto}
+        onElegirVariante={agregarVariante}
+      />
     </div>
+  )
+}
+
+/** Sheet/popup que aparece al elegir un producto con variantes — el dueño
+ * (presentación base) y cada variante, cada una con su propio precio y
+ * stock equivalente. Escanear el código de una variante puntual no pasa por
+ * acá (ver use-barcode-handler.ts). */
+function SelectorVarianteDialog({
+  producto,
+  onOpenChange,
+  onElegirDueño,
+  onElegirVariante,
+}: {
+  producto: Producto | null
+  onOpenChange: (open: boolean) => void
+  onElegirDueño: (p: Producto) => void
+  onElegirVariante: (dueño: Producto, v: VarianteProducto) => void
+}) {
+  return (
+    <Dialog open={!!producto} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>{producto?.nombre}</DialogTitle>
+        </DialogHeader>
+        {producto && (
+          <div className="space-y-1.5">
+            <button
+              type="button"
+              onClick={() => onElegirDueño(producto)}
+              disabled={producto.stock < 1}
+              className="w-full text-left px-4 py-3 rounded-xl border border-border/60 hover:bg-muted/50 transition-colors flex items-center justify-between gap-3 disabled:opacity-40 disabled:pointer-events-none"
+            >
+              <div className="min-w-0">
+                <p className="text-sm font-medium truncate">{producto.nombre}</p>
+                <p className="text-xs text-muted-foreground">Unidad · Stock: {producto.stock}</p>
+              </div>
+              <p className="text-sm font-semibold tabular-nums shrink-0">{formatPrice(producto.precioCentavos)}</p>
+            </button>
+
+            {producto.variantes?.map((v) => {
+              const stockEquivalente = Math.floor(producto.stock / v.unidadesPorVenta)
+              return (
+                <button
+                  key={v.id}
+                  type="button"
+                  onClick={() => onElegirVariante(producto, v)}
+                  disabled={stockEquivalente < 1}
+                  className="w-full text-left px-4 py-3 rounded-xl border border-border/60 hover:bg-muted/50 transition-colors flex items-center justify-between gap-3 disabled:opacity-40 disabled:pointer-events-none"
+                >
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium truncate">{v.nombre}</p>
+                    <p className="text-xs text-muted-foreground">×{v.unidadesPorVenta} · Stock: {stockEquivalente}</p>
+                  </div>
+                  <p className="text-sm font-semibold tabular-nums shrink-0">{formatPrice(v.precioCentavos)}</p>
+                </button>
+              )
+            })}
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
   )
 }
 

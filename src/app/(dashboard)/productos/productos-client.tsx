@@ -19,6 +19,7 @@ import { formatearARS } from "@/domain/dinero"
 import { gananciaPotencial } from "@/domain/pesables"
 import { cn } from "@/lib/utils"
 import ProductoForm from "./producto-form"
+import type { Variante } from "./variantes-section"
 
 interface Producto {
   id: string
@@ -33,12 +34,15 @@ interface Producto {
   category: { nombre: string }
   providerId: string | null
   provider?: { nombre: string } | null
+  locationId: string | null
   location?: { nombre: string } | null
   esPesable: boolean
   precioPorKgCentavos: number | null
   costoPorKgCentavos: number | null
   stockGramos: number | null
   stockMinimoGramos: number | null
+  variantOfId: string | null
+  variantes?: Variante[]
 }
 
 interface ResumenProveedor {

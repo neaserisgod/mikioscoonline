@@ -12,10 +12,10 @@ import { EmptyState } from "@/components/ui/empty-state"
 import { formatearARS } from "@/domain/dinero"
 import { cn } from "@/lib/utils"
 
-type Agrupador = "proveedor" | "categoria" | "heladera" | "caja"
+type Agrupador = "proveedor" | "categoria" | "heladera" | "caja" | "producto"
 type Periodo = "hoy" | "mes" | "historico"
 
-const AGRUPADOR_VALUES: Agrupador[] = ["proveedor", "categoria", "heladera", "caja"]
+const AGRUPADOR_VALUES: Agrupador[] = ["proveedor", "categoria", "heladera", "caja", "producto"]
 const PERIODO_VALUES: Periodo[] = ["hoy", "mes", "historico"]
 
 interface FilaRentabilidad {
@@ -34,6 +34,7 @@ const AGRUPADORES: { value: Agrupador; label: string }[] = [
   { value: "categoria", label: "Por categoría" },
   { value: "heladera", label: "Por heladera" },
   { value: "caja", label: "Por caja" },
+  { value: "producto", label: "Por producto" },
 ]
 
 function getHoyRango(): { desde: string; hasta: string } {

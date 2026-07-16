@@ -29,6 +29,9 @@ const ProductoBaseSchema = z.object({
   precioPorKgCentavos: z.number().int().positive().optional(),
   stockGramos: z.number().int().min(0).optional(),
   stockMinimoGramos: z.number().int().min(0).optional(),
+  // Variantes que comparten stock (Fase 2) — ver validarVariante en producto.service.ts
+  variantOfId: z.string().min(1).nullable().optional(),
+  unidadesPorVenta: z.number().int().min(1).optional(),
 })
 
 const CrearProductoSchema = ProductoBaseSchema.refine(

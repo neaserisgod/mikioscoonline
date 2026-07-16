@@ -46,6 +46,9 @@ const EditarProductoSchema = z.object({
   stockGramos: z.number().int().min(0).optional(),
   stockMinimoGramos: z.number().int().min(0).optional(),
   activo: z.boolean().optional(),
+  // Variantes que comparten stock (Fase 2) — ver validarVariante en producto.service.ts
+  variantOfId: z.string().min(1).nullable().optional(),
+  unidadesPorVenta: z.number().int().min(1).optional(),
 })
 
 export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {

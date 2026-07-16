@@ -3,18 +3,26 @@
  * no debe ver costo ni margen — solo ADMIN. Se aplica en la capa de API, no en
  * el servicio, para que el servicio siga siendo agnóstico de rol.
  */
-export function sanitizarProducto<T extends { costoCentavos: number; costoPorKgCentavos?: number | null; costoEsProvisional: boolean }>(
-  producto: T,
-  role: "ADMIN" | "VENDEDOR"
-): T {
+type ConVariantes = { variantes?: Array<{ costoCentavos: number }> }
+
+export function sanitizarProducto<
+  T extends { costoCentavos: number; costoPorKgCentavos?: number | null; costoEsProvisional: boolean } & ConVariantes,
+>(producto: T, role: "ADMIN" | "VENDEDOR"): T {
   if (role === "ADMIN") return producto
-  return { ...producto, costoCentavos: 0, costoPorKgCentavos: null, costoEsProvisional: false }
+  return {
+    ...producto,
+    costoCentavos: 0,
+    costoPorKgCentavos: null,
+    costoEsProvisional: false,
+    // El dueño trae sus variantes embebidas (ver incluirRelaciones en
+    // producto.service.ts) — cada una necesita el mismo ocultamiento de costo.
+    ...(producto.variantes ? { variantes: producto.variantes.map((v) => ({ ...v, costoCentavos: 0 })) } : {}),
+  }
 }
 
-export function sanitizarProductos<T extends { costoCentavos: number; costoPorKgCentavos?: number | null; costoEsProvisional: boolean }>(
-  productos: T[],
-  role: "ADMIN" | "VENDEDOR"
-): T[] {
+export function sanitizarProductos<
+  T extends { costoCentavos: number; costoPorKgCentavos?: number | null; costoEsProvisional: boolean } & ConVariantes,
+>(productos: T[], role: "ADMIN" | "VENDEDOR"): T[] {
   if (role === "ADMIN") return productos
   return productos.map((p) => sanitizarProducto(p, role))
 }

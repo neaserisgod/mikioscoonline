@@ -2,7 +2,7 @@ import { prisma } from "@/lib/prisma"
 import { resolverCajaId } from "@/domain/cajas"
 import { subtotalLinea } from "@/domain/pesables"
 
-export type AgrupadorRentabilidad = "proveedor" | "heladera" | "categoria" | "caja"
+export type AgrupadorRentabilidad = "proveedor" | "heladera" | "categoria" | "caja" | "producto"
 
 export interface FilaRentabilidad {
   id: string
@@ -57,16 +57,20 @@ export const rentabilidadService = {
         },
       },
       select: {
+        productId: true,
         cantidad: true,
         gramos: true,
         precioUnitarioCentavos: true,
         costoUnitarioCentavos: true,
         product: {
           select: {
+            nombre: true,
             esPesable: true,
             categoryId: true,
             providerId: true,
             locationId: true,
+            variantOfId: true,
+            variantOf: { select: { id: true, nombre: true } },
             category: { select: { nombre: true, cajaId: true, caja: { select: { id: true, nombre: true } } } },
             provider: { select: { nombre: true } },
             location: { select: { nombre: true } },
@@ -94,7 +98,14 @@ export const rentabilidadService = {
       let agrupadorId: string
       let agrupadorNombre: string
 
-      if (agrupador === "proveedor") {
+      if (agrupador === "producto") {
+        // Una variante no es un producto propio a efectos de rentabilidad:
+        // se suma bajo su dueño (mismo criterio que el descuento de stock en
+        // venta.service — ver variantOf ahí). Un dueño sin variantOfId se
+        // agrupa bajo sí mismo.
+        agrupadorId = producto.variantOfId ?? linea.productId
+        agrupadorNombre = producto.variantOfId ? (producto.variantOf?.nombre ?? producto.nombre) : producto.nombre
+      } else if (agrupador === "proveedor") {
         agrupadorId = producto.providerId ?? "__sin_proveedor__"
         agrupadorNombre = producto.provider?.nombre ?? "Sin proveedor"
       } else if (agrupador === "heladera") {

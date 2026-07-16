@@ -18,6 +18,7 @@ import { resolverTriangulo } from "@/domain/markup"
 import { formatearARS, redondearPesoArriba } from "@/domain/dinero"
 import { cn, normalizarTexto } from "@/lib/utils"
 import { CatalogoBuscador } from "@/components/catalogo-buscador"
+import { VariantesSection, type Variante } from "./variantes-section"
 
 const schema = z.object({
   nombre: z.string().min(1, "Requerido"),
@@ -56,6 +57,8 @@ interface ProductoFormProps {
     costoPorKgCentavos?: number | null
     stockGramos?: number | null
     stockMinimoGramos?: number | null
+    variantOfId?: string | null
+    variantes?: Variante[]
   }
   barcodePreset?: string
   /** Precarga categoría/proveedor al crear (no se usa editando) — viene de en
@@ -543,6 +546,17 @@ export default function ProductoForm({ producto, barcodePreset, defaultsNuevo, o
           />
         </div>
       </div>
+
+      {isEditing && producto && !producto.variantOfId && (
+        <VariantesSection
+          dueñoId={producto.id}
+          categoryId={producto.categoryId}
+          providerId={producto.providerId}
+          locationId={producto.locationId}
+          variantes={producto.variantes ?? []}
+          esAdmin={esAdmin}
+        />
+      )}
 
       <Button type="submit" className="w-full rounded-xl" disabled={isSubmitting}>
         {isSubmitting ? (
