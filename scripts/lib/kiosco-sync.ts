@@ -10,15 +10,23 @@ export const ORDEN_TABLAS = [
   "caja",
   "category",
   "provider",
+  // Depende de provider (pago/compra) y opcionalmente de caja (ambos ya arriba).
+  "movimientoCuentaCorrienteProveedor",
   "location",
+  // Depende solo de organization (ya arriba) — antes de "sale", que la referencia opcionalmente.
+  "customer",
   "paymentMethod",
   "fixedExpense",
   "fixedExpenseMonto",
   "cajaSesion",
+  // Depende de cajaSesion, caja y user (los tres ya arriba).
+  "arqueoParcial",
   "product",
   "sale",
   "saleLine",
   "payment",
+  // Depende de sale y organization (ambos ya arriba) — incluye la columna `pdf`.
+  "comprobante",
   "stockMovement",
   "movimientoCaja",
 ] as const
