@@ -391,6 +391,20 @@ model Product {
   location           Location? @relation(fields: [locationId], references: [id])
   stock              Int       @default(0)
   stockMinimo        Int       @default(0)
+  // ── Variantes que comparten stock (Fase 1: modelo + lógica, sin selector en
+  // UI todavía) ─────────────────────────────────────────────────────────────
+  // variantOfId = null → este producto ES el dueño del stock (vive en `stock`
+  // arriba). variantOfId != null → variante: tiene su propio precio/costo/
+  // barcode, pero su `stock` propio se IGNORA — el stock real vive en el dueño.
+  // Jerarquía de un solo nivel (sin cadenas): un dueño no puede a su vez ser
+  // variante de otro producto — ver validarVariante en producto.service.ts.
+  variantOfId        String?
+  variantOf          Product?  @relation("VariantesDeProducto", fields: [variantOfId], references: [id])
+  variantes          Product[] @relation("VariantesDeProducto")
+  // Unidades base del dueño que consume vender 1 de esta fila. Ej.: "Huevo"
+  // es dueño (factor 1, stock en unidades sueltas); "Media docena" (factor 6)
+  // y "Docena" (factor 12) son variantes que le apuntan.
+  unidadesPorVenta   Int       @default(1)
   // ── Pesables (vendidos por peso, ej. fiambre) ────────────────────────────
   // Campos aislados de los de arriba: cuando esPesable=true, costoCentavos/precioCentavos/
   // stock/stockMinimo se IGNORAN — se usan estos en su lugar. Evita mezclar "por unidad" con

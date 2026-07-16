@@ -25,6 +25,10 @@ export interface CrearProductoInput {
   precioPorKgCentavos?: number
   stockGramos?: number
   stockMinimoGramos?: number
+  // Variantes que comparten stock (Fase 1: sin selector en UI todavía) — ver
+  // Product.variantOfId/unidadesPorVenta en el schema.
+  variantOfId?: string | null
+  unidadesPorVenta?: number
 }
 
 export interface EditarProductoInput {
@@ -46,6 +50,8 @@ export interface EditarProductoInput {
   precioPorKgCentavos?: number
   stockGramos?: number
   stockMinimoGramos?: number
+  variantOfId?: string | null
+  unidadesPorVenta?: number
 }
 
 export interface FilaCSV {
@@ -77,6 +83,54 @@ async function generarSkuInterno(organizationId: string): Promise<string> {
   throw new Error("No se pudo generar un SKU interno único, reintentá")
 }
 
+/**
+ * Reglas de "variantes que comparten stock" (Product.variantOfId/unidadesPorVenta):
+ * factor mínimo 1, sin cadenas (un dueño no puede ser a su vez variante de
+ * otro) y sin mezclar con pesables (el stock de éstos vive en gramos, no en
+ * unidades — el factor no tiene forma de aplicarse). `productId` va indefinido
+ * al crear (todavía no tiene id ni puede tener variantes propias).
+ */
+async function validarVariante(input: {
+  productId?: string
+  organizationId: string
+  variantOfId: string | null | undefined
+  unidadesPorVenta: number | undefined
+  esPesable: boolean
+}) {
+  if (input.unidadesPorVenta !== undefined && input.unidadesPorVenta < 1) {
+    throw new Error("unidadesPorVenta debe ser mayor o igual a 1")
+  }
+  if (!input.variantOfId) return
+
+  if (input.esPesable) {
+    throw new Error("Un producto pesable no puede ser variante de otro (el stock se comparte por unidad, no por peso)")
+  }
+  if (input.productId && input.variantOfId === input.productId) {
+    throw new Error("Un producto no puede ser variante de sí mismo")
+  }
+
+  const dueño = await prisma.product.findFirstOrThrow({
+    where: { id: input.variantOfId, organizationId: input.organizationId },
+    select: { variantOfId: true, esPesable: true },
+  })
+  if (dueño.variantOfId) {
+    throw new Error("El producto elegido ya es variante de otro — no se permiten cadenas de variantes")
+  }
+  if (dueño.esPesable) {
+    throw new Error("Un producto pesable no puede ser dueño de variantes por unidad")
+  }
+
+  if (input.productId) {
+    const tieneVariantesPropias = await prisma.product.findFirst({
+      where: { variantOfId: input.productId, organizationId: input.organizationId },
+      select: { id: true },
+    })
+    if (tieneVariantesPropias) {
+      throw new Error("Este producto ya tiene variantes propias — no puede pasar a ser variante de otro")
+    }
+  }
+}
+
 // ─── Servicio ─────────────────────────────────────────────────────────────────
 
 export const productoService = {
@@ -92,6 +146,12 @@ export const productoService = {
     }
 
     const esPesable = input.esPesable ?? false
+    await validarVariante({
+      organizationId: input.organizationId,
+      variantOfId: input.variantOfId,
+      unidadesPorVenta: input.unidadesPorVenta,
+      esPesable,
+    })
     const triangulo = resolverTriangulo({
       costoCentavos: esPesable ? input.costoPorKgCentavos : input.costoCentavos,
       precioCentavos: esPesable ? input.precioPorKgCentavos : input.precioCentavos,
@@ -125,6 +185,8 @@ export const productoService = {
         precioPorKgCentavos: esPesable ? triangulo.precioCentavos : null,
         stockGramos: esPesable ? (input.stockGramos ?? 0) : null,
         stockMinimoGramos: esPesable ? (input.stockMinimoGramos ?? 0) : null,
+        variantOfId: input.variantOfId ?? null,
+        unidadesPorVenta: input.unidadesPorVenta ?? 1,
         organizationId: input.organizationId,
       },
       // Sin include: el resultado no se usa (las actions devuelven solo {ok, error})
@@ -148,6 +210,15 @@ export const productoService = {
     }
 
     const esPesable = input.esPesable ?? producto.esPesable
+    if (input.variantOfId !== undefined || input.unidadesPorVenta !== undefined) {
+      await validarVariante({
+        productId: input.id,
+        organizationId: input.organizationId,
+        variantOfId: input.variantOfId !== undefined ? input.variantOfId : producto.variantOfId,
+        unidadesPorVenta: input.unidadesPorVenta,
+        esPesable,
+      })
+    }
 
     let triangulo: ReturnType<typeof resolverTriangulo> | null = null
     if (esPesable) {
@@ -187,6 +258,8 @@ export const productoService = {
         ...(input.providerId !== undefined && { providerId: input.providerId }),
         ...(input.locationId !== undefined && { locationId: input.locationId }),
         ...(input.esPesable !== undefined && { esPesable: input.esPesable }),
+        ...(input.variantOfId !== undefined && { variantOfId: input.variantOfId }),
+        ...(input.unidadesPorVenta !== undefined && { unidadesPorVenta: input.unidadesPorVenta }),
         ...(esPesable
           ? {
               ...(input.stockGramos !== undefined && { stockGramos: input.stockGramos }),
@@ -470,6 +543,7 @@ export const productoService = {
         stock: true, stockGramos: true, esPesable: true,
         precioCentavos: true, costoCentavos: true,
         precioPorKgCentavos: true, costoPorKgCentavos: true,
+        variantOfId: true,
       },
     })
     let valorCostoCentavos = 0

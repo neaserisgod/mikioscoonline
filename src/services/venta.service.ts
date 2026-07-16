@@ -92,11 +92,16 @@ export const ventaService = {
         if (existente) return existente
       }
 
-      // 1. Cargar productos con categoría (necesaria para resolver cajaId)
+      // 1. Cargar productos con categoría (necesaria para resolver cajaId) y el
+      // dueño de stock (variantOf) cuando el producto es una variante — ver
+      // domain "variantes que comparten stock" (Product.variantOfId).
       const productIds = input.lineas.map((l) => l.productId)
       const productos = await tx.product.findMany({
         where: { id: { in: productIds }, organizationId: input.organizationId, activo: true },
-        include: { category: { select: { cajaId: true } } },
+        include: {
+          category: { select: { cajaId: true } },
+          variantOf: { select: { id: true, stock: true, nombre: true } },
+        },
       })
 
       if (productos.length !== productIds.length) {
@@ -105,7 +110,11 @@ export const ventaService = {
         throw new Error(`Productos no encontrados: ${faltantes.join(", ")}`)
       }
 
-      // 2. Validar stock (gramos para pesables, unidades para el resto)
+      // 2. Validar stock (gramos para pesables, unidades para el resto —
+      // resuelto contra el DUEÑO cuando la línea es una variante). Se acumula
+      // el requerido por dueño porque una misma venta puede tener, por
+      // ejemplo, docena + media docena del mismo huevo.
+      const requeridoPorDueño = new Map<string, { stockDisponible: number; nombre: string; requerido: number }>()
       for (const linea of input.lineas) {
         const producto = productos.find((p) => p.id === linea.productId)!
         if (producto.esPesable) {
@@ -119,9 +128,25 @@ export const ventaService = {
               `Stock insuficiente para "${producto.nombre}": disponible ${disponible}g, requerido ${gramos}g`
             )
           }
-        } else if (producto.stock < linea.cantidad) {
+          continue
+        }
+
+        const stockOwnerId = producto.variantOfId ?? producto.id
+        const stockDisponible = producto.variantOfId ? (producto.variantOf?.stock ?? 0) : producto.stock
+        const nombreDueño = producto.variantOfId ? (producto.variantOf?.nombre ?? producto.nombre) : producto.nombre
+        const requerido = linea.cantidad * producto.unidadesPorVenta
+
+        const acumulado = requeridoPorDueño.get(stockOwnerId)
+        requeridoPorDueño.set(stockOwnerId, {
+          stockDisponible,
+          nombre: nombreDueño,
+          requerido: (acumulado?.requerido ?? 0) + requerido,
+        })
+      }
+      for (const info of requeridoPorDueño.values()) {
+        if (info.stockDisponible < info.requerido) {
           throw new Error(
-            `Stock insuficiente para "${producto.nombre}": disponible ${producto.stock}, requerido ${linea.cantidad}`
+            `Stock insuficiente para "${info.nombre}": disponible ${info.stockDisponible}, requerido ${info.requerido}`
           )
         }
       }
@@ -376,26 +401,33 @@ export const ventaService = {
             },
           })
         } else {
+          // Variante → el stock se descuenta del DUEÑO, no de esta fila (su
+          // `stock` propio se ignora). `requerido` son unidades base del
+          // dueño (cantidad × unidadesPorVenta), ver paso 2.
+          const stockOwnerId = producto.variantOfId ?? producto.id
+          const requerido = linea.cantidad * producto.unidadesPorVenta
+          const nombreDueño = producto.variantOfId ? (producto.variantOf?.nombre ?? producto.nombre) : producto.nombre
+
           const { count } = await tx.product.updateMany({
-            where: { id: linea.productId, stock: { gte: linea.cantidad } },
-            data: { stock: { decrement: linea.cantidad } },
+            where: { id: stockOwnerId, stock: { gte: requerido } },
+            data: { stock: { decrement: requerido } },
           })
           if (count === 0) {
-            throw new Error(`Stock insuficiente para "${producto.nombre}"`)
+            throw new Error(`Stock insuficiente para "${nombreDueño}"`)
           }
           const actualizado = await tx.product.findUniqueOrThrow({
-            where: { id: linea.productId },
+            where: { id: stockOwnerId },
             select: { stock: true },
           })
           const stockPosterior = actualizado.stock
-          const stockAnterior = stockPosterior + linea.cantidad
+          const stockAnterior = stockPosterior + requerido
 
           await tx.stockMovement.create({
             data: {
-              productId: linea.productId,
+              productId: stockOwnerId,
               userId: input.userId,
               tipo: "SALIDA",
-              cantidad: linea.cantidad,
+              cantidad: requerido,
               stockAnterior,
               stockPosterior,
               saleId: venta.id,
@@ -416,8 +448,10 @@ export const ventaService = {
         : [...new Set(productos.map((p) => p.providerId).filter((id): id is string => !!id))]
 
       if (providerIdsInvolucrados.length > 0) {
+        // Excluye variantes: su `stock` propio se ignora (siempre figuraría en
+        // 0 y falsearía el escaneo) — solo los dueños tienen stock real.
         const productosDeProveedores = await tx.product.findMany({
-          where: { providerId: { in: providerIdsInvolucrados }, organizationId: input.organizationId, activo: true },
+          where: { providerId: { in: providerIdsInvolucrados }, organizationId: input.organizationId, activo: true, variantOfId: null },
           select: { providerId: true, esPesable: true, stock: true, stockMinimo: true, stockGramos: true, stockMinimoGramos: true },
         })
         const proveedoresConStockBajo = new Set(

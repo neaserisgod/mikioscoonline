@@ -93,22 +93,30 @@ export const stockService = {
       })
     }
 
+    // Variante → el movimiento se aplica sobre el DUEÑO, nunca sobre esta fila
+    // (su `stock` propio se ignora). `cantidad` viene en unidades de ESTA
+    // presentación (ej. "docenas") y se convierte a unidades base del dueño
+    // con el mismo factor que usa la venta (unidadesPorVenta) — así "recibí 5
+    // docenas" suma 60 al stock real, no 5.
+    const stockOwnerId = producto.variantOfId ?? input.productId
+    const cantidadBase = input.cantidad * producto.unidadesPorVenta
+
     if (input.tipo === "ENTRADA") {
       return prisma.$transaction(async (tx) => {
         const actualizado = await tx.product.update({
-          where: { id: input.productId },
-          data: { stock: { increment: input.cantidad } },
+          where: { id: stockOwnerId },
+          data: { stock: { increment: cantidadBase } },
           select: { stock: true },
         })
         const stockPosterior = actualizado.stock
-        const stockAnterior = stockPosterior - input.cantidad
+        const stockAnterior = stockPosterior - cantidadBase
 
         const movimiento = await tx.stockMovement.create({
           data: {
-            productId: input.productId,
+            productId: stockOwnerId,
             userId: input.userId,
             tipo: input.tipo,
-            cantidad: input.cantidad,
+            cantidad: cantidadBase,
             stockAnterior,
             stockPosterior,
             motivo: input.motivo,
@@ -117,6 +125,8 @@ export const stockService = {
 
         // Esta entrada es la compra real al proveedor — descuenta del fondo de
         // reposición lo que ya se había apartado para reponer este producto.
+        // El costo usa el de la presentación recibida (costoCentavos de ESTA
+        // fila, no el del dueño) por la cantidad de esa presentación.
         if (producto.providerId) {
           const costoRecibidoCentavos = producto.costoCentavos * input.cantidad
           await tx.provider.update({
@@ -129,22 +139,30 @@ export const stockService = {
       })
     }
 
-    // AJUSTE: mismo razonamiento que en el caso pesable — set absoluto intencional.
-    const stockAnterior = producto.stock
-    const stockPosterior = input.cantidad
-    if (stockPosterior < 0) {
-      throw new Error(`Stock resultante no puede ser negativo: ${stockPosterior}`)
+    // AJUSTE: mismo razonamiento que en el caso pesable — set absoluto
+    // intencional, resuelto contra el dueño cuando la fila elegida es una
+    // variante (stockAnterior se relee del dueño, no del valor ya obtenido
+    // arriba, que corresponde a esta fila y puede ser irrelevante).
+    if (cantidadBase < 0) {
+      throw new Error(`Stock resultante no puede ser negativo: ${cantidadBase}`)
     }
 
     return prisma.$transaction(async (tx) => {
+      const dueñoActual = await tx.product.findUniqueOrThrow({
+        where: { id: stockOwnerId },
+        select: { stock: true },
+      })
+      const stockAnterior = dueñoActual.stock
+      const stockPosterior = cantidadBase
+
       await tx.product.update({
-        where: { id: input.productId },
+        where: { id: stockOwnerId },
         data: { stock: stockPosterior },
       })
 
       return tx.stockMovement.create({
         data: {
-          productId: input.productId,
+          productId: stockOwnerId,
           userId: input.userId,
           tipo: input.tipo,
           cantidad: stockPosterior - stockAnterior,

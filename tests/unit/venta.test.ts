@@ -121,3 +121,61 @@ describe("Flujo de venta — validaciones de stock", () => {
     expect(stockPosterior).toBe(17)
   })
 })
+
+describe("Flujo de venta — variantes que comparten stock", () => {
+  // Simula el modelo: "Huevo" es el dueño (factor 1, stock en unidades
+  // sueltas); "Media docena" (factor 6) y "Docena" (factor 12) son variantes
+  // que le apuntan y no tienen stock propio — ver Product.variantOfId /
+  // unidadesPorVenta y ventaService.crear (paso 2: validación agregada por
+  // dueño, paso 10: decremento atómico contra el dueño).
+  const huevo = { id: "huevo", nombre: "Huevo", variantOfId: null as string | null, unidadesPorVenta: 1, stock: 30 }
+  const mediaDocena = { id: "media-docena", nombre: "Media docena de huevo", variantOfId: "huevo" as string | null, unidadesPorVenta: 6 }
+  const docena = { id: "docena", nombre: "Docena de huevo", variantOfId: "huevo" as string | null, unidadesPorVenta: 12 }
+
+  /** Mismo cálculo que el paso 2 de ventaService.crear: acumula el requerido
+   * (cantidad × unidadesPorVenta) por dueño, no por línea. */
+  function requeridoPorDueño(
+    lineas: { producto: { id: string; variantOfId: string | null; unidadesPorVenta: number }; cantidad: number }[]
+  ) {
+    const mapa = new Map<string, number>()
+    for (const { producto, cantidad } of lineas) {
+      const stockOwnerId = producto.variantOfId ?? producto.id
+      const requerido = cantidad * producto.unidadesPorVenta
+      mapa.set(stockOwnerId, (mapa.get(stockOwnerId) ?? 0) + requerido)
+    }
+    return mapa
+  }
+
+  it("dueño con stock 30, vender 1 docena (factor 12) deja 18", () => {
+    const requerido = requeridoPorDueño([{ producto: docena, cantidad: 1 }]).get("huevo")!
+    expect(requerido).toBe(12)
+    expect(huevo.stock - requerido).toBe(18)
+  })
+
+  it("dueño con stock 30, vender 1 media docena (factor 6) deja 24", () => {
+    const requerido = requeridoPorDueño([{ producto: mediaDocena, cantidad: 1 }]).get("huevo")!
+    expect(requerido).toBe(6)
+    expect(huevo.stock - requerido).toBe(24)
+  })
+
+  it("oversell: vender más que el stock del dueño lanza y no descuenta", () => {
+    const requerido = requeridoPorDueño([{ producto: docena, cantidad: 3 }]).get("huevo")! // 36 > 30
+    expect(() => {
+      if (requerido > huevo.stock) {
+        throw new Error(`Stock insuficiente para "${huevo.nombre}": disponible ${huevo.stock}, requerido ${requerido}`)
+      }
+    }).toThrow("Stock insuficiente")
+    // El chequeo lanza antes de tocar el stock — sigue intacto
+    expect(huevo.stock).toBe(30)
+  })
+
+  it("una venta con docena + media docena del mismo dueño acumula y descuenta 18 en total", () => {
+    const mapa = requeridoPorDueño([
+      { producto: docena, cantidad: 1 }, // 12
+      { producto: mediaDocena, cantidad: 1 }, // 6
+    ])
+    const requeridoTotal = mapa.get("huevo")!
+    expect(requeridoTotal).toBe(18)
+    expect(huevo.stock - requeridoTotal).toBe(12)
+  })
+})

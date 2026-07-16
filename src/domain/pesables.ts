@@ -55,8 +55,13 @@ export function stockDisponible(producto: { esPesable: boolean; stock: number; s
  * el valor de mercadería a costo del negocio completo (ver
  * productoService.valorInventario). */
 export function valoresInventario(
-  producto: DatosPrecioProducto & { stock: number; stockGramos: number | null }
+  producto: DatosPrecioProducto & { stock: number; stockGramos: number | null; variantOfId?: string | null }
 ): { valorVentaCentavos: number; valorCostoCentavos: number } {
+  // Las variantes no tienen stock propio (vive en el dueño, ver
+  // Product.variantOfId) — contarlas acá duplicaría el valor ya contado en el
+  // dueño (o, si su `stock` quedó con un resto de antes de volverse variante,
+  // sumaría plata que no está separada de verdad).
+  if (producto.variantOfId) return { valorVentaCentavos: 0, valorCostoCentavos: 0 }
   const precioUnit = precioUnitarioEfectivo(producto)
   const costoUnit = costoUnitarioEfectivo(producto)
   const cantidad = stockDisponible(producto)
