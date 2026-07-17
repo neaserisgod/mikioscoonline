@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
 import { formatearARS } from "@/domain/dinero"
 import { cn } from "@/lib/utils"
+import { stagger } from "@/lib/motion"
 import { Field, StatusBadge, ListCard, ActionRow } from "@/components/config/list-primitives"
 import {
   crearProveedorAction, editarProveedorAction,
@@ -32,6 +33,11 @@ interface Proveedor {
 interface StockBajoItem { id: string; sku: string; nombre: string; stock: number; stockMinimo: number }
 interface CajaItem { id: string; nombre: string; sesiones: { id: string }[] }
 interface ResumenProveedorStock { id: string; valorCostoCentavos: number; valorVentaCentavos: number }
+interface ResumenProveedorFinanciero {
+  id: string; nombre: string; totalProductos: number; sinStock: number
+  gananciaPotencialCentavos: number; valorCostoCentavos: number; valorVentaCentavos: number
+  pisoReposicionCentavos: number; saldoReposicionCentavos: number
+}
 interface FilaRentabilidadProveedor { id: string; ventasCentavos: number }
 interface MovimientoCuentaCorriente {
   id: string; tipo: "COMPRA" | "PAGO"; montoCentavos: number; createdAt: string
@@ -68,7 +74,13 @@ export default function ProveedoresClient() {
   const [ajustandoProveedor, setAjustandoProveedor] = useState<Proveedor | null>(null)
   const [pending, setPending] = useState<string | null>(null)
 
-  function invalidar() { qc.invalidateQueries({ queryKey: ["proveedores"] }) }
+  function invalidar() {
+    qc.invalidateQueries({ queryKey: ["proveedores"] })
+    // El desglose financiero (piso/saldo de reposición) vive en la misma
+    // tabla Provider — sin esto, crear/editar/desactivar acá no se reflejaba
+    // en las cards de arriba hasta el próximo staleTime (60s).
+    qc.invalidateQueries({ queryKey: ["productos-resumen-proveedores"] })
+  }
 
   function abrirCrear() { setEditing(null); setSheetOpen(true) }
   function abrirEditar(p: Proveedor) { setEditing(p); setSheetOpen(true) }
@@ -99,6 +111,8 @@ export default function ProveedoresClient() {
       <div className="flex items-center justify-end">
         <Button size="sm" onClick={abrirCrear} className="gap-1.5"><Plus className="size-3.5" /> Nuevo</Button>
       </div>
+
+      <DesgloseFinancieroProveedores />
 
       {isLoading ? (
         <div className="space-y-2">
@@ -177,6 +191,112 @@ export default function ProveedoresClient() {
         </SheetContent>
       </Sheet>
     </div>
+  )
+}
+
+// ─── Desglose financiero por proveedor ─────────────────────────────────────
+// Panel de lectura, un vistazo por proveedor activo: mismo lenguaje visual
+// que las cards de Inicio (dashboard-client.tsx) — rounded-2xl bg-card
+// shadow-[var(--shadow-card)] ring-1 ring-foreground/[0.04], grillas de 2
+// columnas para métricas lado a lado, y k-gain/k-loss para plata a favor/en
+// contra. No es una acción — solo mirar; para operar (pagar, ajustar el piso,
+// pedir) se sigue usando "Cuenta corriente" en cada fila de la lista de abajo.
+
+function DesgloseFinancieroProveedores() {
+  const { data, isLoading } = useQuery<ResumenProveedorFinanciero[]>({
+    queryKey: ["productos-resumen-proveedores"],
+    queryFn: () => fetch("/api/productos/resumen-proveedores").then((r) => r.json()),
+    staleTime: 60_000,
+  })
+
+  if (isLoading) {
+    return (
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+        {[1, 2, 3].map((i) => <Skeleton key={i} className="h-56 rounded-2xl" />)}
+      </div>
+    )
+  }
+  if (!data || data.length === 0) return null
+
+  return (
+    <div className="space-y-2">
+      <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground px-0.5">
+        Desglose financiero
+      </p>
+      <motion.div
+        className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3"
+        initial="hidden"
+        animate="show"
+        variants={stagger.container}
+      >
+        {data.map((p) => (
+          <ProveedorFinancieroCard key={p.id} proveedor={p} />
+        ))}
+      </motion.div>
+    </div>
+  )
+}
+
+function ProveedorFinancieroCard({ proveedor: p }: { proveedor: ResumenProveedorFinanciero }) {
+  const recomendacion = (() => {
+    if (p.pisoReposicionCentavos === 0) {
+      return { texto: "Sin piso de reposición configurado", tono: "muted" as const }
+    }
+    if (p.saldoReposicionCentavos >= p.pisoReposicionCentavos) {
+      return {
+        texto: `Podés recomprar (juntaste ${formatearARS(p.saldoReposicionCentavos)} de ${formatearARS(p.pisoReposicionCentavos)})`,
+        tono: "gain" as const,
+      }
+    }
+    return {
+      texto: `Te falta ${formatearARS(p.pisoReposicionCentavos - p.saldoReposicionCentavos)}`,
+      tono: "loss" as const,
+    }
+  })()
+
+  return (
+    <motion.div
+      variants={stagger.item}
+      className="rounded-2xl bg-card shadow-[var(--shadow-card)] ring-1 ring-foreground/[0.04] p-5 space-y-3"
+    >
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-[15px] font-semibold tracking-tight truncate">{p.nombre}</p>
+        <span className="text-xs text-muted-foreground shrink-0">
+          {p.totalProductos} prod.{p.sinStock > 0 && ` · ${p.sinStock} sin stock`}
+        </span>
+      </div>
+
+      <div>
+        <p className="text-xs text-muted-foreground">Invertido a costo</p>
+        <p className="text-xl font-semibold tabular-nums mt-1">{formatearARS(p.valorCostoCentavos)}</p>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <p className="text-xs text-muted-foreground">Si se vende todo</p>
+          <p className="text-lg font-semibold tabular-nums mt-1">{formatearARS(p.valorVentaCentavos)}</p>
+        </div>
+        <div>
+          <p className="text-xs text-muted-foreground">Ganancia potencial</p>
+          <p className={cn(
+            "text-lg font-semibold tabular-nums mt-1",
+            p.gananciaPotencialCentavos > 0 ? "text-k-gain" : p.gananciaPotencialCentavos < 0 ? "text-k-loss" : ""
+          )}>
+            {formatearARS(p.gananciaPotencialCentavos)}
+          </p>
+        </div>
+      </div>
+
+      <div className="border-t border-border/60 pt-2.5 flex items-center justify-between gap-2 text-sm">
+        <span className="text-muted-foreground shrink-0">Reposición</span>
+        <span className={cn(
+          "font-medium text-right",
+          recomendacion.tono === "gain" ? "text-k-gain" : recomendacion.tono === "loss" ? "text-k-loss" : "text-muted-foreground"
+        )}>
+          {recomendacion.texto}
+        </span>
+      </div>
+    </motion.div>
   )
 }
 

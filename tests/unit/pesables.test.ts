@@ -6,6 +6,7 @@ import {
   stockDisponible,
   valoresInventario,
   gananciaPotencial,
+  resumenInventario,
 } from "@/domain/pesables"
 
 const noPesable = {
@@ -105,5 +106,54 @@ describe("valoresInventario / gananciaPotencial", () => {
     const p = { ...pesable, stock: 0, stockGramos: 500 }
     expect(valoresInventario(p)).toEqual({ valorVentaCentavos: 400000, valorCostoCentavos: 300000 })
     expect(gananciaPotencial(p)).toBe(100000)
+  })
+})
+
+// Desglose financiero por proveedor (proveedores-client.tsx) — invertido,
+// ingreso bruto y ganancia potencial son la suma de valoresInventario de
+// todos los productos del proveedor, sin importar si son pesables o no.
+describe("resumenInventario", () => {
+  it("suma no pesable + pesable en la misma lista", () => {
+    const productos = [
+      { ...noPesable, stock: 5, stockGramos: null }, // venta 75000, costo 50000
+      { ...pesable, stock: 0, stockGramos: 500 }, // venta 400000, costo 300000
+    ]
+    expect(resumenInventario(productos)).toEqual({
+      valorCostoCentavos: 350000,
+      valorVentaCentavos: 475000,
+      gananciaPotencialCentavos: 125000,
+    })
+  })
+
+  it("proveedor sin stock (lista vacía) da todo en $0, no rompe", () => {
+    expect(resumenInventario([])).toEqual({
+      valorCostoCentavos: 0,
+      valorVentaCentavos: 0,
+      gananciaPotencialCentavos: 0,
+    })
+  })
+
+  it("productos con stock 0 no aportan nada (proveedor con catálogo agotado)", () => {
+    const productos = [
+      { ...noPesable, stock: 0, stockGramos: null },
+      { ...pesable, stock: 0, stockGramos: 0 },
+    ]
+    expect(resumenInventario(productos)).toEqual({
+      valorCostoCentavos: 0,
+      valorVentaCentavos: 0,
+      gananciaPotencialCentavos: 0,
+    })
+  })
+
+  it("variantes (variantOfId no nulo) no suman — su valor ya está en el dueño", () => {
+    const productos = [
+      { ...noPesable, stock: 5, stockGramos: null }, // dueño: cuenta
+      { ...noPesable, stock: 999, stockGramos: null, variantOfId: "dueño-1" }, // variante: no cuenta
+    ]
+    expect(resumenInventario(productos)).toEqual({
+      valorCostoCentavos: 50000,
+      valorVentaCentavos: 75000,
+      gananciaPotencialCentavos: 25000,
+    })
   })
 })

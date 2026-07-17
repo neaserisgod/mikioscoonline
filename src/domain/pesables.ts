@@ -79,3 +79,20 @@ export function gananciaPotencial(producto: DatosPrecioProducto & { stock: numbe
   const { valorVentaCentavos, valorCostoCentavos } = valoresInventario(producto)
   return valorVentaCentavos - valorCostoCentavos
 }
+
+/** Suma `valoresInventario` de una lista de productos — mismo cálculo usado
+ * para "todo el negocio" (productoService.valorInventario), por proveedor
+ * (productoService.resumenProveedores) o cualquier otro recorte. Lista vacía
+ * (ej. un proveedor sin stock) da $0 en los tres campos, no rompe. */
+export function resumenInventario(
+  productos: Array<DatosPrecioProducto & { stock: number; stockGramos: number | null; variantOfId?: string | null }>
+): { valorCostoCentavos: number; valorVentaCentavos: number; gananciaPotencialCentavos: number } {
+  let valorCostoCentavos = 0
+  let valorVentaCentavos = 0
+  for (const p of productos) {
+    const v = valoresInventario(p)
+    valorCostoCentavos += v.valorCostoCentavos
+    valorVentaCentavos += v.valorVentaCentavos
+  }
+  return { valorCostoCentavos, valorVentaCentavos, gananciaPotencialCentavos: valorVentaCentavos - valorCostoCentavos }
+}

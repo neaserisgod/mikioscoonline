@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma"
 import { resolverTriangulo } from "@/domain/markup"
-import { gananciaPotencial, valoresInventario } from "@/domain/pesables"
+import { gananciaPotencial, resumenInventario } from "@/domain/pesables"
 import { normalizarTexto } from "@/lib/utils"
 import Papa from "papaparse"
 
@@ -428,50 +428,61 @@ export const productoService = {
     })
   },
 
-  /** Cards de nivel 1 en Productos (Proveedores). Trae todo y agrupa en memoria
-   * (mismo criterio que rentabilidad.service.ts: catálogo chico, cientos de
-   * productos por organización como mucho). "Sin proveedor" usa el mismo
-   * sentinel que ya usa rentabilidad.service.ts para consistencia. */
+  /** Cards de nivel 1 en Productos (Proveedores) y base del desglose
+   * financiero por proveedor (ver proveedores-client.tsx). Arranca de TODOS
+   * los proveedores activos (no solo los que tienen productos) para que uno
+   * recién creado, o uno que se quedó sin stock, aparezca igual con todo en
+   * $0 en vez de desaparecer de la lista. "Sin proveedor" sigue siendo un
+   * bucket sintético (no es un Provider real) — mismo sentinel que ya usa
+   * rentabilidad.service.ts, solo aparece si hay productos sueltos. */
   async resumenProveedores(organizationId: string) {
-    // Solo dueños (ver `listar`) — el stock/valor de una variante ya está
-    // contado en su dueño, sumarla aparte duplicaría el conteo.
-    const productos = await prisma.product.findMany({
-      where: { organizationId, activo: true, variantOfId: null },
-      select: {
-        providerId: true,
-        provider: { select: { nombre: true } },
-        stock: true,
-        stockGramos: true,
-        esPesable: true,
-        precioCentavos: true,
-        costoCentavos: true,
-        precioPorKgCentavos: true,
-        costoPorKgCentavos: true,
-      },
-    })
+    const [proveedores, productos] = await Promise.all([
+      prisma.provider.findMany({
+        where: { organizationId, activo: true },
+        select: { id: true, nombre: true, pisoReposicionCentavos: true, saldoReposicionCentavos: true },
+      }),
+      // Solo dueños (ver `listar`) — el stock/valor de una variante ya está
+      // contado en su dueño, sumarla aparte duplicaría el conteo.
+      prisma.product.findMany({
+        where: { organizationId, activo: true, variantOfId: null },
+        select: {
+          providerId: true,
+          stock: true,
+          stockGramos: true,
+          esPesable: true,
+          precioCentavos: true,
+          costoCentavos: true,
+          precioPorKgCentavos: true,
+          costoPorKgCentavos: true,
+        },
+      }),
+    ])
 
-    const mapa = new Map<string, {
-      id: string; nombre: string; totalProductos: number; sinStock: number
-      gananciaPotencialCentavos: number; valorCostoCentavos: number; valorVentaCentavos: number
-    }>()
+    const productosPorProveedor = new Map<string, typeof productos>()
     for (const p of productos) {
       const id = p.providerId ?? "__sin_proveedor__"
-      const nombre = p.provider?.nombre ?? "Sin proveedor"
-      const fila = mapa.get(id) ?? {
-        id, nombre, totalProductos: 0, sinStock: 0,
-        gananciaPotencialCentavos: 0, valorCostoCentavos: 0, valorVentaCentavos: 0,
-      }
-      fila.totalProductos++
-      const sinStock = p.esPesable ? (p.stockGramos ?? 0) === 0 : p.stock === 0
-      if (sinStock) fila.sinStock++
-      fila.gananciaPotencialCentavos += gananciaPotencial(p)
-      const v = valoresInventario(p)
-      fila.valorCostoCentavos += v.valorCostoCentavos
-      fila.valorVentaCentavos += v.valorVentaCentavos
-      mapa.set(id, fila)
+      const lista = productosPorProveedor.get(id)
+      if (lista) lista.push(p)
+      else productosPorProveedor.set(id, [p])
     }
 
-    return Array.from(mapa.values()).sort((a, b) => a.nombre.localeCompare(b.nombre))
+    function fila(id: string, nombre: string, pisoReposicionCentavos: number, saldoReposicionCentavos: number) {
+      const productosDeEste = productosPorProveedor.get(id) ?? []
+      const sinStock = productosDeEste.filter((p) => (p.esPesable ? (p.stockGramos ?? 0) === 0 : p.stock === 0)).length
+      const { valorCostoCentavos, valorVentaCentavos, gananciaPotencialCentavos } = resumenInventario(productosDeEste)
+      return {
+        id, nombre, totalProductos: productosDeEste.length, sinStock,
+        gananciaPotencialCentavos, valorCostoCentavos, valorVentaCentavos,
+        pisoReposicionCentavos, saldoReposicionCentavos,
+      }
+    }
+
+    const filas = proveedores.map((p) => fila(p.id, p.nombre, p.pisoReposicionCentavos, p.saldoReposicionCentavos))
+    if (productosPorProveedor.has("__sin_proveedor__")) {
+      filas.push(fila("__sin_proveedor__", "Sin proveedor", 0, 0))
+    }
+
+    return filas.sort((a, b) => a.nombre.localeCompare(b.nombre))
   },
 
   /** Cards de nivel 2 en Productos (Categorías dentro de un proveedor).
@@ -596,13 +607,7 @@ export const productoService = {
         variantOfId: true,
       },
     })
-    let valorCostoCentavos = 0
-    let valorVentaCentavos = 0
-    for (const p of productos) {
-      const v = valoresInventario(p)
-      valorCostoCentavos += v.valorCostoCentavos
-      valorVentaCentavos += v.valorVentaCentavos
-    }
+    const { valorCostoCentavos, valorVentaCentavos } = resumenInventario(productos)
     return { valorCostoCentavos, valorVentaCentavos }
   },
 
