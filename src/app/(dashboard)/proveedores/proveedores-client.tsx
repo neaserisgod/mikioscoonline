@@ -5,17 +5,21 @@ import Link from "next/link"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { motion } from "framer-motion"
 import { toast } from "sonner"
-import { Plus, Wallet, Loader2, Truck, Pencil, ArrowRight, ArrowDownLeft, ArrowUpRight, Package, AlertTriangle, PackagePlus, Percent } from "lucide-react"
+import { Plus, Loader2, Truck, Pencil, ArrowRight, ArrowDownLeft, ArrowUpRight, Package, AlertTriangle, PackagePlus, Percent, Eye, EyeOff, Trash2, MoreHorizontal } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import {
+  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
 import { formatearARS } from "@/domain/dinero"
 import { cn } from "@/lib/utils"
 import { stagger } from "@/lib/motion"
-import { Field, StatusBadge, ListCard, ActionRow } from "@/components/config/list-primitives"
+import { Field } from "@/components/config/list-primitives"
 import {
   crearProveedorAction, editarProveedorAction,
   desactivarProveedorAction, reactivarProveedorAction, eliminarProveedorAction,
@@ -60,12 +64,40 @@ function fechaCorta(iso: string) {
   return new Date(iso).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "2-digit" })
 }
 
+/** Compartida entre la card (ProveedorFinancieroCard) y el detalle
+ * (CuentaCorrienteSheet) — misma cuenta, mismo texto, un solo lugar. */
+function recomendacionReposicion(p: { pisoReposicionCentavos: number; saldoReposicionCentavos: number }) {
+  if (p.pisoReposicionCentavos === 0) {
+    return { texto: "Sin piso de reposición configurado", tono: "muted" as const }
+  }
+  if (p.saldoReposicionCentavos >= p.pisoReposicionCentavos) {
+    return {
+      texto: `Podés recomprar (juntaste ${formatearARS(p.saldoReposicionCentavos)} de ${formatearARS(p.pisoReposicionCentavos)})`,
+      tono: "gain" as const,
+    }
+  }
+  return {
+    texto: `Te falta ${formatearARS(p.pisoReposicionCentavos - p.saldoReposicionCentavos)}`,
+    tono: "loss" as const,
+  }
+}
+
 export default function ProveedoresClient() {
   const qc = useQueryClient()
   const { data, isLoading } = useQuery<Proveedor[]>({
     queryKey: ["proveedores"],
     queryFn: () => fetch("/api/config/proveedores").then((r) => r.json()),
     staleTime: 30_000,
+  })
+  // Desglose financiero (invertido/ingreso/ganancia potencial) — solo
+  // proveedores ACTIVOS (ver producto.service.ts). Un proveedor inactivo
+  // igual tiene su card (con `data`, arriba) para poder reactivarlo, solo que
+  // sin estos montos — no tiene sentido calcular inventario "potencial" de
+  // algo que no se compra.
+  const { data: financiero, isLoading: isLoadingFinanciero } = useQuery<ResumenProveedorFinanciero[]>({
+    queryKey: ["productos-resumen-proveedores"],
+    queryFn: () => fetch("/api/productos/resumen-proveedores").then((r) => r.json()),
+    staleTime: 60_000,
   })
 
   const [sheetOpen, setSheetOpen] = useState(false)
@@ -112,11 +144,9 @@ export default function ProveedoresClient() {
         <Button size="sm" onClick={abrirCrear} className="gap-1.5"><Plus className="size-3.5" /> Nuevo</Button>
       </div>
 
-      <DesgloseFinancieroProveedores />
-
-      {isLoading ? (
-        <div className="space-y-2">
-          {[1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-14 w-full rounded-2xl" />)}
+      {isLoading || isLoadingFinanciero ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+          {[1, 2, 3].map((i) => <Skeleton key={i} className="h-56 rounded-2xl" />)}
         </div>
       ) : data?.length === 0 ? (
         <div className="flex flex-col items-center gap-2 py-12 text-muted-foreground">
@@ -124,42 +154,20 @@ export default function ProveedoresClient() {
           <p className="text-sm">Sin proveedores todavía</p>
         </div>
       ) : (
-        <motion.div initial="hidden" animate="show">
-          <ListCard>
-            {data?.map((p) => (
-              <ActionRow
-                key={p.id}
-                primary={p.nombre}
-                activo={p.activo}
-                isPending={pending === p.id}
-                onEdit={() => abrirEditar(p)}
-                onToggle={() => toggle(p)}
-                onDelete={p._count.products === 0 ? () => eliminar(p) : undefined}
-                badge={
-                  <>
-                    <StatusBadge activo={p.activo} count={p.activo ? p._count.products : undefined} />
-                    {p.saldoCuentaCorrienteCentavos > 0 && (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-k-loss/10 text-k-loss font-medium">
-                        Debe {formatearARS(p.saldoCuentaCorrienteCentavos)}
-                      </span>
-                    )}
-                  </>
-                }
-                extraAction={
-                  <>
-                    <Button variant="ghost" size="icon-sm" onClick={() => setCuentaProveedor(p)} title="Cuenta corriente">
-                      <Wallet className="size-3.5" />
-                    </Button>
-                    {p._count.products > 0 && (
-                      <Button variant="ghost" size="icon-sm" onClick={() => setAjustandoProveedor(p)} title="Ajustar costos por %">
-                        <Percent className="size-3.5" />
-                      </Button>
-                    )}
-                  </>
-                }
-              />
-            ))}
-          </ListCard>
+        <motion.div
+          className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3"
+          initial="hidden"
+          animate="show"
+          variants={stagger.container}
+        >
+          {data?.map((p) => (
+            <ProveedorFinancieroCard
+              key={p.id}
+              proveedor={p}
+              financiero={financiero?.find((f) => f.id === p.id) ?? null}
+              onClick={() => setCuentaProveedor(p)}
+            />
+          ))}
         </motion.div>
       )}
 
@@ -180,109 +188,107 @@ export default function ProveedoresClient() {
         </SheetContent>
       </Sheet>
 
-      <Sheet open={!!cuentaProveedor} onOpenChange={(v) => !v && setCuentaProveedor(null)}>
-        <SheetContent>
+      <Dialog open={!!cuentaProveedor} onOpenChange={(v) => !v && setCuentaProveedor(null)}>
+        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
           {cuentaProveedor && (
-            <CuentaCorrienteSheet
+            <ProveedorDetalleDialog
               proveedor={cuentaProveedor}
+              isPending={pending === cuentaProveedor.id}
               onSuccess={() => { setCuentaProveedor(null); invalidar() }}
+              onEditar={() => { setCuentaProveedor(null); abrirEditar(cuentaProveedor) }}
+              onAjustarCostos={() => { setCuentaProveedor(null); setAjustandoProveedor(cuentaProveedor) }}
+              onToggleActivo={() => { toggle(cuentaProveedor); setCuentaProveedor(null) }}
+              onEliminar={
+                cuentaProveedor._count.products === 0
+                  ? () => { eliminar(cuentaProveedor); setCuentaProveedor(null) }
+                  : undefined
+              }
             />
           )}
-        </SheetContent>
-      </Sheet>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
 
-// ─── Desglose financiero por proveedor ─────────────────────────────────────
-// Panel de lectura, un vistazo por proveedor activo: mismo lenguaje visual
-// que las cards de Inicio (dashboard-client.tsx) — rounded-2xl bg-card
-// shadow-[var(--shadow-card)] ring-1 ring-foreground/[0.04], grillas de 2
-// columnas para métricas lado a lado, y k-gain/k-loss para plata a favor/en
-// contra. No es una acción — solo mirar; para operar (pagar, ajustar el piso,
-// pedir) se sigue usando "Cuenta corriente" en cada fila de la lista de abajo.
+// ─── Card de proveedor (desglose financiero + acceso al detalle) ───────────
+// Mismo lenguaje visual que las cards de Inicio (dashboard-client.tsx) —
+// rounded-2xl bg-card shadow-[var(--shadow-card)] ring-1 ring-foreground/[0.04],
+// grillas de 2 columnas para métricas lado a lado, k-gain/k-loss para plata a
+// favor/en contra. Clickeable entera: abre "Cuenta corriente" (el detalle/
+// gestión del proveedor — ahí viven editar nombre, ajustar costos, desactivar
+// y eliminar, ver CuentaCorrienteSheet). Los montos de inversión/ganancia
+// potencial vienen de `financiero` (solo proveedores activos, puede ser null
+// si el proveedor está inactivo o mientras carga) — sin eso, muestra $0 pero
+// la card sigue clickeable para poder reactivarlo.
+function ProveedorFinancieroCard({
+  proveedor: p, financiero: f, onClick,
+}: {
+  proveedor: Proveedor
+  financiero: ResumenProveedorFinanciero | null
+  onClick: () => void
+}) {
+  const valorCostoCentavos = f?.valorCostoCentavos ?? 0
+  const valorVentaCentavos = f?.valorVentaCentavos ?? 0
+  const gananciaPotencialCentavos = f?.gananciaPotencialCentavos ?? 0
+  const totalProductos = f?.totalProductos ?? p._count.products
+  const sinStock = f?.sinStock ?? 0
 
-function DesgloseFinancieroProveedores() {
-  const { data, isLoading } = useQuery<ResumenProveedorFinanciero[]>({
-    queryKey: ["productos-resumen-proveedores"],
-    queryFn: () => fetch("/api/productos/resumen-proveedores").then((r) => r.json()),
-    staleTime: 60_000,
-  })
-
-  if (isLoading) {
-    return (
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
-        {[1, 2, 3].map((i) => <Skeleton key={i} className="h-56 rounded-2xl" />)}
-      </div>
-    )
-  }
-  if (!data || data.length === 0) return null
-
-  return (
-    <div className="space-y-2">
-      <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground px-0.5">
-        Desglose financiero
-      </p>
-      <motion.div
-        className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3"
-        initial="hidden"
-        animate="show"
-        variants={stagger.container}
-      >
-        {data.map((p) => (
-          <ProveedorFinancieroCard key={p.id} proveedor={p} />
-        ))}
-      </motion.div>
-    </div>
-  )
-}
-
-function ProveedorFinancieroCard({ proveedor: p }: { proveedor: ResumenProveedorFinanciero }) {
-  const recomendacion = (() => {
-    if (p.pisoReposicionCentavos === 0) {
-      return { texto: "Sin piso de reposición configurado", tono: "muted" as const }
-    }
-    if (p.saldoReposicionCentavos >= p.pisoReposicionCentavos) {
-      return {
-        texto: `Podés recomprar (juntaste ${formatearARS(p.saldoReposicionCentavos)} de ${formatearARS(p.pisoReposicionCentavos)})`,
-        tono: "gain" as const,
-      }
-    }
-    return {
-      texto: `Te falta ${formatearARS(p.pisoReposicionCentavos - p.saldoReposicionCentavos)}`,
-      tono: "loss" as const,
-    }
-  })()
+  const recomendacion = recomendacionReposicion(p)
 
   return (
     <motion.div
       variants={stagger.item}
-      className="rounded-2xl bg-card shadow-[var(--shadow-card)] ring-1 ring-foreground/[0.04] p-5 space-y-3"
+      onClick={onClick}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick() }
+      }}
+      className={cn(
+        "rounded-2xl bg-card shadow-[var(--shadow-card)] ring-1 ring-foreground/[0.04] p-5 space-y-3",
+        "cursor-pointer transition-colors hover:bg-muted/30",
+        "focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:border-ring",
+        !p.activo && "opacity-60"
+      )}
     >
       <div className="flex items-center justify-between gap-2">
-        <p className="text-[15px] font-semibold tracking-tight truncate">{p.nombre}</p>
+        <div className="flex items-center gap-2 min-w-0">
+          <p className="text-[15px] font-semibold tracking-tight truncate">{p.nombre}</p>
+          {!p.activo && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground font-medium shrink-0">
+              Inactivo
+            </span>
+          )}
+        </div>
         <span className="text-xs text-muted-foreground shrink-0">
-          {p.totalProductos} prod.{p.sinStock > 0 && ` · ${p.sinStock} sin stock`}
+          {totalProductos} prod.{sinStock > 0 && ` · ${sinStock} sin stock`}
         </span>
       </div>
 
+      {p.saldoCuentaCorrienteCentavos > 0 && (
+        <span className="inline-block text-[10px] px-1.5 py-0.5 rounded-md bg-k-loss/10 text-k-loss font-medium">
+          Debe {formatearARS(p.saldoCuentaCorrienteCentavos)}
+        </span>
+      )}
+
       <div>
         <p className="text-xs text-muted-foreground">Invertido a costo</p>
-        <p className="text-xl font-semibold tabular-nums mt-1">{formatearARS(p.valorCostoCentavos)}</p>
+        <p className="text-xl font-semibold tabular-nums mt-1">{formatearARS(valorCostoCentavos)}</p>
       </div>
 
       <div className="grid grid-cols-2 gap-3">
         <div>
           <p className="text-xs text-muted-foreground">Si se vende todo</p>
-          <p className="text-lg font-semibold tabular-nums mt-1">{formatearARS(p.valorVentaCentavos)}</p>
+          <p className="text-lg font-semibold tabular-nums mt-1">{formatearARS(valorVentaCentavos)}</p>
         </div>
         <div>
           <p className="text-xs text-muted-foreground">Ganancia potencial</p>
           <p className={cn(
             "text-lg font-semibold tabular-nums mt-1",
-            p.gananciaPotencialCentavos > 0 ? "text-k-gain" : p.gananciaPotencialCentavos < 0 ? "text-k-loss" : ""
+            gananciaPotencialCentavos > 0 ? "text-k-gain" : gananciaPotencialCentavos < 0 ? "text-k-loss" : ""
           )}>
-            {formatearARS(p.gananciaPotencialCentavos)}
+            {formatearARS(gananciaPotencialCentavos)}
           </p>
         </div>
       </div>
@@ -472,7 +478,22 @@ function MontoInlineEdit({ defaultValue, onSave, onCancel }: {
   )
 }
 
-function CuentaCorrienteSheet({ proveedor, onSuccess }: { proveedor: Proveedor; onSuccess: () => void }) {
+function ProveedorDetalleDialog({
+  proveedor, onSuccess, onEditar, onAjustarCostos, onToggleActivo, onEliminar, isPending,
+}: {
+  proveedor: Proveedor
+  onSuccess: () => void
+  /** Este sheet es ahora el detalle/gestión completo del proveedor (se llega
+   * clickeando su card) — estas 4 acciones antes vivían como íconos sueltos
+   * en la fila de una lista que ya no existe (ver ProveedorFinancieroCard). */
+  onEditar: () => void
+  onAjustarCostos: () => void
+  onToggleActivo: () => void
+  /** undefined si el proveedor tiene productos (mismo criterio que antes: no
+   * se puede eliminar un proveedor con catálogo). */
+  onEliminar?: () => void
+  isPending: boolean
+}) {
   const qc = useQueryClient()
   // OJO: /api/config/cajas lista todas las cajas activas (para administrarlas),
   // no cuáles tienen sesión abierta AHORA — para elegir de dónde sale un pago
@@ -522,6 +543,10 @@ function CuentaCorrienteSheet({ proveedor, onSuccess }: { proveedor: Proveedor; 
   const cajasAbiertas = cajas?.filter((c) => c.sesiones.length > 0) ?? []
   const stockDeEste = stockProveedores?.find((p) => p.id === proveedor.id)
   const ventasDeEste = ventasProveedores?.find((p) => p.id === proveedor.id)
+  const valorCostoCentavos = stockDeEste?.valorCostoCentavos ?? 0
+  const valorVentaCentavos = stockDeEste?.valorVentaCentavos ?? 0
+  const gananciaPotencialCentavos = valorVentaCentavos - valorCostoCentavos
+  const recomendacion = recomendacionReposicion(proveedor)
 
   // Si hay una sola caja abierta no tiene sentido obligar a elegirla del dropdown.
   useEffect(() => {
@@ -560,186 +585,278 @@ function CuentaCorrienteSheet({ proveedor, onSuccess }: { proveedor: Proveedor; 
 
   return (
     <>
-      <SheetHeader><SheetTitle>Cuenta corriente — {proveedor.nombre}</SheetTitle></SheetHeader>
-
-      <Link
-        href={`/productos?proveedorId=${proveedor.id}`}
-        className="mt-4 flex items-center justify-between rounded-xl bg-card shadow-[var(--shadow-card)] ring-1 ring-foreground/[0.04] px-4 py-2.5 text-sm hover:bg-muted/30 transition-colors"
-      >
-        <span className="text-muted-foreground">Ver catálogo de este proveedor</span>
-        <ArrowRight className="size-3.5 text-muted-foreground" />
-      </Link>
-
-      {stockBajo && stockBajo.length > 0 && (
-        <Link
-          href={`/productos?tab=pedidos&providerId=${proveedor.id}&sugerir=1`}
-          className="mt-2 flex items-center justify-between gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-sm hover:bg-amber-500/15 transition-colors"
-        >
-          <span className="flex items-center gap-2 text-amber-700 dark:text-amber-400">
-            <AlertTriangle className="size-3.5 shrink-0" />
-            {stockBajo.length} producto{stockBajo.length === 1 ? "" : "s"} con stock bajo — sugerir pedido
-          </span>
-          <ArrowRight className="size-3.5 text-amber-700 dark:text-amber-400 shrink-0" />
-        </Link>
-      )}
-
-      {proveedor.saldoReposicionCentavos > 0 && proveedor.saldoReposicionCentavos >= proveedor.pisoReposicionCentavos && (
-        <Link
-          href={`/productos?tab=pedidos&providerId=${proveedor.id}`}
-          className="mt-2 flex items-center justify-between gap-3 rounded-xl border border-k-gain/30 bg-k-gain-muted/15 px-4 py-2.5 text-sm hover:bg-k-gain-muted/25 transition-colors"
-        >
-          <span className="flex items-center gap-2 text-k-gain">
-            <PackagePlus className="size-3.5 shrink-0" />
-            Ya juntaste {formatearARS(proveedor.saldoReposicionCentavos)} de fondo — buen momento para pedirle
-          </span>
-          <ArrowRight className="size-3.5 text-k-gain shrink-0" />
-        </Link>
-      )}
-
-      <div className="mt-2 rounded-xl bg-card shadow-[var(--shadow-card)] ring-1 ring-foreground/[0.04] px-4 py-3 flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">
-          {proveedor.saldoCuentaCorrienteCentavos >= 0 ? "Le debemos" : "Saldo a favor"}
-        </p>
-        <p className={cn(
-          "text-lg font-semibold tabular-nums",
-          proveedor.saldoCuentaCorrienteCentavos >= 0 ? "text-k-loss" : "text-k-gain"
-        )}>
-          {formatearARS(Math.abs(proveedor.saldoCuentaCorrienteCentavos))}
-        </p>
-      </div>
-
-      <div className="mt-2 rounded-xl bg-card shadow-[var(--shadow-card)] ring-1 ring-foreground/[0.04] px-4 py-3">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm text-muted-foreground">Piso de reinversión</p>
-            <p className="text-[11px] text-muted-foreground/70">Colchón reservado antes de contar ganancia limpia</p>
-          </div>
-          {!editandoPiso && (
-            <div className="flex items-center gap-2">
-              <p className="text-sm font-semibold tabular-nums">{formatearARS(proveedor.pisoReposicionCentavos)}</p>
-              <Button type="button" variant="ghost" size="icon-sm" onClick={() => setEditandoPiso(true)}>
-                <Pencil className="size-3.5" />
-              </Button>
-            </div>
-          )}
-        </div>
-        {editandoPiso && (
-          <div className="mt-2">
-            <MontoInlineEdit
-              defaultValue={proveedor.pisoReposicionCentavos / 100}
-              onSave={guardarPiso}
-              onCancel={() => setEditandoPiso(false)}
-            />
-          </div>
-        )}
-      </div>
-
-      <div className="mt-2 rounded-xl bg-card shadow-[var(--shadow-card)] ring-1 ring-foreground/[0.04] px-4 py-3 space-y-2">
-        <p className="text-[11px] text-muted-foreground/70">Para decidir el piso: lo que tenés y lo que vendés de este proveedor</p>
-        <div className="flex items-center justify-between text-sm">
-          <span className="text-muted-foreground">Costo del stock que tenés ahora</span>
-          <span className="font-medium tabular-nums">{formatearARS(stockDeEste?.valorCostoCentavos ?? 0)}</span>
-        </div>
-        <div className="flex items-center justify-between text-sm">
-          <span className="text-muted-foreground">Precio de venta de ese mismo stock</span>
-          <span className="font-medium tabular-nums">{formatearARS(stockDeEste?.valorVentaCentavos ?? 0)}</span>
-        </div>
-        <div className="flex items-center justify-between text-sm">
-          <span className="text-muted-foreground">Total que facturaste este mes</span>
-          <span className="font-medium tabular-nums">{formatearARS(ventasDeEste?.ventasCentavos ?? 0)}</span>
-        </div>
-      </div>
-
-      <div className="mt-4 grid grid-cols-2 gap-2">
-        <Button
-          type="button"
-          variant={modo === "pago" ? "default" : "outline"}
-          onClick={() => {
-            setModo("pago")
-            if (!monto && proveedor.saldoCuentaCorrienteCentavos > 0) setMonto(String(proveedor.saldoCuentaCorrienteCentavos / 100))
-          }}
-        >
-          Registrar pago
-        </Button>
-        <Button type="button" variant={modo === "compra" ? "default" : "outline"} onClick={() => setModo("compra")}>Compra a crédito</Button>
-      </div>
-
-      <form onSubmit={onSubmit} className="mt-4 space-y-4">
-        <Field
-          label="Monto ($)"
-          type="number"
-          step="0.01"
-          min="0"
-          value={monto}
-          onChange={(e) => setMonto(e.target.value)}
-        />
-        {modo === "pago" && (
-          <div className="space-y-1.5">
-            <Label>Caja de la que sale el pago</Label>
-            <Select value={cajaId} onValueChange={(v) => setCajaId(v ?? "")}>
-              <SelectTrigger><SelectValue placeholder="Elegí una caja" /></SelectTrigger>
-              <SelectContent>
-                {cajasAbiertas.map((c) => (
-                  <SelectItem key={c.id} value={c.id}>{c.nombre}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {cajasAbiertas.length === 0 && (
-              <p className="text-xs text-k-loss">No hay ninguna caja abierta — abrí una para registrar el pago.</p>
-            )}
-          </div>
-        )}
-        <Button type="submit" className="w-full" disabled={isSubmitting}>
-          {isSubmitting ? <Loader2 className="size-4 animate-spin" /> : modo === "pago" ? "Registrar pago" : "Registrar compra"}
-        </Button>
-        {modo === "pago" && (
-          <p className="text-xs text-muted-foreground">Se crea un egreso real en la caja elegida y baja lo que le debemos.</p>
-        )}
-        {modo === "compra" && (
-          <p className="text-xs text-muted-foreground">Solo sube lo que le debemos — no mueve ninguna caja.</p>
-        )}
-      </form>
-
-      {movimientos && movimientos.length > 0 && (
-        <div className="mt-4 rounded-xl bg-card shadow-[var(--shadow-card)] ring-1 ring-foreground/[0.04] px-4 py-3 space-y-1.5">
-          <p className="text-[11px] text-muted-foreground/70">Historial de cuenta corriente</p>
-          {movimientos.slice(0, 6).map((m) => (
-            <div key={m.id} className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground flex items-center gap-1.5">
-                {m.tipo === "PAGO"
-                  ? <ArrowUpRight className="size-3 text-k-gain shrink-0" />
-                  : <ArrowDownLeft className="size-3 text-k-loss shrink-0" />}
-                {fechaCorta(m.createdAt)} · {m.tipo === "PAGO" ? `Pago${m.caja ? ` (${m.caja.nombre})` : ""}` : "Compra a crédito"}
+      <DialogHeader className="pr-9">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0 flex-1">
+            <DialogTitle className="truncate">{proveedor.nombre}</DialogTitle>
+            <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+              <span className={cn(
+                "text-[10px] px-1.5 py-0.5 rounded-md font-medium",
+                proveedor.activo ? "bg-k-gain/10 text-k-gain" : "bg-muted text-muted-foreground"
+              )}>
+                {proveedor.activo ? "Activo" : "Inactivo"}
               </span>
-              <span className={cn("font-medium tabular-nums", m.tipo === "PAGO" ? "text-k-gain" : "text-k-loss")}>
-                {formatearARS(m.montoCentavos)}
-              </span>
+              {proveedor.saldoCuentaCorrienteCentavos > 0 && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-k-loss/10 text-k-loss font-medium">
+                  Debe {formatearARS(proveedor.saldoCuentaCorrienteCentavos)}
+                </span>
+              )}
             </div>
-          ))}
-          {movimientos.length > 6 && (
-            <p className="text-[11px] text-muted-foreground">+{movimientos.length - 6} más</p>
-          )}
+          </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" className="shrink-0" disabled={isPending} />}>
+              <MoreHorizontal className="size-4" />
+              <span className="sr-only">Más acciones</span>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="min-w-44">
+              <DropdownMenuItem onClick={onEditar} className="whitespace-nowrap">
+                <Pencil className="size-3.5" /> Editar nombre
+              </DropdownMenuItem>
+              {proveedor._count.products > 0 && (
+                <DropdownMenuItem onClick={onAjustarCostos} className="whitespace-nowrap">
+                  <Percent className="size-3.5" /> Ajustar costos
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuItem onClick={onToggleActivo} className="whitespace-nowrap">
+                {proveedor.activo ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
+                {proveedor.activo ? "Desactivar" : "Reactivar"}
+              </DropdownMenuItem>
+              {onEliminar && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    variant="destructive"
+                    className="whitespace-nowrap"
+                    onClick={() => {
+                      if (confirm(`¿Eliminar a "${proveedor.nombre}"? Esta acción no se puede deshacer.`)) onEliminar()
+                    }}
+                  >
+                    <Trash2 className="size-3.5" /> Eliminar
+                  </DropdownMenuItem>
+                </>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
-      )}
+      </DialogHeader>
 
-      {pedidos && pedidos.length > 0 && (
-        <div className="mt-2 rounded-xl bg-card shadow-[var(--shadow-card)] ring-1 ring-foreground/[0.04] px-4 py-3 space-y-1.5">
-          <p className="text-[11px] text-muted-foreground/70 flex items-center gap-1.5">
-            <Package className="size-3" /> Historial de pedidos (entradas de stock)
+      <div className="space-y-5">
+        {/* Sección 1 — Resumen financiero: lidera, mismo lenguaje visual que
+        las cards de Inicio/ProveedorFinancieroCard. */}
+        <section className="space-y-2">
+          <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground px-0.5">
+            Resumen financiero
           </p>
-          {pedidos.slice(0, 6).map((l) => (
-            <div key={l.id} className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground truncate">
-                {fechaCorta(l.creadoEn)} · {l.product.nombre}
-              </span>
-              <span className="font-medium tabular-nums shrink-0 ml-2">+{l.cantidad}</span>
+          <div className="rounded-xl bg-card shadow-[var(--shadow-card)] ring-1 ring-foreground/[0.04] p-4 space-y-3">
+            <div>
+              <p className="text-xs text-muted-foreground">Invertido a costo</p>
+              <p className="text-2xl font-semibold tabular-nums mt-1">{formatearARS(valorCostoCentavos)}</p>
             </div>
-          ))}
-          {pedidos.length > 6 && (
-            <p className="text-[11px] text-muted-foreground">+{pedidos.length - 6} más</p>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <p className="text-xs text-muted-foreground">Si se vende todo</p>
+                <p className="text-lg font-semibold tabular-nums mt-1">{formatearARS(valorVentaCentavos)}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Ganancia potencial</p>
+                <p className={cn(
+                  "text-lg font-semibold tabular-nums mt-1",
+                  gananciaPotencialCentavos > 0 ? "text-k-gain" : gananciaPotencialCentavos < 0 ? "text-k-loss" : ""
+                )}>
+                  {formatearARS(gananciaPotencialCentavos)}
+                </p>
+              </div>
+            </div>
+            <div className="border-t border-border/60 pt-3 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-sm text-muted-foreground">Piso de reposición</p>
+                  <p className="text-[11px] text-muted-foreground/70">Colchón reservado antes de contar ganancia limpia</p>
+                </div>
+                {!editandoPiso && (
+                  <div className="flex items-center gap-2 shrink-0">
+                    <p className="text-sm font-semibold tabular-nums">{formatearARS(proveedor.pisoReposicionCentavos)}</p>
+                    <Button type="button" variant="ghost" size="icon-sm" onClick={() => setEditandoPiso(true)}>
+                      <Pencil className="size-3.5" />
+                    </Button>
+                  </div>
+                )}
+              </div>
+              {editandoPiso && (
+                <MontoInlineEdit
+                  defaultValue={proveedor.pisoReposicionCentavos / 100}
+                  onSave={guardarPiso}
+                  onCancel={() => setEditandoPiso(false)}
+                />
+              )}
+              <div className="flex items-center justify-between gap-2 text-sm">
+                <span className="text-muted-foreground shrink-0">Reposición</span>
+                <span className={cn(
+                  "font-medium text-right",
+                  recomendacion.tono === "gain" ? "text-k-gain" : recomendacion.tono === "loss" ? "text-k-loss" : "text-muted-foreground"
+                )}>
+                  {recomendacion.texto}
+                </span>
+              </div>
+              <p className="text-[11px] text-muted-foreground/70">
+                Facturaste {formatearARS(ventasDeEste?.ventasCentavos ?? 0)} de este proveedor este mes
+              </p>
+            </div>
+          </div>
+        </section>
+
+        {/* Sección 2 — Cuenta corriente */}
+        <section className="space-y-2">
+          <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground px-0.5">
+            Cuenta corriente
+          </p>
+          <div className="rounded-xl bg-card shadow-[var(--shadow-card)] ring-1 ring-foreground/[0.04] px-4 py-3 flex items-center justify-between">
+            <p className="text-sm text-muted-foreground">
+              {proveedor.saldoCuentaCorrienteCentavos >= 0 ? "Le debemos" : "Saldo a favor"}
+            </p>
+            <p className={cn(
+              "text-lg font-semibold tabular-nums",
+              proveedor.saldoCuentaCorrienteCentavos >= 0 ? "text-k-loss" : "text-k-gain"
+            )}>
+              {formatearARS(Math.abs(proveedor.saldoCuentaCorrienteCentavos))}
+            </p>
+          </div>
+
+          <div className="rounded-xl bg-card shadow-[var(--shadow-card)] ring-1 ring-foreground/[0.04] p-4 space-y-3">
+            <div className="grid grid-cols-2 gap-2">
+              <Button
+                type="button"
+                variant={modo === "pago" ? "default" : "outline"}
+                onClick={() => {
+                  setModo("pago")
+                  if (!monto && proveedor.saldoCuentaCorrienteCentavos > 0) setMonto(String(proveedor.saldoCuentaCorrienteCentavos / 100))
+                }}
+              >
+                Registrar pago
+              </Button>
+              <Button type="button" variant={modo === "compra" ? "default" : "outline"} onClick={() => setModo("compra")}>Compra a crédito</Button>
+            </div>
+
+            <form onSubmit={onSubmit} className="space-y-3">
+              <Field
+                label="Monto ($)"
+                type="number"
+                step="0.01"
+                min="0"
+                value={monto}
+                onChange={(e) => setMonto(e.target.value)}
+              />
+              {modo === "pago" && (
+                <div className="space-y-1.5">
+                  <Label>Caja de la que sale el pago</Label>
+                  <Select value={cajaId} onValueChange={(v) => setCajaId(v ?? "")}>
+                    <SelectTrigger><SelectValue placeholder="Elegí una caja" /></SelectTrigger>
+                    <SelectContent>
+                      {cajasAbiertas.map((c) => (
+                        <SelectItem key={c.id} value={c.id}>{c.nombre}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {cajasAbiertas.length === 0 && (
+                    <p className="text-xs text-k-loss">No hay ninguna caja abierta — abrí una para registrar el pago.</p>
+                  )}
+                </div>
+              )}
+              <Button type="submit" className="w-full" disabled={isSubmitting}>
+                {isSubmitting ? <Loader2 className="size-4 animate-spin" /> : modo === "pago" ? "Registrar pago" : "Registrar compra"}
+              </Button>
+              {modo === "pago" && (
+                <p className="text-xs text-muted-foreground">Se crea un egreso real en la caja elegida y baja lo que le debemos.</p>
+              )}
+              {modo === "compra" && (
+                <p className="text-xs text-muted-foreground">Solo sube lo que le debemos — no mueve ninguna caja.</p>
+              )}
+            </form>
+          </div>
+
+          {movimientos && movimientos.length > 0 && (
+            <div className="rounded-xl bg-card shadow-[var(--shadow-card)] ring-1 ring-foreground/[0.04] px-4 py-3 space-y-1.5">
+              <p className="text-[11px] text-muted-foreground/70">Movimientos recientes</p>
+              {movimientos.slice(0, 6).map((m) => (
+                <div key={m.id} className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground flex items-center gap-1.5">
+                    {m.tipo === "PAGO"
+                      ? <ArrowUpRight className="size-3 text-k-gain shrink-0" />
+                      : <ArrowDownLeft className="size-3 text-k-loss shrink-0" />}
+                    {fechaCorta(m.createdAt)} · {m.tipo === "PAGO" ? `Pago${m.caja ? ` (${m.caja.nombre})` : ""}` : "Compra a crédito"}
+                  </span>
+                  <span className={cn("font-medium tabular-nums", m.tipo === "PAGO" ? "text-k-gain" : "text-k-loss")}>
+                    {formatearARS(m.montoCentavos)}
+                  </span>
+                </div>
+              ))}
+              {movimientos.length > 6 && (
+                <p className="text-[11px] text-muted-foreground">+{movimientos.length - 6} más</p>
+              )}
+            </div>
           )}
-        </div>
-      )}
+        </section>
+
+        {/* Sección 3 — Reposición y pedidos */}
+        <section className="space-y-2">
+          <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground px-0.5">
+            Reposición y pedidos
+          </p>
+
+          <Link
+            href={`/productos?proveedorId=${proveedor.id}`}
+            className="flex items-center justify-between rounded-xl bg-card shadow-[var(--shadow-card)] ring-1 ring-foreground/[0.04] px-4 py-2.5 text-sm hover:bg-muted/30 transition-colors"
+          >
+            <span className="text-muted-foreground">Ver catálogo de este proveedor</span>
+            <ArrowRight className="size-3.5 text-muted-foreground" />
+          </Link>
+
+          {stockBajo && stockBajo.length > 0 && (
+            <Link
+              href={`/productos?tab=pedidos&providerId=${proveedor.id}&sugerir=1`}
+              className="flex items-center justify-between gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-sm hover:bg-amber-500/15 transition-colors"
+            >
+              <span className="flex items-center gap-2 text-amber-700 dark:text-amber-400">
+                <AlertTriangle className="size-3.5 shrink-0" />
+                {stockBajo.length} producto{stockBajo.length === 1 ? "" : "s"} con stock bajo — sugerir pedido
+              </span>
+              <ArrowRight className="size-3.5 text-amber-700 dark:text-amber-400 shrink-0" />
+            </Link>
+          )}
+
+          {proveedor.saldoReposicionCentavos > 0 && proveedor.saldoReposicionCentavos >= proveedor.pisoReposicionCentavos && (
+            <Link
+              href={`/productos?tab=pedidos&providerId=${proveedor.id}`}
+              className="flex items-center justify-between gap-3 rounded-xl border border-k-gain/30 bg-k-gain-muted/15 px-4 py-2.5 text-sm hover:bg-k-gain-muted/25 transition-colors"
+            >
+              <span className="flex items-center gap-2 text-k-gain">
+                <PackagePlus className="size-3.5 shrink-0" />
+                Ya juntaste {formatearARS(proveedor.saldoReposicionCentavos)} de fondo — buen momento para pedirle
+              </span>
+              <ArrowRight className="size-3.5 text-k-gain shrink-0" />
+            </Link>
+          )}
+
+          {pedidos && pedidos.length > 0 && (
+            <div className="rounded-xl bg-card shadow-[var(--shadow-card)] ring-1 ring-foreground/[0.04] px-4 py-3 space-y-1.5">
+              <p className="text-[11px] text-muted-foreground/70 flex items-center gap-1.5">
+                <Package className="size-3" /> Historial de pedidos (entradas de stock)
+              </p>
+              {pedidos.slice(0, 6).map((l) => (
+                <div key={l.id} className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground truncate">
+                    {fechaCorta(l.creadoEn)} · {l.product.nombre}
+                  </span>
+                  <span className="font-medium tabular-nums shrink-0 ml-2">+{l.cantidad}</span>
+                </div>
+              ))}
+              {pedidos.length > 6 && (
+                <p className="text-[11px] text-muted-foreground">+{pedidos.length - 6} más</p>
+              )}
+            </div>
+          )}
+        </section>
+      </div>
     </>
   )
 }
