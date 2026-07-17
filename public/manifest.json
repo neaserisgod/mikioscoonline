@@ -1,6 +1,6 @@
 {
-  "name": "Kiosco El Barrio",
-  "short_name": "Kiosco",
+  "name": "Mi Kiosco",
+  "short_name": "Mi Kiosco",
   "description": "Sistema de gestión para kiosco y almacén",
   "start_url": "/",
   "display": "standalone",

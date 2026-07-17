@@ -50,7 +50,13 @@ export const ROUTE_PREFETCH_MAP: Record<string, PrefetchEntry[]> = {
     { key: ["cajas-panel"], url: "/api/cajas", staleTime: 5 * 60_000 },
   ],
   "/productos": [
-    { key: ["productos", ""], url: "/api/productos?q=", staleTime: 30_000 },
+    // Ojo: NO agregar acá un prefetch de "todos los productos" — la vista por
+    // defecto de /productos (productos-client.tsx) no lista el catálogo plano
+    // (solo drill-down proveedor→categoría), y el buscador del POS usa la key
+    // separada ["productos-search", q] (ver vender-client.tsx). Un intento
+    // anterior de precargar ["productos", ""] no lo leía NINGÚN componente real
+    // — bajaba el catálogo entero (potencialmente miles de filas) en cada login
+    // sin que sirviera para nada.
     { key: ["categorias"], url: "/api/config/categorias", staleTime: 5 * 60_000 },
     { key: ["proveedores"], url: "/api/config/proveedores", staleTime: 5 * 60_000 },
     { key: ["ubicaciones"], url: "/api/config/ubicaciones", staleTime: 5 * 60_000 },

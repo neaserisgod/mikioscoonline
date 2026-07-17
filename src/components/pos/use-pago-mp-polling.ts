@@ -7,7 +7,13 @@ import { crearVentaAction } from "@/app/actions/ventas.actions"
 import { cancelarOrdenMpAction, consultarEstadoOrdenMpAction } from "@/app/actions/pagos.actions"
 import { useVentasStore } from "@/stores/ventas.store"
 
-const POLL_INTERVAL_MS = 2500
+// Primeros 30s tras iniciar un cobro: chequeo cada 1s (la mayoría de los pagos
+// con QR/posnet entran en ese rango — bajar la latencia ahí es lo que más se
+// nota). Pasado ese margen, cada 2.5s — ya no hay apuro, evita machacar la API
+// de MercadoPago con un cobro que tarda en confirmarse.
+const POLL_INTERVAL_MS_FAST = 1000
+const POLL_INTERVAL_MS_SLOW = 2500
+const VENTANA_RAPIDA_MS = 30_000
 const TIMEOUT_MS = 5 * 60_000
 
 const MENSAJE_SIN_PAGO: Record<"qr" | "posnet", string> = {
@@ -30,7 +36,10 @@ export function usePagoMpPolling() {
   const enCurso = useRef<Set<string>>(new Set())
 
   useEffect(() => {
-    const interval = setInterval(async () => {
+    let detenido = false
+    let timeoutId: ReturnType<typeof setTimeout>
+
+    async function poll() {
       const { ventas, confirmarPagoMp, cancelarPagoMp } = useVentasStore.getState()
       const pendientes = ventas.filter((v) => v.pagoMpPendiente)
 
@@ -96,8 +105,24 @@ export function usePagoMpPolling() {
           enCurso.current.delete(venta.id)
         }
       }
-    }, POLL_INTERVAL_MS)
 
-    return () => clearInterval(interval)
+      if (detenido) return
+      // Rápido mientras CUALQUIER cobro pendiente esté dentro de su propia
+      // ventana de arranque (recién iniciado) — no relativo a cuándo se montó
+      // este hook (que vive toda la sesión): cada cobro nuevo vuelve a arrancar
+      // en modo rápido sin importar cuánto hace que el POS está abierto.
+      const ahora = Date.now()
+      const hayPagoReciente = pendientes.some(
+        (v) => v.pagoMpPendiente && ahora - v.pagoMpPendiente.iniciadoEn < VENTANA_RAPIDA_MS
+      )
+      timeoutId = setTimeout(poll, hayPagoReciente ? POLL_INTERVAL_MS_FAST : POLL_INTERVAL_MS_SLOW)
+    }
+
+    poll() // primer chequeo inmediato — antes esperaba un intervalo entero (2.5s) sin hacer nada
+
+    return () => {
+      detenido = true
+      clearTimeout(timeoutId)
+    }
   }, [qc])
 }

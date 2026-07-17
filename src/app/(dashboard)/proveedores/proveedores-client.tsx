@@ -712,11 +712,19 @@ function ProveedorDetalleDialog({
           </p>
           <div className="rounded-xl bg-card shadow-[var(--shadow-card)] ring-1 ring-foreground/[0.04] px-4 py-3 flex items-center justify-between">
             <p className="text-sm text-muted-foreground">
-              {proveedor.saldoCuentaCorrienteCentavos >= 0 ? "Le debemos" : "Saldo a favor"}
+              {proveedor.saldoCuentaCorrienteCentavos > 0
+                ? "Le debemos"
+                : proveedor.saldoCuentaCorrienteCentavos < 0
+                  ? "Saldo a favor"
+                  : "Sin saldo pendiente"}
             </p>
             <p className={cn(
               "text-lg font-semibold tabular-nums",
-              proveedor.saldoCuentaCorrienteCentavos >= 0 ? "text-k-loss" : "text-k-gain"
+              proveedor.saldoCuentaCorrienteCentavos > 0
+                ? "text-k-loss"
+                : proveedor.saldoCuentaCorrienteCentavos < 0
+                  ? "text-k-gain"
+                  : "text-muted-foreground"
             )}>
               {formatearARS(Math.abs(proveedor.saldoCuentaCorrienteCentavos))}
             </p>

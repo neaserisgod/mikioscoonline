@@ -36,13 +36,13 @@ const geistMono = localFont({
 })
 
 export const metadata: Metadata = {
-  title: "Kiosco",
+  title: "Mi Kiosco",
   description: "Sistema de gestión para kiosco y almacén",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "Kiosco",
+    title: "Mi Kiosco",
   },
 }
 

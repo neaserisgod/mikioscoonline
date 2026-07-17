@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma"
 import { calcularEquilibrio, type ResultadoEquilibrio } from "@/domain/equilibrio"
 import { calcularReparto } from "@/domain/reparto"
 import { inicioDia, finDia, inicioMes, finMes, toMesAnio } from "@/domain/dinero"
+import { productoService } from "@/services/producto.service"
 
 export interface ResumenHoy {
   ventasCentavos: number
@@ -343,6 +344,38 @@ export const resumenService = {
         },
       })
     })
+  },
+
+  /**
+   * Shape completo que consume dashboard-client.tsx (/inicio) — única fuente
+   * de verdad usada tanto por /api/resumen (fetch del cliente) como por el
+   * prefetch de inicio/page.tsx en el server. Antes el prefetch del server
+   * armaba un objeto recortado a mano (sin reparto/valorInventario/serie), lo
+   * que dejaba el dashboard del ADMIN mostrando la vista de VENDEDOR durante
+   * todo el staleTime (30s) tras cada carga, porque los datos hidratados
+   * "parecían" completos aunque no lo fueran (bug de hidratación #418).
+   */
+  async dashboard(organizationId: string, role: "ADMIN" | "VENDEDOR", mesFecha?: Date) {
+    const esAdmin = role === "ADMIN"
+    const [hoy, real, reparto, valorInventario, stockBajo, serie] = await Promise.all([
+      esAdmin ? resumenService.hoy(organizationId) : null,
+      esAdmin ? resumenService.equilibrioReal(organizationId, mesFecha) : null,
+      esAdmin ? resumenService.reparto(organizationId, mesFecha) : null,
+      esAdmin ? productoService.valorInventario(organizationId) : null,
+      productoService.stockBajo(organizationId),
+      esAdmin ? resumenService.serieDiaria(organizationId, 14) : null,
+    ])
+    return {
+      hoy,
+      mes: real?.mesActual ?? null,
+      cajas: real?.cajas ?? null,
+      disponibleRealCentavos: real?.disponibleRealCentavos ?? null,
+      equilibrio: real?.equilibrio ?? null,
+      reparto,
+      valorInventario,
+      stockBajo,
+      serie,
+    }
   },
 }
 

@@ -42,7 +42,7 @@ export function NavDrawer({ open, onClose }: NavDrawerProps) {
       <SheetContent side="left" className="w-72 flex flex-col gap-0 p-0">
         <SheetHeader className="px-5 pt-5 pb-3 border-b border-border/60 shrink-0">
           <SheetTitle className="text-sm font-semibold tracking-tight text-left">
-            {session?.user?.name ?? "Kiosco"}
+            {session?.user?.name ?? "Mi Kiosco"}
           </SheetTitle>
         </SheetHeader>
 

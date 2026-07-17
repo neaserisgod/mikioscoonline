@@ -64,7 +64,7 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-muted/30">
       <Card className="w-full max-w-sm">
         <CardHeader className="text-center pb-2">
-          <div className="text-2xl font-bold mb-1">PyME Ventas</div>
+          <div className="text-2xl font-bold mb-1">Mi Kiosco</div>
           <CardTitle className="text-lg font-normal text-muted-foreground">
             Ingresá a tu cuenta
           </CardTitle>

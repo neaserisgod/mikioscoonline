@@ -18,7 +18,7 @@ import {
 const PRECIO_DE_LISTA_CENTAVOS = 24_900_00
 
 export const metadata: Metadata = {
-  title: "Kiosco — el sistema de gestión para tu negocio",
+  title: "Mi Kiosco — el sistema de gestión para tu negocio",
   description:
     "Vendé, controlá stock y cobrá con Mercado Pago desde un solo sistema pensado para kioscos y almacenes. Empezá gratis con tu cuenta de Google.",
 }
@@ -54,7 +54,7 @@ export default async function LandingPage() {
     <div className="min-h-dvh bg-background">
       <header className="border-b border-border/60">
         <div className="max-w-5xl mx-auto px-4 lg:px-8 h-16 flex items-center justify-between">
-          <span className="font-heading text-lg font-semibold tracking-tight">Kiosco</span>
+          <span className="font-heading text-lg font-semibold tracking-tight">Mi Kiosco</span>
           <Button render={<Link href="/login" />} variant="outline" size="sm">
             Iniciar sesión
           </Button>
@@ -72,7 +72,7 @@ export default async function LandingPage() {
             El mostrador, la caja y el stock — en un solo lugar
           </h1>
           <p className="mt-5 text-lg text-muted-foreground max-w-xl mx-auto text-balance">
-            Kiosco es el sistema de gestión hecho para el día a día de tu negocio: vender rápido,
+            Mi Kiosco es el sistema de gestión hecho para el día a día de tu negocio: vender rápido,
             saber qué tenés y cuánto ganás, sin vueltas.
           </p>
           <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-3">
@@ -156,7 +156,7 @@ export default async function LandingPage() {
             ¿Listo para ordenar tu negocio?
           </h2>
           <p className="mt-3 text-muted-foreground max-w-md mx-auto">
-            Creá tu cuenta en segundos y probá Kiosco con tus propios productos.
+            Creá tu cuenta en segundos y probá Mi Kiosco con tus propios productos.
           </p>
           <Button render={<Link href="/login" />} size="lg" className="mt-6 gap-1.5 h-11 px-6 text-base">
             Empezar gratis
@@ -167,7 +167,7 @@ export default async function LandingPage() {
 
       <footer className="border-t border-border/60">
         <div className="max-w-5xl mx-auto px-4 lg:px-8 h-14 flex items-center justify-center text-xs text-muted-foreground">
-          © {new Date().getFullYear()} Kiosco
+          © {new Date().getFullYear()} Mi Kiosco
         </div>
       </footer>
     </div>
