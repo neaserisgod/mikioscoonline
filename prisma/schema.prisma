@@ -44,6 +44,14 @@ model Organization {
   // — no requiere que la venta se haya pagado con esa terminal. Ver impresionService.
   imprimirTicketPosnet    Boolean    @default(false)
   stockMinimoDefault      Int        @default(0)
+  // Modelo financiero (ver docs/MODELO-FINANCIERO.md) — parámetros que el dueño
+  // carga a mano. sueldoObjetivoCentavos: lo que quiere cobrar por trabajar,
+  // se resta completo cada vez que se calcula la cascada de reparto/ganancia
+  // del mes (no hay seguimiento de "ya retirado", ver resumenService.reparto).
+  // monotributoCentavos: la cuota mensual — NO debe cargarse también como
+  // gasto fijo (se duplicaría el descuento), aclarado en la UI de Config.
+  sueldoObjetivoCentavos  Int        @default(0)
+  monotributoCentavos     Int        @default(0)
   onboardingCompletadoAt  DateTime?  // null = primer inicio sin completar
   // Saldo real en la cuenta de Mercado Pago, cargado a mano (no hay API de saldo
   // disponible para esta integración) — se usa en el equilibrio de Inicio.

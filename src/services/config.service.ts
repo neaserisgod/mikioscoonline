@@ -595,6 +595,8 @@ export const organizacionService = {
       imprimirTicketPosnet?: boolean
       stockMinimoDefault?: number
       horariosArqueo?: string | null
+      sueldoObjetivoCentavos?: number
+      monotributoCentavos?: number
     }
   ) {
     return prisma.organization.update({ where: { id: organizationId }, data })

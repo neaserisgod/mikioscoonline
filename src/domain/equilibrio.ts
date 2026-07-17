@@ -8,13 +8,20 @@ export interface InputEquilibrio {
   gananciaBrutaCentavos: number
   /** Suma de comisionCentavos de todos los pagos del mes */
   comisionesTotalesCentavos: number
+  /** Modelo financiero (ver docs/MODELO-FINANCIERO.md) — Organization.monotributoCentavos.
+   * Solo afecta gananciaNetaCentavos, no pctAvance/faltanteCentavos/cubierto (que
+   * miden específicamente cobertura de gastos fijos, sin monotributo ni sueldo). */
+  monotributoCentavos?: number
+  /** Organization.sueldoObjetivoCentavos — se resta completo (no hay seguimiento
+   * de "ya retirado", ver resumenService.reparto). Mismo alcance que monotributoCentavos. */
+  sueldoObjetivoCentavos?: number
 }
 
 export interface ResultadoEquilibrio {
   gastosFijosCentavos: number
   gananciaBrutaCentavos: number
   comisionesTotalesCentavos: number
-  /** Ganancia neta = ganancia bruta − comisiones − gastos fijos */
+  /** Ganancia neta = ganancia bruta − comisiones − gastos fijos − monotributo − sueldo objetivo */
   gananciaNetaCentavos: number
   /** 0-100: % de gastos fijos cubiertos por ganancia bruta neta de comisiones */
   pctAvance: number
@@ -24,10 +31,20 @@ export interface ResultadoEquilibrio {
 }
 
 export function calcularEquilibrio(input: InputEquilibrio): ResultadoEquilibrio {
-  const { gastosFijosCentavos, gananciaBrutaCentavos, comisionesTotalesCentavos } = input
+  const {
+    gastosFijosCentavos,
+    gananciaBrutaCentavos,
+    comisionesTotalesCentavos,
+    monotributoCentavos = 0,
+    sueldoObjetivoCentavos = 0,
+  } = input
 
   const gananciaNetaCentavos =
-    gananciaBrutaCentavos - comisionesTotalesCentavos - gastosFijosCentavos
+    gananciaBrutaCentavos -
+    comisionesTotalesCentavos -
+    gastosFijosCentavos -
+    monotributoCentavos -
+    sueldoObjetivoCentavos
 
   const gananciaDisponible = gananciaBrutaCentavos - comisionesTotalesCentavos
 

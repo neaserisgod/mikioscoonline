@@ -19,6 +19,8 @@ const NegocioSchema = z.object({
   imprimirTicketPosnet: z.boolean().optional(),
   stockMinimoDefault: z.number().int().min(0).optional(),
   horariosArqueo: z.string().regex(/^\d{2}:\d{2}(,\d{2}:\d{2})*$/, "Formato: HH:mm,HH:mm").optional().nullable(),
+  sueldoObjetivoCentavos: z.number().int().min(0).optional(),
+  monotributoCentavos: z.number().int().min(0).optional(),
 })
 
 export async function PATCH(req: NextRequest) {

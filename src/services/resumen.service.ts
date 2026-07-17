@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma"
 import { calcularEquilibrio, type ResultadoEquilibrio } from "@/domain/equilibrio"
+import { calcularReparto } from "@/domain/reparto"
 import { inicioDia, finDia, inicioMes, finMes, toMesAnio } from "@/domain/dinero"
 
 export interface ResumenHoy {
@@ -18,7 +19,13 @@ export interface ResumenMes {
   gananciaBrutaCentavos: number
   comisionesTotalesCentavos: number
   gastosFijosCentavos: number
+  monotributoCentavos: number
+  sueldoObjetivoCentavos: number
+  /** Ganancia real del mes = bruta − comisiones − gastos fijos − monotributo −
+   * sueldo objetivo (ver docs/MODELO-FINANCIERO.md). */
   gananciaNetaCentavos: number
+  /** % de gastos fijos cubiertos — NO incluye monotributo ni sueldo objetivo,
+   * es una medida aparte (ver domain/equilibrio.ts). */
   pctAvance: number
   faltanteCentavos: number
   cubierto: boolean
@@ -112,8 +119,9 @@ export const resumenService = {
     const desde = inicioMes(ref)
     const hasta = finMes(ref)
 
-    // Ventas del mes, gastos fijos y lo ya pagado de cada uno son independientes — en paralelo
-    const [ventas, gastosFijos, pagosGastosFijos] = await Promise.all([
+    // Ventas del mes, gastos fijos, lo ya pagado de cada uno y los parámetros
+    // del modelo financiero (monotributo/sueldo objetivo) son independientes — en paralelo
+    const [ventas, gastosFijos, pagosGastosFijos, organizacion] = await Promise.all([
       prisma.sale.findMany({
         where: { organizationId, fecha: { gte: desde, lte: hasta }, esConsumoInterno: false },
         select: {
@@ -139,6 +147,10 @@ export const resumenService = {
         by: ["fixedExpenseId"],
         where: { organizationId, tipo: "EGRESO", fixedExpenseId: { not: null }, fecha: { gte: desde, lte: hasta } },
         _sum: { montoCentavos: true },
+      }),
+      prisma.organization.findUniqueOrThrow({
+        where: { id: organizationId },
+        select: { monotributoCentavos: true, sueldoObjetivoCentavos: true },
       }),
     ])
     const pagadoPorGasto = new Map(pagosGastosFijos.map((p) => [p.fixedExpenseId, p._sum.montoCentavos ?? 0]))
@@ -173,6 +185,8 @@ export const resumenService = {
       gastosFijosCentavos,
       gananciaBrutaCentavos,
       comisionesTotalesCentavos,
+      monotributoCentavos: organizacion.monotributoCentavos,
+      sueldoObjetivoCentavos: organizacion.sueldoObjetivoCentavos,
     })
 
     return {
@@ -181,6 +195,8 @@ export const resumenService = {
       gananciaBrutaCentavos,
       comisionesTotalesCentavos,
       gastosFijosCentavos,
+      monotributoCentavos: organizacion.monotributoCentavos,
+      sueldoObjetivoCentavos: organizacion.sueldoObjetivoCentavos,
       gananciaNetaCentavos: equilibrio.gananciaNetaCentavos,
       pctAvance: equilibrio.pctAvance,
       faltanteCentavos: equilibrio.faltanteCentavos,
@@ -246,58 +262,63 @@ export const resumenService = {
   },
 
   /**
-   * Cascada de reparto del efectivo disponible, en orden de prioridad:
-   *   1. Gastos fijos pendientes del mes — se cubren primero, sin excepción.
-   *   2. Piso de reinversión de cada proveedor (colchón fijo cargado a mano,
-   *      no se resetea cada mes — ver Provider.pisoReposicionCentavos).
-   *   3. Ganancia limpia — lo que sobra después de 1 y 2, recién ahí es
-   *      "plata propia" que se puede transferir/retirar sin arriesgar stock
-   *      ni gastos fijos.
-   * Pensado para el caso de poca venta/poco efectivo: si no alcanza para 1,
-   * no hay ni reposición ni ganancia — todo el disponible es "para gastos fijos".
+   * Cascada completa de reparto del efectivo disponible (ver
+   * docs/MODELO-FINANCIERO.md, "¿Cuánta plata libre tengo hoy?"), en orden de
+   * prioridad — cada paso solo gasta lo que dejó el anterior:
+   *   1. Reposición de stock (piso por proveedor) — no es ganancia, es capital que gira.
+   *   2. Deuda a proveedores por pagar (cuenta corriente).
+   *   3. Gastos fijos pendientes del mes.
+   *   4. Monotributo del mes.
+   *   5. Sueldo objetivo (completo, ver domain/reparto.ts).
+   * La aritmética vive en domain/reparto.ts (calcularReparto) — acá solo se
+   * junta la data. Pensado para el caso de poca venta/poco efectivo: si no
+   * alcanza para el paso 1, no hay nada más abajo en la cascada.
    */
   async reparto(organizationId: string, fecha?: Date) {
-    const [equilibrio, proveedores] = await Promise.all([
+    const [equilibrio, proveedores, deudaProveedores, organizacion] = await Promise.all([
       resumenService.equilibrioReal(organizationId, fecha),
       prisma.provider.findMany({
         where: { organizationId, activo: true, pisoReposicionCentavos: { gt: 0 } },
         select: { id: true, nombre: true, pisoReposicionCentavos: true, saldoReposicionCentavos: true },
         orderBy: { nombre: "asc" },
       }),
+      // Saldos negativos (se pagó de más) son informativos, no deuda real —
+      // no restan acá (ver Provider.saldoCuentaCorrienteCentavos).
+      prisma.provider.aggregate({
+        where: { organizationId, activo: true, saldoCuentaCorrienteCentavos: { gt: 0 } },
+        _sum: { saldoCuentaCorrienteCentavos: true },
+      }),
+      prisma.organization.findUniqueOrThrow({
+        where: { id: organizationId },
+        select: { monotributoCentavos: true, sueldoObjetivoCentavos: true },
+      }),
     ])
 
-    const { disponibleRealCentavos } = equilibrio
-    const gastosFijosPendientesCentavos = equilibrio.mesActual.gastosFijosCentavos
-    const gastosFijosCubiertos = disponibleRealCentavos >= gastosFijosPendientesCentavos
-    const gastosFijosFaltanteCentavos = Math.max(0, gastosFijosPendientesCentavos - disponibleRealCentavos)
-
-    const disponibleTrasGastosCentavos = Math.max(0, disponibleRealCentavos - gastosFijosPendientesCentavos)
     const reservaReposicionCentavos = proveedores.reduce((s, p) => s + p.pisoReposicionCentavos, 0)
-    const reposicionCubierta = disponibleTrasGastosCentavos >= reservaReposicionCentavos
-    const reposicionFaltanteCentavos = Math.max(0, reservaReposicionCentavos - disponibleTrasGastosCentavos)
 
-    const gananciaDisponibleCentavos = Math.max(0, disponibleTrasGastosCentavos - reservaReposicionCentavos)
+    const resultado = calcularReparto({
+      disponibleRealCentavos: equilibrio.disponibleRealCentavos,
+      reservaReposicionCentavos,
+      deudaProveedoresCentavos: deudaProveedores._sum.saldoCuentaCorrienteCentavos ?? 0,
+      gastosFijosPendientesCentavos: equilibrio.mesActual.gastosFijosCentavos,
+      monotributoCentavos: organizacion.monotributoCentavos,
+      sueldoObjetivoCentavos: organizacion.sueldoObjetivoCentavos,
+    })
 
     return {
-      disponibleRealCentavos,
-      gastosFijosPendientesCentavos,
-      gastosFijosCubiertos,
-      gastosFijosFaltanteCentavos,
-      reservaReposicionCentavos,
-      reposicionCubierta,
-      reposicionFaltanteCentavos,
+      ...resultado,
       proveedoresPiso: proveedores,
-      gananciaDisponibleCentavos,
     }
   },
 
   /**
    * Registra un retiro real de ganancia: crea un EGRESO en la caja elegida,
-   * pero solo hasta lo que `reparto()` diga que es "ganancia limpia
-   * disponible" en este momento — nunca deja tocar lo reservado para gastos
-   * fijos o para el piso de reposición de los proveedores. Recalcula el
-   * reparto en el momento (no confía en un número que el cliente haya
-   * calculado antes) para que no se pueda retirar de más con datos viejos.
+   * pero solo hasta lo que `reparto()` diga que es la ganancia real libre en
+   * este momento — nunca deja tocar lo reservado para reposición, la deuda a
+   * proveedores, los gastos fijos, el monotributo ni el sueldo objetivo (ver
+   * la cascada completa en domain/reparto.ts). Recalcula el reparto en el
+   * momento (no confía en un número que el cliente haya calculado antes) para
+   * que no se pueda retirar de más con datos viejos.
    */
   async retirarGanancia(organizationId: string, montoCentavos: number, cajaId: string) {
     const actual = await resumenService.reparto(organizationId)

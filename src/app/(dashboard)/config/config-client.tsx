@@ -107,6 +107,7 @@ interface Organizacion {
   id: string; nombre: string; cuit: string | null; condicionIva: string | null
   puntoDeVenta: number | null; facturacionModoProduccion: boolean; imprimirTicketPosnet: boolean
   stockMinimoDefault: number; horariosArqueo: string | null
+  sueldoObjetivoCentavos: number; monotributoCentavos: number
 }
 interface Usuario {
   id: string; nombre: string; email: string | null; role: "ADMIN" | "VENDEDOR"
@@ -1861,6 +1862,11 @@ const negocioSchema = z.object({
   imprimirTicketPosnet: z.boolean(),
   stockMinimoDefault: z.number().int().min(0),
   horariosArqueo: z.string().regex(/^\d{2}:\d{2}(,\d{2}:\d{2})*$/, "Formato: 14:00,19:00").optional().or(z.literal("")),
+  // Modelo financiero (ver docs/MODELO-FINANCIERO.md) — en pesos en el form,
+  // se convierten a centavos recién al enviar (mismo criterio que el resto de
+  // los montos de esta pantalla, ej. gastos fijos).
+  sueldoObjetivoPesos: z.number().min(0),
+  monotributoPesos: z.number().min(0),
 })
 type NegocioFormData = z.infer<typeof negocioSchema>
 
@@ -1950,6 +1956,8 @@ function NegocioForm({ data, onMutate }: { data: Organizacion; onMutate: () => v
       imprimirTicketPosnet: data.imprimirTicketPosnet,
       stockMinimoDefault: data.stockMinimoDefault,
       horariosArqueo: data.horariosArqueo ?? "",
+      sueldoObjetivoPesos: data.sueldoObjetivoCentavos / 100,
+      monotributoPesos: data.monotributoCentavos / 100,
     },
   })
   const facturacionModoProduccion = watch("facturacionModoProduccion")
@@ -1975,6 +1983,8 @@ function NegocioForm({ data, onMutate }: { data: Organizacion; onMutate: () => v
         imprimirTicketPosnet: formData.imprimirTicketPosnet,
         stockMinimoDefault: formData.stockMinimoDefault,
         horariosArqueo: formData.horariosArqueo || null,
+        sueldoObjetivoCentavos: Math.round(formData.sueldoObjetivoPesos * 100),
+        monotributoCentavos: Math.round(formData.monotributoPesos * 100),
       })
       toast.success("Datos del negocio actualizados")
       onMutate()
@@ -2054,6 +2064,29 @@ function NegocioForm({ data, onMutate }: { data: Organizacion; onMutate: () => v
           Conteos de control que NO cierran la caja, para detectar diferencias antes de que se acumulen
           muchas horas. Formato HH:mm separados por coma. Vacío = 14:00,19:00 por defecto.
         </p>
+        <div className="space-y-3 rounded-xl border p-3">
+          <p className="text-sm font-medium">Modelo financiero</p>
+          <Field
+            label="Sueldo objetivo mensual ($)"
+            type="number" min="0" step="1"
+            {...register("sueldoObjetivoPesos", { valueAsNumber: true })}
+            error={errors.sueldoObjetivoPesos?.message}
+          />
+          <p className="text-xs text-muted-foreground -mt-2">
+            Lo que querés cobrar por trabajar, sí o sí. Se descuenta completo en la ganancia del mes y en la
+            plata libre para retirar — así esos números no incluyen tu propio sueldo por error.
+          </p>
+          <Field
+            label="Monotributo mensual ($)"
+            type="number" min="0" step="1"
+            {...register("monotributoPesos", { valueAsNumber: true })}
+            error={errors.monotributoPesos?.message}
+          />
+          <p className="text-xs text-muted-foreground -mt-2">
+            La cuota mensual. <strong>No la cargues también como gasto fijo</strong> — se descontaría dos
+            veces (acá y en Gastos fijos).
+          </p>
+        </div>
         <Button type="submit" disabled={isSubmitting}>
           {isSubmitting && <Loader2 className="size-4 animate-spin mr-2" />}
           Guardar cambios
