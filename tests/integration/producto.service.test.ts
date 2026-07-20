@@ -97,4 +97,30 @@ describe("productoService.editar — no pisa stock salvo cambio explícito (C2)"
     const actualizado = await testPrisma.product.findUniqueOrThrow({ where: { id: producto.id } })
     expect(actualizado.stockGramos).toBe(3200)
   })
+
+  it("pasar un producto de pesable a no-pesable limpia los campos pesable-only (Bajo)", async () => {
+    const org = await crearOrganizacion(testPrisma)
+    const user = await crearUsuario(testPrisma, org.id)
+    const category = await crearCategoria(testPrisma, org.id)
+    const producto = await crearProducto(testPrisma, org.id, category.id, { esPesable: true, stockGramos: 5000 })
+    await testPrisma.product.update({
+      where: { id: producto.id },
+      data: { costoPorKgCentavos: 80000, precioPorKgCentavos: 120000, stockMinimoGramos: 500 },
+    })
+
+    await productoService.editar({
+      id: producto.id,
+      organizationId: org.id,
+      userId: user.id,
+      esPesable: false,
+      precioCentavos: 100000,
+    })
+
+    const actualizado = await testPrisma.product.findUniqueOrThrow({ where: { id: producto.id } })
+    expect(actualizado.esPesable).toBe(false)
+    expect(actualizado.stockGramos).toBeNull()
+    expect(actualizado.stockMinimoGramos).toBeNull()
+    expect(actualizado.costoPorKgCentavos).toBeNull()
+    expect(actualizado.precioPorKgCentavos).toBeNull()
+  })
 })

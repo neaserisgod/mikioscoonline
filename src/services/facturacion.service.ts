@@ -151,7 +151,7 @@ export const facturacionService = {
     } catch (e) {
       const mensaje = mensajeDeErrorAfip(e)
       logError("facturacion.emitir", e, { saleId: sale.id, organizationId })
-      await guardarError(sale.id, organizationId, sale, mensaje)
+      await guardarError(sale.id, organizationId, sale, mensaje, { tipo, puntoVenta: org.puntoDeVenta! })
     }
   },
 }
@@ -187,7 +187,14 @@ async function guardarError(
   saleId: string,
   organizationId: string,
   sale: { totalCentavos: number; recargoCentavos: number },
-  mensaje: string
+  mensaje: string,
+  // Solo el caller sabe si ya llegó a calcular el tipo/PDV real (ver los dos
+  // call-sites: si faltan datos fiscales, todavía no hay ni tipo ni PDV que
+  // informar; si el error vino de AFIP, ya se calcularon antes del try). Sin
+  // esto quedaban siempre "FACTURA_C"/0 como placeholder aunque el tipo real
+  // fuera otro — inofensivo (se sobreescribe en el próximo intento exitoso)
+  // pero engañoso si se inspecciona el registro en ERROR.
+  datosReales?: { tipo: string; puntoVenta: number }
 ) {
   const totalCentavos = sale.totalCentavos + sale.recargoCentavos
   await prisma.comprobante.upsert({
@@ -195,8 +202,8 @@ async function guardarError(
     create: {
       saleId,
       organizationId,
-      tipo: "FACTURA_C",
-      puntoVenta: 0,
+      tipo: datosReales?.tipo ?? "FACTURA_C",
+      puntoVenta: datosReales?.puntoVenta ?? 0,
       estado: "ERROR",
       error: mensaje,
       razonSocialCliente: "Consumidor Final",

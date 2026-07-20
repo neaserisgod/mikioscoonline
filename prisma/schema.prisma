@@ -528,7 +528,7 @@ model Payment {
   montoCentavos        Int
   comisionCentavos     Int           // estimada = monto × comisionBp / 10_000
   montoNetoCentavos    Int           // monto − comision
-  comisionRealCentavos Int?          // TODO: completar al integrar MercadoPago
+  comisionRealCentavos Int?          // completado por completarComisionReal() vía webhook/cron de reconciliación (ver mercadopago-comisiones.ts)
   referencia           String?       // mp payment id, transferencia ref, etc.
   createdAt            DateTime      @default(now())
 }
@@ -554,7 +554,12 @@ model Comprobante {
   numero              Int?
   cae                 String?
   caeFechaVencimiento DateTime?
-  estado              String // PENDIENTE | EMITIDO | ERROR — validado Zod
+  // EMITIDO | ERROR — validado Zod. "PENDIENTE" no se usa hoy: mientras dura
+  // la llamada a AFIP no existe ningún Comprobante para esa venta todavía
+  // (ver facturacionService.facturarVenta) — persistir un estado PENDIENTE
+  // antes de llamar a AFIP es parte de A3 (facturación fire-and-forget),
+  // deliberadamente fuera de alcance de esta tanda.
+  estado              String
   error               String? // último mensaje de AFIP, para diagnosticar antes de reintentar
 
   cuitCliente         String?

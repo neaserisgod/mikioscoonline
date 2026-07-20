@@ -102,6 +102,21 @@ describe("facturacionService.facturarVenta — efectivo nunca factura, ni por el
     expect(comprobante?.estado).toBe("EMITIDO")
   })
 
+  it("AFIP rechaza la emisión: el Comprobante en ERROR guarda el tipo/puntoVenta REALES, no los placeholders", async () => {
+    const org = await crearOrgFacturable() // condicionIva MONOTRIBUTO, puntoDeVenta 2 → FACTURA_C, PDV 2
+    const user = await crearUsuario(testPrisma, org.id)
+    const qr = await crearMedioPago(org.id, false, "QR")
+    const venta = await crearVentaConPagos(org.id, user.id, [{ paymentMethodId: qr.id, montoCentavos: 100000 }])
+    emitirMock.mockRejectedValue(new Error("Request failed with status code 400"))
+
+    await facturacionService.facturarVenta(venta.id, org.id)
+
+    const comprobante = await testPrisma.comprobante.findUnique({ where: { saleId: venta.id } })
+    expect(comprobante?.estado).toBe("ERROR")
+    expect(comprobante?.tipo).toBe("FACTURA_C")
+    expect(comprobante?.puntoVenta).toBe(2)
+  })
+
   it("venta 100% QR (no efectivo): SÍ dispara la facturación normal", async () => {
     const org = await crearOrgFacturable()
     const user = await crearUsuario(testPrisma, org.id)

@@ -295,6 +295,16 @@ export const productoService = {
                 costoEsProvisional: triangulo.costoEsProvisional,
               }),
             }),
+        // Al pasar de pesable a no-pesable, los campos pesable-only quedaban
+        // con el último valor que tenían (sin efecto en la lógica de dominio,
+        // que ya filtra por esPesable, pero confunden ante una inspección
+        // directa de la fila). El camino inverso (no-pesable → pesable) no se
+        // toca acá a propósito: limpiar `stock` entra en la misma zona
+        // sensible que el hallazgo C2 (pisar stock sin pasar por
+        // stockService), mejor no tocarlo en un cleanup de bajo riesgo.
+        ...(input.esPesable === false && producto.esPesable === true
+          ? { stockGramos: null, stockMinimoGramos: null, costoPorKgCentavos: null, precioPorKgCentavos: null }
+          : {}),
       },
       // Sin include: el resultado no se usa (las actions devuelven solo {ok, error})
     })
