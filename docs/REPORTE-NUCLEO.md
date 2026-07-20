@@ -1,8 +1,77 @@
 # Reporte del núcleo — Productos, Vender, Mercado Pago, AFIP
 
-**Fecha:** 2026-07-20 (Fase 1 — análisis), actualizado 2026-07-20 (Fase 2 — fix de los 4 críticos)
+**Fecha:** 2026-07-20 (Fase 1 — análisis), actualizado 2026-07-20 (Fase 2 — fix de los 4 críticos), actualizado 2026-07-20 (Fase 3 — resto del backlog)
 **Alcance:** los 4 flujos núcleo (Productos/Stock, Vender/POS, Mercado Pago, AFIP), de punta a punta. Se excluyó todo lo demás (clientes, proveedores, pedidos, rentabilidad, suscripción, onboarding) salvo `cajaSesionService`, que se incluye porque toda venta pasa por caja.
 **Método:** lectura directa del código actual (no de memoria de sesiones previas) por 4 investigaciones paralelas, una por flujo, más verificación cruzada de los hallazgos más graves. `npm run test`, `npm run lint`, `npm run build` corridos de verdad. No se modificó ni una línea de código.
+
+## Estado de la Fase 3 (2026-07-20) — resto del backlog, EXCEPTO A3
+
+Se cerró todo el backlog salvo A3 (facturación fire-and-forget), dejado
+explícitamente para después. Cada fix en su propio commit, con tests de
+integración (Prisma real, sqlite descartable). Al final: `npm run test`
+214/214, `npm run lint` 0 errores (11 warnings preexistentes sin cambios),
+`npx tsc --noEmit` sin errores. **No se tocó producción**: nada de
+migraciones a Neon, env vars, `facturacionModoProduccion` ni facturas.
+
+- **A1 — RESUELTO.** `consultarEstadoOrdenMpAction`/`cancelarOrdenMpAction`
+  ahora verifican que el `external_reference` de la orden empiece con el
+  `organizationId` de la sesión antes de exponer estado o cancelar.
+- **A4 — RESUELTO.** "Efectivo nunca factura" ahora también en
+  `facturacionService.facturarVenta` (no solo en el disparo automático) y el
+  botón "Facturar"/"Reintentar" ya no se ofrece para una venta 100% efectivo.
+- **A6 — YA ESTABA RESUELTO** (commit `730fc58`, anterior a esta sesión) — el
+  reporte original estaba desactualizado en este punto. Ya tiene tests en
+  `tests/unit/caja-sesion.test.ts`. No se tocó nada.
+- **A7 — RESUELTO.** La rama AJUSTE de `stock.service.ts` para pesables relee
+  `gramosAnterior` DENTRO de la transacción en vez de antes.
+- **A5 — RESUELTO.** `afip.ts` reemplaza `createNextVoucher` del SDK (no
+  atómico) por un reintento propio: si el rechazo es "número ya autorizado"
+  (código WSFE 10016), vuelve a pedir el último número y reintenta.
+- **Lint (los 9 errores) — RESUELTO.** Ninguno era un bug de comportamiento —
+  eran violaciones de reglas más estrictas del React Compiler de esta versión
+  custom de Next. `npm run lint` pasó de 9 errores a 0.
+- **A8 — RESUELTO.** Borrados `validations/ventas.ts`, `validations/cobros.ts`
+  y `POST /api/ventas` (confirmado sin consumidores por grep — era del
+  Flutter abandonado). `GET /api/ventas` no se tocó (sí tiene consumidor).
+- **A9 — RESUELTO.** Borradas las rutas REST huérfanas de Productos (`POST
+  /api/productos`, `PATCH /api/productos/[id]`) en vez de "unificar" dos
+  caminos donde uno no tenía ningún consumidor real.
+- **A10 — RESUELTO.** `flujo-venta.spec.ts` borrado con una nota
+  (`tests/e2e/README.md`) — estaba roto en cada paso contra la UI actual. De
+  paso, se encontró y arregló un problema de seguridad real en
+  `playwright.config.ts`: el `webServer` corría `npm run dev` a secas, que sin
+  `LOCAL_DEV=1` apunta a **Neon producción real**.
+- **M4 — RESUELTO.** Borradas `/productos/nuevo` y `/productos/[id]`
+  (confirmado sin navegación real por grep).
+- **M2 — RESUELTO.** La firma del webhook de MP ahora también valida que `ts`
+  esté dentro de una ventana de 5 minutos (anti-replay), no solo el HMAC.
+- **M3 — RESUELTO.** Un pago `rejected` ahora avisa al cajero por toast (una
+  sola vez por rechazo) en vez de esperar en silencio el timeout de 5 min.
+- **M5 — RESUELTO.** Cada fila de `importarCSV` corre en su propia
+  transacción — un crash a mitad de fila ya no deja categorías/proveedores
+  huérfanos.
+- **M6 — RESUELTO.** Los dos GET de ventas sin `try/catch` ahora normalizan
+  el error (500 genérico) en vez de propagar el crudo.
+- **C1 (residual) — RESUELTO.** Antes solo alertaba; ahora
+  `enviarMontoMpAction` persiste un snapshot del carrito (tabla nueva
+  `OrdenMpPendiente`) y `completarComisionReal` lo usa para **recrear la
+  venta de verdad** cuando detecta una orden pagada sin `Sale`. Migración
+  escrita a mano en `prisma/migrations/20260720180000_orden_mp_pendiente/`,
+  aplicada solo al schema local — **falta que Bruno la aplique a Neon**, ver
+  `docs/CONFIG-PRODUCCION-PENDIENTE.md`.
+- **Bajo — `Payment.referencia @unique` — NO SE HIZO.** El campo está
+  compartido (mp order id + referencia de transferencia manual) y hay
+  duplicados reales en Neon hoy (verificado, solo lectura) que parecen texto
+  genérico tipeado por cajeros, no ids de MP. Un `@unique` liso lo rompería.
+  Documentado como decisión pendiente en `docs/CONFIG-PRODUCCION-PENDIENTE.md`.
+- **Bajos restantes (TODO de schema, limpieza de `esPesable`, placeholders de
+  `guardarError`, comentario de `PENDIENTE`) — RESUELTOS**, todos de bajo
+  riesgo (comentarios y un `null` en vez de basura al alternar `esPesable`).
+- **A2, A3, M1, M7, M8 — sin tocar, sin cambios de estado.** A3 fue
+  explícitamente excluido de esta tanda. A2/M1/M7/M8 no estaban en el pedido
+  de esta sesión.
+
+---
 
 ## Estado de C1–C4 (Fase 2, 2026-07-20)
 
@@ -203,17 +272,17 @@ Navega a `/punto-de-venta` (la ruta real es `/vender`), busca un placeholder de 
 | 3 | Crítico | ✅ **HECHO (2026-07-20)** Envolver `poll()` en try/catch para que un error no mate el polling silenciosamente; mostrar error al cajero y reintentar | Cierra C4 | Bajo | `use-pago-mp-polling.ts` |
 | 4 | Crítico | ✅ **HECHO (2026-07-20)** No pisar `stock`/`stockGramos` desde "Editar producto" salvo cambio explícito con rol ADMIN y `StockMovement` generado; separar claramente de "Ajustar stock" | Evita revertir ventas silenciosamente | Bajo | `producto.service.ts:261-292`, `producto-form.tsx`, `productos.actions.ts` |
 | 5 | Crítico | ✅ **HECHO (2026-07-20)** Abortar (o loguear+alertar fuerte) si `facturacionModoProduccion=true` pero faltan `AFIP_CERT`/`AFIP_PRIVATE_KEY`, en vez de degradar a homologación en silencio | Evita entregar CAEs falsos como reales | Bajo | `afip.ts:21-36` |
-| 6 | Alto | Scopear por `organizationId` `consultarEstadoOrdenMpAction` y `cancelarOrdenMpAction` (mismo patrón que ya usa `enviarMontoMpAction`) | Cierra el IDOR real | Bajo | `pagos.actions.ts:63-103` |
-| 7 | Alto | Reemplazar el fire-and-forget de facturación por `after()` de Next (o persistir un estado `PENDIENTE` antes de llamar a AFIP) | Evita ventas huérfanas sin comprobante ni error | Medio | `venta.service.ts:625-637`, `facturacion.service.ts` |
-| 8 | Alto | Aplicar la regla "efectivo nunca factura" también en el botón manual "Facturar" | Evita CAEs reales indebidos | Bajo | `facturacion.service.ts`, `historial-ventas-client.tsx` |
-| 9 | Alto | Replicar el fix `P2002` de `venta.service.ts` en `cajaSesionService` (`abrirCaja`, `registrarMovimiento`) | Cierra duplicados de caja en reintentos concurrentes | Bajo-Medio | `cajaSesion.service.ts` |
-| 10 | Alto | Arreglar o borrar `tests/e2e/flujo-venta.spec.ts` (hoy da falsa sensación de cobertura) | Cobertura real vs. aparente | Medio | `tests/e2e/flujo-venta.spec.ts` |
-| 11 | Medio | Arreglar los 9 errores reales de eslint (refs durante render, comillas sin escapar) | Build/lint limpio | Bajo | `vender-client.tsx`, `productos-client.tsx`, `carrito-resumen-panel.tsx`, `variantes-section.tsx` |
-| 12 | Medio | Sumar tests de integración (Prisma real contra sqlite in-memory o test DB) para `venta.service.crear`, `producto.service.editar`, `stock.service.registrarMovimiento`, `facturacion.service.facturarVenta` | Estos 4 archivos son el núcleo real y hoy tienen 0% de cobertura de integración | Alto | `tests/unit/*` (nuevos) |
-| 13 | Medio | Limpiar código muerto: `validations/ventas.ts`, `validations/cobros.ts`, decidir si `POST /api/ventas` se mantiene (Flutter) o se borra, rutas huérfanas `/productos/nuevo` y `/productos/[id]` | Reduce superficie de confusión/riesgo futuro | Bajo | ver A8, A9, M4 |
-| 14 | Medio | Investigar el `EPERM` de build local en Windows (excluir el binario nativo de better-sqlite3 del trace de standalone, o exclusión de antivirus) | Poder validar builds localmente antes de pushear | Bajo-Medio | `next.config.*`, `scripts/prepare-standalone.mjs` |
-| 15 | Medio | Confirmar con acceso de red que la migración `comprobante_pdf` está aplicada en Neon (`npx prisma migrate status`) | Descartar drift de esquema en producción | Bajo | — (verificación, no código) |
-| 16 | Bajo | Resto de hallazgos Bajo (TODO obsoleto, `Payment.referencia` sin unique, limpieza de `esPesable`, placeholders de `guardarError`) | Deuda menor | Bajo | ver sección Bajo |
+| 6 | Alto | ✅ **HECHO (2026-07-20)** Scopear por `organizationId` `consultarEstadoOrdenMpAction` y `cancelarOrdenMpAction` (mismo patrón que ya usa `enviarMontoMpAction`) | Cierra el IDOR real | Bajo | `pagos.actions.ts:63-103` |
+| 7 | Alto | ⏳ **PENDIENTE A PROPÓSITO** (A3, excluido explícitamente de esta tanda) Reemplazar el fire-and-forget de facturación por `after()` de Next | Evita ventas huérfanas sin comprobante ni error | Medio | `venta.service.ts:625-637`, `facturacion.service.ts` |
+| 8 | Alto | ✅ **HECHO (2026-07-20)** Aplicar la regla "efectivo nunca factura" también en el botón manual "Facturar" | Evita CAEs reales indebidos | Bajo | `facturacion.service.ts`, `historial-ventas-client.tsx` |
+| 9 | Alto | ✅ **YA ESTABA RESUELTO** antes de esta sesión (commit `730fc58`) — el reporte original estaba desactualizado | Cierra duplicados de caja en reintentos concurrentes | — | `cajaSesion.service.ts` |
+| 10 | Alto | ✅ **HECHO (2026-07-20)** — borrado con nota en `tests/e2e/README.md` (no reescrito: hubiera necesitado un seed dedicado + correrlo de verdad, ver la nota) | Cobertura real vs. aparente | Medio | `tests/e2e/flujo-venta.spec.ts` |
+| 11 | Medio | ✅ **HECHO (2026-07-20)** Arreglar los 9 errores reales de eslint (refs durante render, comillas sin escapar) | Build/lint limpio | Bajo | `vender-client.tsx`, `productos-client.tsx`, `carrito-resumen-panel.tsx`, `variantes-section.tsx` |
+| 12 | Medio | ✅ **HECHO** (ver Fase 2 y Fase 3) — `venta.service.crear`, `producto.service.editar`, `stock.service.registrarMovimiento`, `facturacion.service.facturarVenta` y varios más ahora tienen tests de integración con Prisma real | Estos 4 archivos son el núcleo real y ya no tienen 0% de cobertura | — | `tests/integration/*`, `tests/unit/*` |
+| 13 | Medio | ✅ **HECHO (2026-07-20)** Código muerto borrado: `validations/ventas.ts`, `validations/cobros.ts`, `POST /api/ventas`, rutas huérfanas `/productos/nuevo` y `/productos/[id]`, rutas REST huérfanas de Productos | Reduce superficie de confusión/riesgo futuro | Bajo | ver A8, A9, M4 |
+| 14 | Medio | ⏳ **Sin tocar** — no estaba en el pedido de esta sesión | Poder validar builds localmente antes de pushear | Bajo-Medio | `next.config.*`, `scripts/prepare-standalone.mjs` |
+| 15 | Medio | ⏳ **Sin tocar** — no estaba en el pedido de esta sesión | Descartar drift de esquema en producción | Bajo | — (verificación, no código) |
+| 16 | Bajo | ✅ **HECHO (2026-07-20)**, salvo `Payment.referencia @unique` (ver más abajo por qué no se hizo tal cual) | Deuda menor | Bajo | ver sección Bajo |
 
 ---
 
