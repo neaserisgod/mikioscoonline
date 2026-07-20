@@ -3,6 +3,7 @@ import { prisma as prismaAuth } from "@/lib/prisma-auth"
 import { mesAnioActual, inicioMes, finMes } from "@/domain/dinero"
 import { calcularTrialTerminaEl } from "@/lib/suscripcion"
 import { precioDesdeCosoYMarkup, precioDesdeCosoYGananciaFija, markupBpDesdeCostoYPrecio } from "@/domain/markup"
+import { cuitEsValido } from "@/lib/fiscal"
 import bcrypt from "bcryptjs"
 
 // ─── Categorías ──────────────────────────────────────────────────────────────
@@ -599,6 +600,14 @@ export const organizacionService = {
       monotributoCentavos?: number
     }
   ) {
+    // Único punto de escritura de Organization.cuit (lo llaman tanto
+    // actualizarNegocioAction como guardarDatosFiscalesAction del onboarding)
+    // — antes no había ninguna validación acá, así que un typo de tipeo (ej.
+    // transposición de dígitos) quedaba guardado sin que nadie lo notara
+    // hasta que AFIP lo rechazara en la primera facturación real.
+    if (data.cuit && !cuitEsValido(data.cuit)) {
+      throw new Error(`El CUIT "${data.cuit}" no es válido (no pasa el dígito verificador) — revisá que esté bien tipeado`)
+    }
     return prisma.organization.update({ where: { id: organizationId }, data })
   },
 

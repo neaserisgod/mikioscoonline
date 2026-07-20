@@ -88,3 +88,22 @@ export function codigoAfipAlicuota(alicuota: number): number {
   const map: Record<number, number> = { 0: 3, 10.5: 4, 21: 5 }
   return map[alicuota] ?? 5
 }
+
+/**
+ * Dígito verificador de CUIT/CUIL (algoritmo módulo 11 estándar de AFIP).
+ * Acepta el string con o sin guiones/espacios; exige exactamente 11 dígitos.
+ * No valida que el CUIT exista de verdad en AFIP, solo que sea
+ * matemáticamente posible — un typo de un solo dígito (ej. transposición) casi
+ * siempre lo detecta.
+ */
+export function cuitEsValido(cuit: string): boolean {
+  const digitos = cuit.replace(/\D/g, "")
+  if (digitos.length !== 11) return false
+
+  const coeficientes = [5, 4, 3, 2, 7, 6, 5, 4, 3, 2]
+  const suma = coeficientes.reduce((acc, coef, i) => acc + coef * Number(digitos[i]), 0)
+  const resto = suma % 11
+  const verificador = resto === 0 ? 0 : 11 - resto
+
+  return verificador === Number(digitos[10])
+}
