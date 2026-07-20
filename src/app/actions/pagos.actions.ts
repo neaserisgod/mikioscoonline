@@ -10,7 +10,7 @@ type EnviarMontoMpResult =
   | { ok: true; orderId: string; tipo: TipoDispositivoMp }
   | { ok: false; error: string }
 type ConsultarEstadoResult =
-  | { ok: true; pagado: boolean; finalizadoSinPago: boolean }
+  | { ok: true; pagado: boolean; finalizadoSinPago: boolean; rechazado: boolean }
   | { ok: false; error: string }
 type CancelarResult = { ok: true } | { ok: false; error: string }
 
@@ -91,7 +91,7 @@ export async function consultarEstadoOrdenMpAction(
     if (!ordenPerteneceAOrganizacion(estado.externalReference, session.user.organizationId)) {
       return { ok: false, error: "No autorizado" }
     }
-    return { ok: true, pagado: estado.pagado, finalizadoSinPago: estado.finalizadoSinPago }
+    return { ok: true, pagado: estado.pagado, finalizadoSinPago: estado.finalizadoSinPago, rechazado: !!estado.rechazado }
   } catch (e) {
     return { ok: false, error: mensajeError(e) }
   }

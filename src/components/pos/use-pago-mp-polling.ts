@@ -39,7 +39,7 @@ const MENSAJE_SIN_PAGO: Record<"qr" | "posnet", string> = {
 export async function procesarCobroPendiente(venta: VentaAbierta, qc: QueryClient): Promise<void> {
   const pago = venta.pagoMpPendiente
   if (!pago) return
-  const { confirmarPagoMp, cancelarPagoMp } = useVentasStore.getState()
+  const { confirmarPagoMp, cancelarPagoMp, marcarRechazoAvisado } = useVentasStore.getState()
 
   try {
     if (Date.now() - pago.iniciadoEn > TIMEOUT_MS) {
@@ -57,6 +57,16 @@ export async function procesarCobroPendiente(venta: VentaAbierta, qc: QueryClien
       cancelarPagoMp(venta.id)
       toast(`${venta.label}: ${MENSAJE_SIN_PAGO[pago.tipo]}`)
       return
+    }
+
+    // Un intento rechazado (tarjeta declinada, etc.) no cierra la orden sola
+    // — el cliente puede reintentar en la misma terminal — pero antes el
+    // cajero no se enteraba hasta el timeout de 5 minutos. Se avisa una sola
+    // vez por rechazo (avisoRechazoMostrado) para no repetir el toast en cada
+    // ciclo de polling mientras no haya un reintento (ver hallazgo M3).
+    if (estado.rechazado && !pago.avisoRechazoMostrado) {
+      marcarRechazoAvisado(venta.id)
+      toast.warning(`${venta.label}: se rechazó el intento de pago — el cliente puede probar con otra tarjeta`)
     }
 
     if (estado.pagado) {

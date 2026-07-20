@@ -42,6 +42,11 @@ export interface EstadoOrdenMp {
    * ver pagos.actions.ts) — permite verificar que quien consulta/cancela sea
    * dueño de la orden antes de actuar (ver hallazgo A1). */
   externalReference?: string
+  /** Al menos un intento de pago fue rechazado (tarjeta declinada, etc.) — la
+   * orden puede seguir abierta esperando otro intento, pero el cajero debe
+   * enterarse ahora, no recién cuando venza el timeout de 5 minutos (ver
+   * hallazgo M3). */
+  rechazado?: boolean
 }
 
 export interface PagosProvider {

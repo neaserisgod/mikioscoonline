@@ -34,6 +34,10 @@ export interface PagoMpPendiente {
   /** Descuento ya restado de montoCentavos — se re-envía tal cual al crear la venta. */
   descuentoCentavos: number
   iniciadoEn: number
+  /** Ya se avisó al cajero que un intento se rechazó — evita repetir el toast
+   * en cada ciclo de polling (cada 1-2.5s) mientras el cliente no reintenta
+   * con otra tarjeta (ver hallazgo M3). */
+  avisoRechazoMostrado?: boolean
 }
 
 export interface VentaAbierta {
@@ -94,6 +98,7 @@ interface VentasActions {
   iniciarPagoMp: (ventaId: string, data: PagoMpPendiente) => void
   cancelarPagoMp: (ventaId: string) => void
   confirmarPagoMp: (ventaId: string) => void
+  marcarRechazoAvisado: (ventaId: string) => void
 }
 
 function crearVentaVacia(n: number): VentaAbierta {
@@ -432,6 +437,16 @@ export const useVentasStore = create<VentasState & VentasActions>()(
         ventas: s.ventas.map((v) =>
           v.id === ventaId
             ? { ...v, carrito: [], medioPagoId: "", pagosSplit: null, descuentoPct: 0, pagoMpPendiente: null }
+            : v
+        ),
+      }))
+    },
+
+    marcarRechazoAvisado(ventaId) {
+      set((s) => ({
+        ventas: s.ventas.map((v) =>
+          v.id === ventaId && v.pagoMpPendiente
+            ? { ...v, pagoMpPendiente: { ...v.pagoMpPendiente, avisoRechazoMostrado: true } }
             : v
         ),
       }))

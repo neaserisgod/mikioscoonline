@@ -38,7 +38,12 @@ function estadoDesdeOrden(
   const pagos = body?.transactions?.payments ?? []
   const pagado = body?.status === "processed" || pagos.some((p) => p.status === "approved")
   const finalizadoSinPago = !!body?.status && finalizadoStatuses.includes(body.status)
-  return { pagado, finalizadoSinPago, externalReference: body?.external_reference }
+  // "rejected" en un intento de pago no cierra la orden sola (el cliente puede
+  // reintentar con otra tarjeta en la misma terminal) — antes esto no se
+  // distinguía de "sigue esperando" (ej. in_process) y el cajero se enteraba
+  // recién al timeout de 5 minutos.
+  const rechazado = !pagado && !finalizadoSinPago && pagos.some((p) => p.status === "rejected")
+  return { pagado, finalizadoSinPago, externalReference: body?.external_reference, rechazado }
 }
 
 // MercadoPago exige X-Idempotency-Key en este endpoint igual que en la

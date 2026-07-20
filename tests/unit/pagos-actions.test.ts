@@ -53,7 +53,20 @@ describe("consultarEstadoOrdenMpAction — scoping por organización (A1)", () =
 
     const result = await consultarEstadoOrdenMpAction("orden-propia", "qr")
 
-    expect(result).toEqual({ ok: true, pagado: true, finalizadoSinPago: false })
+    expect(result).toEqual({ ok: true, pagado: true, finalizadoSinPago: false, rechazado: false })
+  })
+
+  it("orden propia con un intento rechazado: propaga rechazado=true (M3)", async () => {
+    consultarEstadoOrdenQrMock.mockResolvedValue({
+      pagado: false,
+      finalizadoSinPago: false,
+      rechazado: true,
+      externalReference: `${ORG_PROPIA}:algun-uuid`,
+    })
+
+    const result = await consultarEstadoOrdenMpAction("orden-propia", "qr")
+
+    expect(result).toEqual({ ok: true, pagado: false, finalizadoSinPago: false, rechazado: true })
   })
 
   it("orden sin external_reference (dato viejo/malformado): No autorizado por defecto, no explota", async () => {

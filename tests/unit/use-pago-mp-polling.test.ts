@@ -19,7 +19,7 @@ vi.mock("@/app/actions/pagos.actions", () => ({
   cancelarOrdenMpAction: cancelarOrdenMpActionMock,
 }))
 
-const toastMock = Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn() })
+const toastMock = Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn(), warning: vi.fn() })
 vi.mock("sonner", () => ({ toast: toastMock }))
 
 const logErrorMock = vi.fn()
@@ -106,5 +106,36 @@ describe("procesarCobroPendiente — no frena el polling ante un error (C4)", ()
 
     expect(cancelarOrdenMpActionMock).toHaveBeenCalledWith("orden-1", "qr")
     expect(useVentasStore.getState().ventas[0].pagoMpPendiente).toBeNull()
+  })
+})
+
+describe("procesarCobroPendiente — avisa un intento rechazado sin cortar el polling (M3)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it("pago rechazado: avisa por toast UNA vez y sigue esperando (no cancela, no limpia el cobro)", async () => {
+    consultarEstadoOrdenMpActionMock.mockResolvedValue({ ok: true, pagado: false, finalizadoSinPago: false, rechazado: true })
+    const venta = ventaConCobroPendiente()
+
+    await procesarCobroPendiente(venta, qcMock)
+
+    expect(toastMock.warning).toHaveBeenCalledTimes(1)
+    expect(cancelarOrdenMpActionMock).not.toHaveBeenCalled()
+    expect(crearVentaActionMock).not.toHaveBeenCalled()
+    expect(useVentasStore.getState().ventas[0].pagoMpPendiente).not.toBeNull()
+    expect(useVentasStore.getState().ventas[0].pagoMpPendiente?.avisoRechazoMostrado).toBe(true)
+  })
+
+  it("pago rechazado en dos ciclos seguidos: el toast solo se muestra la primera vez", async () => {
+    consultarEstadoOrdenMpActionMock.mockResolvedValue({ ok: true, pagado: false, finalizadoSinPago: false, rechazado: true })
+    const venta = ventaConCobroPendiente()
+
+    await procesarCobroPendiente(venta, qcMock)
+    // Segundo ciclo: toma la venta ACTUALIZADA del store (como haría poll() de verdad).
+    const ventaActualizada = useVentasStore.getState().ventas[0]
+    await procesarCobroPendiente(ventaActualizada, qcMock)
+
+    expect(toastMock.warning).toHaveBeenCalledTimes(1)
   })
 })
