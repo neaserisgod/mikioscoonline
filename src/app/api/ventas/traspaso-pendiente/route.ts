@@ -6,6 +6,10 @@ export async function GET() {
   const result = await requireSessionApi()
   if ("error" in result) return result.error
 
-  const data = await ventaService.listarTraspasosPendientes(result.user.organizationId)
-  return NextResponse.json(data)
+  try {
+    const data = await ventaService.listarTraspasosPendientes(result.user.organizationId)
+    return NextResponse.json(data)
+  } catch {
+    return NextResponse.json({ error: "No se pudo cargar el estado de traspasos pendientes" }, { status: 500 })
+  }
 }
