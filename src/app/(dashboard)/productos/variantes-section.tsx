@@ -143,7 +143,7 @@ export function VariantesSection({ dueñoId, categoryId, providerId, locationId,
 
       {variantes.length === 0 && editandoId === null && (
         <p className="text-xs text-muted-foreground">
-          Sin variantes. Agregá una si este producto también se vende en otra presentación (ej. "Docena", "Pack x6")
+          Sin variantes. Agregá una si este producto también se vende en otra presentación (ej. &quot;Docena&quot;, &quot;Pack x6&quot;)
           que comparte el mismo stock.
         </p>
       )}

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useLayoutEffect, useRef } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useSession } from "next-auth/react"
@@ -147,7 +147,13 @@ export default function ProductosClient() {
 
   // ── Flujo por teclado (mismos parámetros que Vender) ──────────────────────
   const sheetOpenRef = useRef(sheetOpen)
-  sheetOpenRef.current = sheetOpen
+  // useLayoutEffect (no useEffect) — corre sincrónicamente antes de que el
+  // navegador pueda disparar el próximo evento, así el listener global de
+  // teclado de más abajo nunca lee un valor stale (escribir el ref durante el
+  // render directamente ya no lo permite el linter de hooks).
+  useLayoutEffect(() => {
+    sheetOpenRef.current = sheetOpen
+  }, [sheetOpen])
   // El buscador se enfoca al cargar. Nueva búsqueda → resetea el resaltado.
   useEffect(() => { searchRef.current?.focus() }, [])
   // eslint-disable-next-line react-hooks/set-state-in-effect -- resetea el resaltado al cambiar la lista, no re-render en loop

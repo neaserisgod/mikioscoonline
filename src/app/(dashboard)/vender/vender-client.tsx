@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useRef } from "react"
+import { useCallback, useEffect, useLayoutEffect, useRef } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { motion, AnimatePresence } from "framer-motion"
 import { Search, Camera } from "lucide-react"
@@ -99,7 +99,29 @@ export default function VenderClient() {
   const usarPrefijo = hayPrefijo && !completoMatchea
   const productos = usarPrefijo ? resultadosSinPrefijo : resultadosCompletos
   const cantidadRef = useRef<number | null>(null)
-  cantidadRef.current = usarPrefijo ? prefijoCantidad : null
+  // useLayoutEffect (no useEffect) — corre sincrónicamente antes de que el
+  // navegador pueda disparar el próximo evento de teclado, así el listener
+  // global de más abajo nunca lee un valor stale (escribir el ref durante el
+  // render directamente ya no lo permite el linter de hooks).
+  useLayoutEffect(() => {
+    cantidadRef.current = usarPrefijo ? prefijoCantidad : null
+  }, [usarPrefijo, prefijoCantidad])
+
+  // Estado de cobro accesible desde el listener global de más abajo (deps [],
+  // sin closure viejo) — declarado y actualizado ANTES de ese listener (el
+  // linter de hooks no permite modificar un ref en un efecto posterior al que
+  // ya lo usa). useLayoutEffect sin array de deps corre sincrónicamente
+  // después de CADA render, antes de que el navegador dispare el próximo
+  // evento de teclado.
+  const cobroRef = useRef({ activo: false, loading: false, ciclar: (_d: 1 | -1) => {}, confirmar: () => {} })
+  useLayoutEffect(() => {
+    cobroRef.current = {
+      activo: termino.length === 0 && checkout.carrito.length > 0,
+      loading: checkout.loading,
+      ciclar: ciclarMedioPago,
+      confirmar: checkout.confirmar,
+    }
+  })
 
   // Nuevos resultados → resaltar el primero de nuevo (ver navegación con
   // flechas más abajo, evita elegir sin querer un producto de la búsqueda anterior).
@@ -248,15 +270,6 @@ export default function VenderClient() {
     const idx = medios.findIndex((m) => m.id === checkout.medioPagoId)
     const base = idx < 0 ? 0 : idx
     checkout.setMedioPago(medios[(base + dir + medios.length) % medios.length].id)
-  }
-
-  // Estado de cobro accesible desde el listener global (deps [], sin closure viejo).
-  const cobroRef = useRef({ activo: false, loading: false, ciclar: (_d: 1 | -1) => {}, confirmar: () => {} })
-  cobroRef.current = {
-    activo: termino.length === 0 && checkout.carrito.length > 0,
-    loading: checkout.loading,
-    ciclar: ciclarMedioPago,
-    confirmar: checkout.confirmar,
   }
 
   return (

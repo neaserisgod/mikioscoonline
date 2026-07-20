@@ -157,13 +157,22 @@ export function CarritoResumenPanel({ checkout, mostrarItems = false, expandActi
   // Vuelto: cuánto paga el cliente en efectivo (solo display, no afecta la venta).
   const [pagaConCentavos, setPagaConCentavos] = useState<number | null>(null)
 
-  // Auto-cerrar la pantalla de "Venta registrada" a ~1,8s y limpiar el vuelto —
-  // el cajero no tiene que clickear "Listo" en cada venta (el foco ya vuelve
-  // solo al buscador, ver vender-client). Sigue estando el botón "Listo" por si
+  // Limpiar el vuelto cuando llega una nueva confirmación de venta — patrón
+  // oficial de React ("ajustar estado cuando cambia un valor", comparando
+  // contra el anterior durante el render) en vez de setState directo dentro
+  // de un efecto, que dispara un render en cascada extra.
+  const [successInfoAnterior, setSuccessInfoAnterior] = useState(successInfo)
+  if (successInfo !== successInfoAnterior) {
+    setSuccessInfoAnterior(successInfo)
+    if (successInfo) setPagaConCentavos(null)
+  }
+
+  // Auto-cerrar la pantalla de "Venta registrada" a ~1,8s — el cajero no
+  // tiene que clickear "Listo" en cada venta (el foco ya vuelve solo al
+  // buscador, ver vender-client). Sigue estando el botón "Listo" por si
   // quiere cerrarla antes.
   useEffect(() => {
     if (!successInfo) return
-    setPagaConCentavos(null)
     const t = setTimeout(() => setSuccessInfo(null), 1800)
     return () => clearTimeout(t)
   }, [successInfo, setSuccessInfo])
