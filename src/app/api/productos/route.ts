@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { Prisma } from "@prisma/client"
-import { z, ZodError } from "zod"
-import { requireSessionApi, requireAdminApi } from "@/lib/api-auth"
+import { requireSessionApi } from "@/lib/api-auth"
 import { productoService } from "@/services/producto.service"
 import { sanitizarProductos } from "@/lib/sanitizar-producto"
 
@@ -61,58 +59,4 @@ export async function GET(req: NextRequest) {
 
   const data = await productoService.listar(organizationId)
   return NextResponse.json(sanitizarProductos(data, role))
-}
-
-function mensajeError(e: unknown): string {
-  if (e instanceof ZodError) return e.issues.map((i) => i.message).join(" · ")
-  if (e instanceof Prisma.PrismaClientKnownRequestError) {
-    if (e.code === "P2002") return "Ya existe un producto con ese SKU o código de barras"
-    return "No se pudo guardar el producto (error de base de datos)"
-  }
-  if (e instanceof Error) return e.message
-  return "No se pudo guardar el producto"
-}
-
-const ProductoBaseSchema = z.object({
-  sku: z.string().min(1).optional(),
-  barcode: z.string().optional(),
-  nombre: z.string().min(1),
-  categoryId: z.string().min(1, "Elegí una categoría"),
-  providerId: z.string().min(1).optional(),
-  locationId: z.string().min(1).optional(),
-  stock: z.number().int().min(0).optional(),
-  stockMinimo: z.number().int().min(0).optional(),
-  costoCentavos: z.number().int().positive().optional(),
-  precioCentavos: z.number().int().positive().optional(),
-  markupBp: z.number().int().optional(),
-  esPesable: z.boolean().optional(),
-  costoPorKgCentavos: z.number().int().positive().optional(),
-  precioPorKgCentavos: z.number().int().positive().optional(),
-  stockGramos: z.number().int().min(0).optional(),
-  stockMinimoGramos: z.number().int().min(0).optional(),
-  // Variantes que comparten stock (Fase 2) — ver validarVariante en producto.service.ts
-  variantOfId: z.string().min(1).nullable().optional(),
-  unidadesPorVenta: z.number().int().min(1).optional(),
-})
-
-const CrearProductoSchema = ProductoBaseSchema.refine(
-  (d) =>
-    d.esPesable
-      ? d.precioPorKgCentavos !== undefined || d.costoPorKgCentavos !== undefined
-      : d.precioCentavos !== undefined || d.costoCentavos !== undefined,
-  { message: "Se requiere al menos precio o costo (por kg si es pesable)" }
-)
-
-export async function POST(req: NextRequest) {
-  const result = await requireAdminApi()
-  if ("error" in result) return result.error
-
-  try {
-    const body = await req.json()
-    const parsed = CrearProductoSchema.parse(body)
-    await productoService.crear({ ...parsed, organizationId: result.user.organizationId })
-    return NextResponse.json({ ok: true })
-  } catch (e) {
-    return NextResponse.json({ error: mensajeError(e) }, { status: 400 })
-  }
 }
