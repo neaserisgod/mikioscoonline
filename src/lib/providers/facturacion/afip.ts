@@ -18,7 +18,9 @@ const CONDICION_IVA_RECEPTOR: Record<string, number> = {
 // Tabla oficial ARCA — alícuotas de IVA, % → Id.
 const ALICUOTA_ID: Record<number, number> = { 0: 3, 10.5: 4, 21: 5, 27: 6, 5: 8, 2.5: 9 }
 
-function afipClient(modoProduccion: boolean): Afip {
+// Exportada solo para test (tests/integration/afip-provider.test.ts) — el
+// comportamiento para quien la llama vía emitir() no cambia.
+export function afipClient(modoProduccion: boolean): Afip {
   const CUIT = process.env.AFIP_CUIT
   const access_token = process.env.AFIP_ACCESS_TOKEN
   if (!CUIT || !access_token) {
@@ -27,6 +29,21 @@ function afipClient(modoProduccion: boolean): Afip {
   // Certificado solo en producción — homologación usa el CUIT de prueba de AfipSDK sin certificado.
   const cert = process.env.AFIP_CERT ? Buffer.from(process.env.AFIP_CERT, "base64").toString("utf8") : undefined
   const key = process.env.AFIP_PRIVATE_KEY ? Buffer.from(process.env.AFIP_PRIVATE_KEY, "base64").toString("utf8") : undefined
+
+  // Organization.facturacionModoProduccion puede estar en true en la DB sin que
+  // el proceso tenga cargadas las credenciales reales de producción (deploy
+  // nuevo sin configurar, variable borrada por error). Antes esto degradaba en
+  // silencio a homologación — el SDK defaultea production:false si no se le
+  // pasa el flag (ver Afip.js) — y el negocio recibía un CAE de prueba como si
+  // fuera real. Ahora se corta acá: facturacionService ya deja el Comprobante
+  // en ERROR ante cualquier excepción de emitir(), así que esto se vuelve un
+  // fallo visible y reintentable en vez de una factura trucha silenciosa
+  // (ver docs/REPORTE-NUCLEO.md, hallazgo C3).
+  if (modoProduccion && !(cert && key)) {
+    throw new Error(
+      "facturacionModoProduccion está activado pero faltan AFIP_CERT/AFIP_PRIVATE_KEY en el entorno — no se factura en homologación por error"
+    )
+  }
 
   return new Afip({
     CUIT: Number(CUIT),
