@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma"
-import { logError } from "@/lib/log"
+import { ventaService, type LineaVentaInput } from "@/services/venta.service"
+import { logError, logWarn } from "@/lib/log"
 
 interface OrdenMp {
   status?: string
@@ -10,20 +11,60 @@ interface PagoMp {
   fee_details?: Array<{ amount?: number }>
 }
 
+/** Misma fórmula que use-pago-mp-polling.ts — si cambia, cambiarla en los dos
+ * lugares (ver hallazgo C1 residual). */
+function idVentaDesdeOrdenMp(orderId: string): string {
+  return `mp-${orderId}`
+}
+
+/**
+ * Si el pago se confirmó pero ningún Payment local existe todavía para esta
+ * orden, es la señal de que el polling client-side (use-pago-mp-polling.ts)
+ * nunca llegó a crear la venta (recarga de página, cierre de pestaña, crash
+ * del navegador con el cobro pendiente). enviarMontoMpAction persiste un
+ * snapshot del carrito en OrdenMpPendiente al crear la orden — si existe,
+ * se usa para recrear la venta acá mismo en vez de solo alertar. El id
+ * determinístico (idVentaDesdeOrdenMp) hace que esto sea seguro aunque
+ * compita con el polling client-side: ventaService.crear es idempotente por
+ * id (P2002), así que si ambos caminos llegan a intentarlo, el segundo
+ * simplemente recibe la venta ya creada por el primero.
+ */
+async function intentarRecrearVenta(orderId: string): Promise<boolean> {
+  const snapshot = await prisma.ordenMpPendiente.findUnique({ where: { orderId } })
+  if (!snapshot) return false
+
+  try {
+    const lineas = JSON.parse(snapshot.lineas) as LineaVentaInput[]
+    await ventaService.crear({
+      id: idVentaDesdeOrdenMp(orderId),
+      userId: snapshot.userId,
+      organizationId: snapshot.organizationId,
+      lineas,
+      pagos: [{ paymentMethodId: snapshot.medioPagoId, montoCentavos: snapshot.montoCentavos, referencia: orderId }],
+      descuentoCentavos: snapshot.descuentoCentavos,
+    })
+    await prisma.ordenMpPendiente.deleteMany({ where: { orderId } })
+    logWarn(
+      "mp-webhook.orden-recuperada-automaticamente",
+      `Se recreó automáticamente la venta de la orden ${orderId}, que había quedado sin registrar (revisar que todo esté OK)`,
+      { orderId, organizationId: snapshot.organizationId }
+    )
+    return true
+  } catch (e) {
+    // No se pudo recrear (ej. se quedó sin stock mientras tanto) — sigue al
+    // alerta genérico de abajo, que ahora incluye el motivo del intento fallido.
+    logError("mp-webhook.orden-pagada-sin-venta-recuperacion-fallida", e, {
+      orderId,
+      organizationId: snapshot.organizationId,
+    })
+    return false
+  }
+}
+
 /**
  * Completa Payment.comisionRealCentavos a partir del id de orden de
  * MercadoPago — la llama tanto el webhook (apenas llega la notificación)
- * como el cron de reconciliación (para pagos cuyo webhook nunca llegó). No
- * confirma la venta en el POS, eso lo resuelve el polling de
- * use-pago-mp-polling.ts — PERO si a esta altura (la orden ya está paga según
- * MP) no existe ningún Payment local, es la señal de que ese flujo nunca
- * llegó a crear la venta (recarga de página, cierre de pestaña, crash del
- * navegador con el cobro pendiente) y la plata quedó acreditada en
- * MercadoPago sin ningún registro acá. No hay forma de reconstruir la venta
- * desde acá (la orden no lleva el detalle del carrito — ver mercadopago.ts,
- * los ítems que se mandan a MP son solo el total, no el detalle real), así
- * que como backstop mínimo se deja un alerta fuerte y accionable en vez de
- * perderse en silencio (ver docs/REPORTE-NUCLEO.md, hallazgo C1).
+ * como el cron de reconciliación (para pagos cuyo webhook nunca llegó).
  */
 export async function completarComisionReal(orderId: string) {
   const payment = await prisma.payment.findFirst({ where: { referencia: orderId } })
@@ -35,11 +76,14 @@ export async function completarComisionReal(orderId: string) {
   if (!estaPagada) return
 
   if (!payment) {
-    logError(
-      "mp-webhook.orden-pagada-sin-venta",
-      new Error("MercadoPago confirmó el pago de una orden que no tiene ninguna venta registrada — revisar manualmente"),
-      { orderId, externalReference: orden?.external_reference }
-    )
+    const recreada = await intentarRecrearVenta(orderId)
+    if (!recreada) {
+      logError(
+        "mp-webhook.orden-pagada-sin-venta",
+        new Error("MercadoPago confirmó el pago de una orden que no tiene ninguna venta registrada — revisar manualmente"),
+        { orderId, externalReference: orden?.external_reference }
+      )
+    }
     return
   }
 

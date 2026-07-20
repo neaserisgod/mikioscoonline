@@ -20,6 +20,11 @@ const PagoSchema = z.object({
 })
 
 const CrearVentaSchema = z.object({
+  // Id determinístico opcional (ver use-pago-mp-polling.ts y
+  // mercadopago-comisiones.ts, hallazgo C1 residual): si dos caminos piden
+  // crear la "misma" venta con el mismo id, ventaService.crear es idempotente
+  // (P2002) y devuelve la ya creada en vez de duplicar.
+  id: z.string().min(8).max(64).optional(),
   lineas: z.array(LineaSchema).min(1, "La venta debe tener al menos una línea"),
   // min(0), no min(1): una venta 100% fiada a un cliente (ver fiadoCentavos)
   // puede no tener ningún pago real.
@@ -56,9 +61,10 @@ export async function crearVentaAction(input: unknown): Promise<CrearVentaResult
     const session = await auth()
     if (!session?.user?.id || !session.user.organizationId) return { ok: false, error: "No autorizado" }
 
-    const { lineas, pagos, descuentoCentavos, esConsumoInterno, fiadoCentavos, customerId } = CrearVentaSchema.parse(input)
+    const { id, lineas, pagos, descuentoCentavos, esConsumoInterno, fiadoCentavos, customerId } = CrearVentaSchema.parse(input)
 
     const venta = await ventaService.crear({
+      id,
       userId: session.user.id,
       organizationId: session.user.organizationId,
       lineas,

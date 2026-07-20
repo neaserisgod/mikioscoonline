@@ -12,23 +12,40 @@ vi.mock("@/auth", () => ({ auth: authMock }))
 
 const consultarEstadoOrdenQrMock = vi.fn()
 const cancelarOrdenQrMock = vi.fn()
+const enviarMontoAQrMock = vi.fn()
+const enviarMontoAPosnetMock = vi.fn()
 vi.mock("@/lib/providers/pagos", () => ({
   getPagosProvider: () => ({
     consultarEstadoOrdenQr: consultarEstadoOrdenQrMock,
     consultarEstadoOrdenPosnet: consultarEstadoOrdenQrMock,
     cancelarOrdenQr: cancelarOrdenQrMock,
     cancelarOrdenPosnet: cancelarOrdenQrMock,
+    enviarMontoAQr: enviarMontoAQrMock,
+    enviarMontoAPosnet: enviarMontoAPosnetMock,
   }),
 }))
 
-const { consultarEstadoOrdenMpAction, cancelarOrdenMpAction } = await import("@/app/actions/pagos.actions")
+// cancelarOrdenMpAction también limpia el snapshot de C1 (OrdenMpPendiente) y
+// enviarMontoMpAction lo crea — no es lo que testea A1 (los primeros dos
+// describe de este archivo), se mockea como no-op ahí.
+const ordenMpPendienteDeleteManyMock = vi.fn().mockResolvedValue({ count: 0 })
+const ordenMpPendienteCreateMock = vi.fn().mockResolvedValue({})
+const paymentMethodFindFirstMock = vi.fn()
+vi.mock("@/lib/prisma", () => ({
+  prisma: {
+    ordenMpPendiente: { deleteMany: ordenMpPendienteDeleteManyMock, create: ordenMpPendienteCreateMock },
+    paymentMethod: { findFirst: paymentMethodFindFirstMock },
+  },
+}))
+
+const { consultarEstadoOrdenMpAction, cancelarOrdenMpAction, enviarMontoMpAction } = await import("@/app/actions/pagos.actions")
 
 const ORG_PROPIA = "org-propia"
 const ORG_AJENA = "org-ajena"
 
 beforeEach(() => {
   vi.clearAllMocks()
-  authMock.mockResolvedValue({ user: { organizationId: ORG_PROPIA } })
+  authMock.mockResolvedValue({ user: { id: "user-1", organizationId: ORG_PROPIA } })
 })
 
 describe("consultarEstadoOrdenMpAction — scoping por organización (A1)", () => {
@@ -104,5 +121,60 @@ describe("cancelarOrdenMpAction — scoping por organización (A1)", () => {
 
     expect(result).toEqual({ ok: true })
     expect(cancelarOrdenQrMock).toHaveBeenCalledWith("orden-propia")
+  })
+})
+
+describe("enviarMontoMpAction — persiste el snapshot para el backstop (C1 residual)", () => {
+  it("QR con líneas: guarda OrdenMpPendiente con el snapshot completo", async () => {
+    paymentMethodFindFirstMock.mockResolvedValue({ id: "medio-1", esMercadoPago: true, mpExternalPosId: "CAJA1" })
+    enviarMontoAQrMock.mockResolvedValue({ orderId: "orden-nueva" })
+    const lineas = [{ productId: "prod-1", cantidad: 2 }]
+
+    const result = await enviarMontoMpAction("medio-1", 150000, lineas, 5000)
+
+    expect(result).toEqual({ ok: true, orderId: "orden-nueva", tipo: "qr" })
+    expect(ordenMpPendienteCreateMock).toHaveBeenCalledTimes(1)
+    const data = ordenMpPendienteCreateMock.mock.calls[0][0].data
+    expect(data).toMatchObject({
+      orderId: "orden-nueva",
+      organizationId: ORG_PROPIA,
+      medioPagoId: "medio-1",
+      userId: "user-1",
+      montoCentavos: 150000,
+      descuentoCentavos: 5000,
+      tipo: "qr",
+    })
+    expect(JSON.parse(data.lineas)).toEqual(lineas)
+  })
+
+  it("posnet: mismo snapshot, tipo posnet", async () => {
+    paymentMethodFindFirstMock.mockResolvedValue({ id: "medio-2", esMercadoPago: true, mpTerminalId: "TERM1" })
+    enviarMontoAPosnetMock.mockResolvedValue({ orderId: "orden-posnet" })
+
+    const result = await enviarMontoMpAction("medio-2", 90000, [{ productId: "prod-2", cantidad: 1 }])
+
+    expect(result).toEqual({ ok: true, orderId: "orden-posnet", tipo: "posnet" })
+    expect(ordenMpPendienteCreateMock).toHaveBeenCalledTimes(1)
+    expect(ordenMpPendienteCreateMock.mock.calls[0][0].data.tipo).toBe("posnet")
+  })
+
+  it("sin líneas (llamador viejo): NO crea ningún snapshot, sigue funcionando", async () => {
+    paymentMethodFindFirstMock.mockResolvedValue({ id: "medio-1", esMercadoPago: true, mpExternalPosId: "CAJA1" })
+    enviarMontoAQrMock.mockResolvedValue({ orderId: "orden-sin-lineas" })
+
+    const result = await enviarMontoMpAction("medio-1", 150000)
+
+    expect(result).toEqual({ ok: true, orderId: "orden-sin-lineas", tipo: "qr" })
+    expect(ordenMpPendienteCreateMock).not.toHaveBeenCalled()
+  })
+
+  it("medio de pago de otra organización: No autorizado, no llama a MP ni crea snapshot", async () => {
+    paymentMethodFindFirstMock.mockResolvedValue(null) // findFirst ya scopea por organizationId
+
+    const result = await enviarMontoMpAction("medio-ajeno", 150000, [{ productId: "prod-1", cantidad: 1 }])
+
+    expect(result).toEqual({ ok: false, error: "Este medio de pago no es de MercadoPago" })
+    expect(enviarMontoAQrMock).not.toHaveBeenCalled()
+    expect(ordenMpPendienteCreateMock).not.toHaveBeenCalled()
   })
 })

@@ -179,7 +179,15 @@ export function useCarritoCheckout(onSuccess?: (ventaId: string) => void) {
     if (medioPagoSeleccionado?.esMercadoPago && !esConsumoInterno) {
       setLoading(true)
       try {
-        const result = await enviarMontoMpAction(medioPagoId, totalACobrarCentavos)
+        // Mismo mapeo de carrito → líneas que usa crearVentaAction más abajo —
+        // se persiste como snapshot server-side para el backstop de C1 (ver
+        // pagos.actions.ts).
+        const lineas = carrito.map((l) => ({
+          productId: l.productId,
+          cantidad: l.cantidad,
+          ...(l.esPesable && { gramos: l.gramos ?? 0 }),
+        }))
+        const result = await enviarMontoMpAction(medioPagoId, totalACobrarCentavos, lineas, descuentoCentavos)
         if (!result.ok) {
           toast.error(result.error)
           return

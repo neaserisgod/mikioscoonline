@@ -81,6 +81,7 @@ model Organization {
   customers       Customer[]
   comprobantes    Comprobante[]
   movimientosCuentaCorrienteProveedor MovimientoCuentaCorrienteProveedor[]
+  ordenesMpPendientes OrdenMpPendiente[]
 }
 
 // ─── Usuarios ────────────────────────────────────────────────────────────────
@@ -106,6 +107,7 @@ model User {
   sesionesAbiertas CajaSesion[] @relation("SesionAbiertaPor")
   sesionesCerradas CajaSesion[] @relation("SesionCerradaPor")
   arqueosParciales ArqueoParcial[]
+  ordenesMpPendientes OrdenMpPendiente[]
 }
 
 // ─── Configuración ──────────────────────────────────────────────────────────
@@ -217,6 +219,7 @@ model PaymentMethod {
 
   payments        Payment[]
   movimientosCaja MovimientoCaja[]
+  ordenesMpPendientes OrdenMpPendiente[]
 
   @@unique([nombre, organizationId])
 }
@@ -465,9 +468,29 @@ model Payment {
   montoCentavos        Int
   comisionCentavos     Int           // estimada = monto × comisionBp / 10_000
   montoNetoCentavos    Int           // monto − comision
-  comisionRealCentavos Int?          // TODO: completar al integrar MercadoPago
-  referencia           String?       // mp payment id, transferencia ref, etc.
+  comisionRealCentavos Int?          // completado por completarComisionReal() vía webhook/cron de reconciliación (ver mercadopago-comisiones.ts)
+  // mp order id, referencia de transferencia manual, etc. — campo compartido
+  // para más de un propósito, por eso NO tiene @unique: ver schema.prisma.
+  referencia           String?
   createdAt            DateTime      @default(now())
+}
+
+// ─── Backstop de cobros MP sin venta (hallazgo C1 residual) ──────────────────
+// Ver schema.prisma para el comentario completo.
+model OrdenMpPendiente {
+  id                String        @id @default(cuid())
+  orderId           String        @unique
+  organizationId    String
+  organization      Organization  @relation(fields: [organizationId], references: [id])
+  medioPagoId       String
+  medioPago         PaymentMethod @relation(fields: [medioPagoId], references: [id])
+  userId            String
+  user              User          @relation(fields: [userId], references: [id])
+  montoCentavos     Int
+  descuentoCentavos Int           @default(0)
+  tipo              String
+  lineas            String
+  creadoEn          DateTime      @default(now())
 }
 
 model Comprobante {
@@ -480,7 +503,9 @@ model Comprobante {
   numero              Int?
   cae                 String?
   caeFechaVencimiento DateTime?
-  estado              String // PENDIENTE | EMITIDO | ERROR
+  // EMITIDO | ERROR — ver schema.prisma para el comentario completo sobre
+  // "PENDIENTE" (no usado hoy, parte de A3, fuera de alcance).
+  estado              String
   error               String?
 
   cuitCliente         String?

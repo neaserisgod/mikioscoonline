@@ -4,7 +4,7 @@ import { useEffect, useRef } from "react"
 import { useQueryClient, type QueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 import { crearVentaAction } from "@/app/actions/ventas.actions"
-import { cancelarOrdenMpAction, consultarEstadoOrdenMpAction } from "@/app/actions/pagos.actions"
+import { cancelarOrdenMpAction, consultarEstadoOrdenMpAction, limpiarOrdenMpPendienteAction } from "@/app/actions/pagos.actions"
 import { useVentasStore, type VentaAbierta } from "@/stores/ventas.store"
 import { logError } from "@/lib/log"
 
@@ -20,6 +20,16 @@ const TIMEOUT_MS = 5 * 60_000
 const MENSAJE_SIN_PAGO: Record<"qr" | "posnet", string> = {
   qr: "el QR expiró sin pago",
   posnet: "el posnet se canceló sin pago",
+}
+
+/** Id determinístico de Sale a partir de un orderId de MercadoPago — MISMA
+ * fórmula que usa el backstop server-side (completarComisionReal, ver
+ * mercadopago-comisiones.ts) para que, si ambos caminos compiten por crear la
+ * venta de la misma orden, la idempotencia por id (P2002) de
+ * ventaService.crear los reconcilie en vez de duplicar (hallazgo C1 residual).
+ * Si esta fórmula cambia, hay que cambiarla en los dos lugares. */
+function idVentaDesdeOrdenMp(orderId: string): string {
+  return `mp-${orderId}`
 }
 
 /**
@@ -71,6 +81,13 @@ export async function procesarCobroPendiente(venta: VentaAbierta, qc: QueryClien
 
     if (estado.pagado) {
       const result = await crearVentaAction({
+        // Id determinístico derivado del orderId (no random) — si el backstop
+        // server-side (completarComisionReal, ver mercadopago-comisiones.ts)
+        // llegara a competir por crear esta misma venta (ej. el webhook de MP
+        // llega casi al mismo tiempo que este poll confirma el pago), ambos
+        // caminos piden el MISMO id y la idempotencia por id + P2002 de
+        // ventaService.crear evita duplicar la venta — ver hallazgo C1 residual.
+        id: idVentaDesdeOrdenMp(pago.orderId),
         lineas: venta.carrito.map((l) => ({
           productId: l.productId,
           cantidad: l.cantidad,
@@ -92,6 +109,9 @@ export async function procesarCobroPendiente(venta: VentaAbierta, qc: QueryClien
         qc.invalidateQueries({ queryKey: ["resumen"] })
         qc.invalidateQueries({ queryKey: ["productos"] })
         qc.invalidateQueries({ queryKey: ["cajas-panel"] })
+        // La venta ya se creó de verdad acá — el snapshot para el backstop de
+        // C1 ya no hace falta.
+        void limpiarOrdenMpPendienteAction(pago.orderId)
       } else {
         // El cliente ya pagó en MercadoPago pero la venta no se pudo registrar acá
         // (ej. se quedó sin stock mientras esperaba) — el pago ya está confirmado

@@ -83,6 +83,7 @@ model Organization {
   customers       Customer[]
   comprobantes    Comprobante[]
   movimientosCuentaCorrienteProveedor MovimientoCuentaCorrienteProveedor[]
+  ordenesMpPendientes OrdenMpPendiente[]
 }
 
 // ─── Usuarios ────────────────────────────────────────────────────────────────
@@ -108,6 +109,7 @@ model User {
   sesionesAbiertas CajaSesion[] @relation("SesionAbiertaPor")
   sesionesCerradas CajaSesion[] @relation("SesionCerradaPor")
   arqueosParciales ArqueoParcial[]
+  ordenesMpPendientes OrdenMpPendiente[]
 }
 
 // ─── Configuración ──────────────────────────────────────────────────────────
@@ -251,6 +253,7 @@ model PaymentMethod {
 
   payments        Payment[]
   movimientosCaja MovimientoCaja[]
+  ordenesMpPendientes OrdenMpPendiente[]
 
   @@unique([nombre, organizationId])
 }
@@ -529,8 +532,40 @@ model Payment {
   comisionCentavos     Int           // estimada = monto × comisionBp / 10_000
   montoNetoCentavos    Int           // monto − comision
   comisionRealCentavos Int?          // completado por completarComisionReal() vía webhook/cron de reconciliación (ver mercadopago-comisiones.ts)
-  referencia           String?       // mp payment id, transferencia ref, etc.
+  // mp order id, referencia de transferencia manual, etc. — campo compartido
+  // para más de un propósito, por eso NO tiene @unique: un mp order id sí es
+  // globalmente único por diseño de MercadoPago, pero una referencia de
+  // transferencia tipeada a mano por el cajero no lo es necesariamente (hay
+  // valores repetidos reales en producción hoy, ej. cajeros tipeando el mismo
+  // texto genérico). Ver docs/CONFIG-PRODUCCION-PENDIENTE.md.
+  referencia           String?
   createdAt            DateTime      @default(now())
+}
+
+// ─── Backstop de cobros MP sin venta (hallazgo C1 residual) ──────────────────
+// Snapshot del carrito al crear una orden de MercadoPago (QR/posnet) — ver
+// enviarMontoMpAction. Si el pago se confirma pero el navegador nunca llega a
+// crear la Sale (recarga, cierre, crash), completarComisionReal (webhook/cron)
+// usa este snapshot para recrear la venta sola en vez de solo alertar. Se
+// borra apenas la venta real se crea o el cobro se cancela/expira — vive solo
+// mientras el cobro está en vuelo, no es un historial.
+model OrdenMpPendiente {
+  id                String        @id @default(cuid())
+  orderId           String        @unique
+  organizationId    String
+  organization      Organization  @relation(fields: [organizationId], references: [id])
+  medioPagoId       String
+  medioPago         PaymentMethod @relation(fields: [medioPagoId], references: [id])
+  // Quién iba a cobrar — hace falta para poder recrear la venta sola
+  // (ventaService.crear exige userId), no hay sesión en el contexto del
+  // webhook/cron que corre el backstop.
+  userId            String
+  user              User          @relation(fields: [userId], references: [id])
+  montoCentavos     Int
+  descuentoCentavos Int           @default(0)
+  tipo              String        // "qr" | "posnet" — validado en código, no Zod (uso interno)
+  lineas            String        // JSON: [{ productId, cantidad, gramos? }]
+  creadoEn          DateTime      @default(now())
 }
 
 // ─── Facturación (AFIP/ARCA) ────────────────────────────────────────────────

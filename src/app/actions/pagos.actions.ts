@@ -6,6 +6,12 @@ import { getPagosProvider } from "@/lib/providers/pagos"
 
 export type TipoDispositivoMp = "qr" | "posnet"
 
+export interface LineaCarritoMp {
+  productId: string
+  cantidad: number
+  gramos?: number
+}
+
 type EnviarMontoMpResult =
   | { ok: true; orderId: string; tipo: TipoDispositivoMp }
   | { ok: false; error: string }
@@ -31,10 +37,17 @@ function ordenPerteneceAOrganizacion(externalReference: string | undefined, orga
 
 export async function enviarMontoMpAction(
   paymentMethodId: string,
-  montoCentavos: number
+  montoCentavos: number,
+  // Snapshot del carrito al momento de mandar el cobro — se persiste en
+  // OrdenMpPendiente para que el backstop de completarComisionReal pueda
+  // recrear la venta sola si el pago se confirma pero el navegador nunca
+  // llega a crearla (recarga, cierre, crash — ver hallazgo C1 residual).
+  // Opcionales para no romper ningún llamador viejo que todavía no los pase.
+  lineas: LineaCarritoMp[] = [],
+  descuentoCentavos = 0
 ): Promise<EnviarMontoMpResult> {
   const session = await auth()
-  if (!session?.user?.organizationId) return { ok: false, error: "No autorizado" }
+  if (!session?.user?.id || !session.user.organizationId) return { ok: false, error: "No autorizado" }
 
   const medio = await prisma.paymentMethod.findFirst({
     where: { id: paymentMethodId, organizationId: session.user.organizationId },
@@ -49,6 +62,22 @@ export async function enviarMontoMpAction(
   // mercadopago-comisiones.ts, docs/REPORTE-NUCLEO.md hallazgo C1).
   const externalReference = `${session.user.organizationId}:${crypto.randomUUID()}`
 
+  async function guardarSnapshot(orderId: string, tipo: TipoDispositivoMp) {
+    if (lineas.length === 0) return // nada que snapshotear (llamador viejo, o carrito vacío)
+    await prisma.ordenMpPendiente.create({
+      data: {
+        orderId,
+        organizationId: session!.user!.organizationId!,
+        medioPagoId: paymentMethodId,
+        userId: session!.user!.id!,
+        montoCentavos,
+        descuentoCentavos,
+        tipo,
+        lineas: JSON.stringify(lineas),
+      },
+    })
+  }
+
   try {
     if (medio.mpTerminalId) {
       const { orderId } = await getPagosProvider().enviarMontoAPosnet({
@@ -58,6 +87,7 @@ export async function enviarMontoMpAction(
         externalReference,
         expiracionMinutos: 16,
       })
+      await guardarSnapshot(orderId, "posnet")
       return { ok: true, orderId, tipo: "posnet" }
     }
     if (medio.mpExternalPosId) {
@@ -68,12 +98,25 @@ export async function enviarMontoMpAction(
         externalReference,
         expiracionMinutos: 5,
       })
+      await guardarSnapshot(orderId, "qr")
       return { ok: true, orderId, tipo: "qr" }
     }
     return { ok: false, error: "Este medio de pago no tiene QR ni posnet configurado" }
   } catch (e) {
     return { ok: false, error: mensajeError(e) }
   }
+}
+
+/** Borra el snapshot de una orden que ya no está en vuelo — porque la venta
+ * ya se creó de verdad (éxito) o porque el cobro se abandonó (cancelado por
+ * el cajero o expirado). No lanza si ya no existe (llamarla dos veces es
+ * seguro). */
+export async function limpiarOrdenMpPendienteAction(orderId: string): Promise<void> {
+  const session = await auth()
+  if (!session?.user?.organizationId) return
+  await prisma.ordenMpPendiente.deleteMany({
+    where: { orderId, organizationId: session.user.organizationId },
+  })
 }
 
 export async function consultarEstadoOrdenMpAction(
@@ -126,6 +169,10 @@ export async function cancelarOrdenMpAction(
     } else {
       await getPagosProvider().cancelarOrdenQr(orderId)
     }
+    // El cobro se abandona — el snapshot para el backstop de C1 ya no aplica
+    // (si igualmente llegara a confirmarse un pago tardío de esta orden
+    // cancelada, es un caso para revisar a mano, no para autorecrear).
+    await prisma.ordenMpPendiente.deleteMany({ where: { orderId, organizationId: session.user.organizationId } })
     return { ok: true }
   } catch (e) {
     return { ok: false, error: mensajeError(e) }

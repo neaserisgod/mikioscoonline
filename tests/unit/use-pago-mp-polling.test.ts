@@ -14,9 +14,11 @@ vi.mock("@/app/actions/ventas.actions", () => ({ crearVentaAction: crearVentaAct
 
 const consultarEstadoOrdenMpActionMock = vi.fn()
 const cancelarOrdenMpActionMock = vi.fn()
+const limpiarOrdenMpPendienteActionMock = vi.fn().mockResolvedValue(undefined)
 vi.mock("@/app/actions/pagos.actions", () => ({
   consultarEstadoOrdenMpAction: consultarEstadoOrdenMpActionMock,
   cancelarOrdenMpAction: cancelarOrdenMpActionMock,
+  limpiarOrdenMpPendienteAction: limpiarOrdenMpPendienteActionMock,
 }))
 
 const toastMock = Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn(), warning: vi.fn() })
