@@ -17,10 +17,27 @@ export const facturacionService = {
   async facturarVenta(saleId: string, organizationId: string): Promise<void> {
     const sale = await prisma.sale.findFirst({
       where: { id: saleId, organizationId },
-      include: { lines: { include: { product: true } }, customer: true, organization: true, comprobante: true },
+      include: {
+        lines: { include: { product: true } },
+        customer: true,
+        organization: true,
+        comprobante: true,
+        payments: { include: { paymentMethod: true } },
+      },
     })
     if (!sale) return
     if (sale.comprobante?.estado === "EMITIDO") return
+
+    // Regla de negocio (Fase B): una venta 100% efectivo NUNCA factura. El
+    // disparo automático (venta.service.ts) ya lo respeta, pero el botón
+    // manual "Facturar"/"Reintentar" de /historial-ventas llamaba a este
+    // método sin este chequeo — un ADMIN podía forzar un CAE real (no
+    // anulable) para una venta en efectivo con un click (hallazgo A4). No es
+    // un error (no se guarda ningún Comprobante ni se loguea): simplemente no
+    // corresponde facturar esta venta, ni ahora ni en un reintento futuro.
+    const esVenta100PorCientoEfectivo =
+      sale.payments.length > 0 && sale.payments.every((p) => p.paymentMethod.esEfectivo)
+    if (esVenta100PorCientoEfectivo) return
 
     const org = sale.organization
     const faltanDatosFiscales = !org.cuit || !org.puntoDeVenta || !org.condicionIva

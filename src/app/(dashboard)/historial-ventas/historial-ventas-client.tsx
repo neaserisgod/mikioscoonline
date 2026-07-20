@@ -41,7 +41,7 @@ interface VentaListado {
   fiadoCentavos: number
   esConsumoInterno: boolean
   cliente: string | null
-  medios: { nombre: string; montoCentavos: number }[]
+  medios: { nombre: string; esEfectivo: boolean; montoCentavos: number }[]
   cantidadLineas: number
   comprobante: { estado: string; tipo: string; numero: number | null } | null
   flags: VentaFlags
@@ -53,6 +53,15 @@ interface RespuestaVentas {
   total: number
   page: number
   pageSize: number
+}
+
+// Regla de negocio (Fase B): una venta 100% efectivo nunca factura — se
+// fuerza server-side en venta.service.ts (disparo automático) y en
+// facturacionService.facturarVenta (disparo manual, ver hallazgo A4). Este
+// helper es solo para no ofrecer el botón "Facturar"/"Reintentar" en una
+// venta que el service va a rechazar en silencio igual.
+function esVenta100PorCientoEfectivo(v: Pick<VentaListado, "medios">): boolean {
+  return v.medios.length > 0 && v.medios.every((m) => m.esEfectivo)
 }
 
 function getRangoDefault() {
@@ -284,6 +293,8 @@ export default function HistorialVentasClient() {
                   <TableCell>
                     {v.comprobante?.estado === "EMITIDO" ? (
                       <Badge variant="outline">{v.comprobante.tipo.replace("FACTURA_", "")} Nº{v.comprobante.numero}</Badge>
+                    ) : v.esConsumoInterno || esVenta100PorCientoEfectivo(v) ? (
+                      <span className="text-xs text-muted-foreground">—</span>
                     ) : v.comprobante?.estado === "ERROR" ? (
                       <Button
                         variant="destructive"
@@ -295,8 +306,6 @@ export default function HistorialVentasClient() {
                         {facturandoId === v.id ? <Loader2 className="size-3 animate-spin" /> : <RotateCw className="size-3" />}
                         Reintentar
                       </Button>
-                    ) : v.esConsumoInterno ? (
-                      <span className="text-xs text-muted-foreground">—</span>
                     ) : (
                       <Button
                         variant="outline"

@@ -813,7 +813,7 @@ export const ventaService = {
           esConsumoInterno: true,
           customer: { select: { nombre: true } },
           user: { select: { nombre: true, email: true } },
-          payments: { select: { montoCentavos: true, paymentMethod: { select: { nombre: true } } } },
+          payments: { select: { montoCentavos: true, paymentMethod: { select: { nombre: true, esEfectivo: true } } } },
           comprobante: { select: { estado: true, tipo: true, numero: true } },
           _count: { select: { lines: true, payments: true, movimientosCaja: true, stockMovements: true } },
         },

@@ -26,7 +26,7 @@ function mapVenta(v: VentaListado) {
     fiadoCentavos: v.fiadoCentavos,
     esConsumoInterno: v.esConsumoInterno,
     cliente: v.customer?.nombre ?? null,
-    medios: v.payments.map((p) => ({ nombre: p.paymentMethod.nombre, montoCentavos: p.montoCentavos })),
+    medios: v.payments.map((p) => ({ nombre: p.paymentMethod.nombre, esEfectivo: p.paymentMethod.esEfectivo, montoCentavos: p.montoCentavos })),
     cantidadLineas: v._count.lines,
     cantidadPagos: v._count.payments,
     cantidadMovimientosCaja: v._count.movimientosCaja,
