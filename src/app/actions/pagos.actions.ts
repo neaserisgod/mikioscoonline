@@ -33,13 +33,19 @@ export async function enviarMontoMpAction(
     return { ok: false, error: "Este medio de pago no es de MercadoPago" }
   }
 
+  // organizationId codificado en external_reference (opaco para MP, no lo usa
+  // para nada más) — le da contexto real al backstop de completarComisionReal
+  // cuando detecta una orden paga sin ninguna venta local asociada (ver
+  // mercadopago-comisiones.ts, docs/REPORTE-NUCLEO.md hallazgo C1).
+  const externalReference = `${session.user.organizationId}:${crypto.randomUUID()}`
+
   try {
     if (medio.mpTerminalId) {
       const { orderId } = await getPagosProvider().enviarMontoAPosnet({
         terminalId: medio.mpTerminalId,
         montoCentavos,
         descripcion: "Venta kiosco",
-        externalReference: crypto.randomUUID(),
+        externalReference,
         expiracionMinutos: 16,
       })
       return { ok: true, orderId, tipo: "posnet" }
@@ -49,7 +55,7 @@ export async function enviarMontoMpAction(
         externalPosId: medio.mpExternalPosId,
         montoCentavos,
         descripcion: "Venta kiosco",
-        externalReference: crypto.randomUUID(),
+        externalReference,
         expiracionMinutos: 5,
       })
       return { ok: true, orderId, tipo: "qr" }

@@ -1,7 +1,10 @@
 import { prisma } from "@/lib/prisma"
+import { logError } from "@/lib/log"
 
 interface OrdenMp {
-  transactions?: { payments?: Array<{ id?: string }> }
+  status?: string
+  external_reference?: string
+  transactions?: { payments?: Array<{ id?: string; status?: string }> }
 }
 interface PagoMp {
   fee_details?: Array<{ amount?: number }>
@@ -11,15 +14,36 @@ interface PagoMp {
  * Completa Payment.comisionRealCentavos a partir del id de orden de
  * MercadoPago — la llama tanto el webhook (apenas llega la notificación)
  * como el cron de reconciliación (para pagos cuyo webhook nunca llegó). No
- * confirma la venta en el POS, eso ya lo resuelve el polling de
- * use-pago-qr-polling.ts.
+ * confirma la venta en el POS, eso lo resuelve el polling de
+ * use-pago-mp-polling.ts — PERO si a esta altura (la orden ya está paga según
+ * MP) no existe ningún Payment local, es la señal de que ese flujo nunca
+ * llegó a crear la venta (recarga de página, cierre de pestaña, crash del
+ * navegador con el cobro pendiente) y la plata quedó acreditada en
+ * MercadoPago sin ningún registro acá. No hay forma de reconstruir la venta
+ * desde acá (la orden no lleva el detalle del carrito — ver mercadopago.ts,
+ * los ítems que se mandan a MP son solo el total, no el detalle real), así
+ * que como backstop mínimo se deja un alerta fuerte y accionable en vez de
+ * perderse en silencio (ver docs/REPORTE-NUCLEO.md, hallazgo C1).
  */
 export async function completarComisionReal(orderId: string) {
   const payment = await prisma.payment.findFirst({ where: { referencia: orderId } })
-  if (!payment || payment.comisionRealCentavos != null) return
+  if (payment?.comisionRealCentavos != null) return
 
   const orden = await mpGet<OrdenMp>(`/v1/orders/${orderId}`)
-  const paymentId = orden?.transactions?.payments?.[0]?.id
+  const pagosOrden = orden?.transactions?.payments ?? []
+  const estaPagada = orden?.status === "processed" || pagosOrden.some((p) => p.status === "approved")
+  if (!estaPagada) return
+
+  if (!payment) {
+    logError(
+      "mp-webhook.orden-pagada-sin-venta",
+      new Error("MercadoPago confirmó el pago de una orden que no tiene ninguna venta registrada — revisar manualmente"),
+      { orderId, externalReference: orden?.external_reference }
+    )
+    return
+  }
+
+  const paymentId = pagosOrden[0]?.id
   if (!paymentId) return
 
   const pago = await mpGet<PagoMp>(`/v1/payments/${paymentId}`)

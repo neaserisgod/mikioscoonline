@@ -1,6 +1,7 @@
 "use client"
 
 import { create } from "zustand"
+import { persist, createJSONStorage } from "zustand/middleware"
 import type { TipoDispositivoMp } from "@/app/actions/pagos.actions"
 
 export interface LineaCarrito {
@@ -112,7 +113,15 @@ function ventaActiva(state: VentasState): VentaAbierta | undefined {
   return state.ventas.find((v) => v.id === state.ventaActivaId)
 }
 
-export const useVentasStore = create<VentasState & VentasActions>((set, get) => {
+// Persistido en sessionStorage (no localStorage: es un cajón por pestaña, no
+// algo que deba sobrevivir entre pestañas/dispositivos distintos) — sobrevive
+// a un F5 accidental con un cobro de MercadoPago pendiente. Antes, recargar la
+// página con `pagoMpPendiente` seteado perdía ese estado sin dejar rastro: si
+// el cliente ya había pagado (o pagaba después), la venta nunca se registraba
+// (ver docs/REPORTE-NUCLEO.md, hallazgo C1). No cubre cierre de pestaña/crash
+// del navegador — eso lo cubre el backstop de mercadopago-comisiones.ts.
+export const useVentasStore = create<VentasState & VentasActions>()(
+  persist((set, get) => {
   const inicial = crearVentaVacia(1)
 
   return {
@@ -428,7 +437,15 @@ export const useVentasStore = create<VentasState & VentasActions>((set, get) => 
       }))
     },
   }
-})
+  },
+  {
+    name: "pyme-ventas-store",
+    storage: createJSONStorage(() => sessionStorage),
+    // overlayAbierto es puramente de UI (qué pestaña se ve al volver a entrar
+    // a /vender) — no tiene sentido persistirlo entre recargas.
+    partialize: (state) => ({ ventas: state.ventas, ventaActivaId: state.ventaActivaId }),
+  })
+)
 
 // Selector de conveniencia: venta activa completa
 export const useVentaActiva = () =>
