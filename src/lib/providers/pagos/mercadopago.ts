@@ -31,11 +31,14 @@ async function mpFetch(path: string, init: RequestInit) {
   return body
 }
 
-function estadoDesdeOrden(body: { status?: string; transactions?: { payments?: Array<{ status?: string }> } }, finalizadoStatuses: string[]): EstadoOrdenMp {
+function estadoDesdeOrden(
+  body: { status?: string; external_reference?: string; transactions?: { payments?: Array<{ status?: string }> } },
+  finalizadoStatuses: string[]
+): EstadoOrdenMp {
   const pagos = body?.transactions?.payments ?? []
   const pagado = body?.status === "processed" || pagos.some((p) => p.status === "approved")
   const finalizadoSinPago = !!body?.status && finalizadoStatuses.includes(body.status)
-  return { pagado, finalizadoSinPago }
+  return { pagado, finalizadoSinPago, externalReference: body?.external_reference }
 }
 
 // MercadoPago exige X-Idempotency-Key en este endpoint igual que en la

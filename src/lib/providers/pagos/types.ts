@@ -38,6 +38,10 @@ export interface EstadoOrdenMp {
   pagado: boolean
   /** Cubre expired/failed/canceled — dejó de esperar sin haberse pagado. */
   finalizadoSinPago: boolean
+  /** El external_reference que se mandó al crear la orden (organizationId:uuid,
+   * ver pagos.actions.ts) — permite verificar que quien consulta/cancela sea
+   * dueño de la orden antes de actuar (ver hallazgo A1). */
+  externalReference?: string
 }
 
 export interface PagosProvider {

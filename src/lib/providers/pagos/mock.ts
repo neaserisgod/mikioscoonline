@@ -19,20 +19,25 @@ export class MockPagosProvider implements PagosProvider {
     return { linkPago, preferenceId, externalId: preferenceId }
   }
 
-  async enviarMontoAQr(_datos: DatosOrdenQr): Promise<ResultadoOrdenMp> {
+  async enviarMontoAQr(datos: DatosOrdenQr): Promise<ResultadoOrdenMp> {
     await new Promise((r) => setTimeout(r, 50))
-    // El timestamp queda embebido en el id para poder simular el pago en consultarEstadoOrdenQr
-    // sin necesitar estado compartido entre llamadas.
-    return { orderId: `mock-order-${Date.now()}` }
+    // El timestamp y el externalReference quedan embebidos en el id (separados
+    // por "|", que encodeURIComponent siempre escapa, así que nunca aparece sin
+    // escapar dentro de la referencia codificada) para poder simular el pago y
+    // devolver externalReference en consultarEstadoOrdenQr sin necesitar estado
+    // compartido entre llamadas — ver EstadoOrdenMp.externalReference (A1).
+    return { orderId: `mock-order|${encodeURIComponent(datos.externalReference)}|${Date.now()}` }
   }
 
   async consultarEstadoOrdenQr(orderId: string): Promise<EstadoOrdenMp> {
     await new Promise((r) => setTimeout(r, 50))
-    const creadoEn = Number(orderId.split("-").pop())
+    const [, refCodificada, creadoEnStr] = orderId.split("|")
+    const externalReference = refCodificada ? decodeURIComponent(refCodificada) : undefined
+    const creadoEn = Number(creadoEnStr)
     // Simula el pago confirmado ~4s después de creada la orden, para poder probar
     // el flujo de espera completo en dev sin depender de MercadoPago real.
     const pagado = Number.isFinite(creadoEn) && Date.now() - creadoEn > 4000
-    return { pagado, finalizadoSinPago: false }
+    return { pagado, finalizadoSinPago: false, externalReference }
   }
 
   // El posnet reusa el mismo simulacro que el QR (mismo ciclo de espera/confirmación),

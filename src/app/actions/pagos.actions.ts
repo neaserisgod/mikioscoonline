@@ -19,6 +19,16 @@ function mensajeError(e: unknown): string {
   return "No se pudo comunicar con MercadoPago"
 }
 
+/** El external_reference de toda orden creada por enviarMontoMpAction es
+ * "organizationId:uuid" (ver ahí) — permite confirmar que el orderId que
+ * manda el cliente en consultarEstadoOrdenMpAction/cancelarOrdenMpAction
+ * pertenece de verdad a su organización, sin lo cual cualquier usuario
+ * autenticado podía consultar o cancelar la orden de otra organización
+ * (ver docs/REPORTE-NUCLEO.md, hallazgo A1). */
+function ordenPerteneceAOrganizacion(externalReference: string | undefined, organizationId: string): boolean {
+  return !!externalReference && externalReference.startsWith(`${organizationId}:`)
+}
+
 export async function enviarMontoMpAction(
   paymentMethodId: string,
   montoCentavos: number
@@ -74,11 +84,14 @@ export async function consultarEstadoOrdenMpAction(
   if (!session?.user?.organizationId) return { ok: false, error: "No autorizado" }
 
   try {
-    const { pagado, finalizadoSinPago } =
+    const estado =
       tipo === "posnet"
         ? await getPagosProvider().consultarEstadoOrdenPosnet(orderId)
         : await getPagosProvider().consultarEstadoOrdenQr(orderId)
-    return { ok: true, pagado, finalizadoSinPago }
+    if (!ordenPerteneceAOrganizacion(estado.externalReference, session.user.organizationId)) {
+      return { ok: false, error: "No autorizado" }
+    }
+    return { ok: true, pagado: estado.pagado, finalizadoSinPago: estado.finalizadoSinPago }
   } catch (e) {
     return { ok: false, error: mensajeError(e) }
   }
@@ -97,6 +110,17 @@ export async function cancelarOrdenMpAction(
   // cancelarla de nuevo tira error pero no hay nada más que hacer del lado
   // de la app.
   try {
+    // Confirmar dueño ANTES de cancelar (no solo de consultar) — sin esto,
+    // cualquier usuario autenticado podía cancelar la orden de otra
+    // organización, colgando o liberando una terminal ajena (hallazgo A1).
+    const estado =
+      tipo === "posnet"
+        ? await getPagosProvider().consultarEstadoOrdenPosnet(orderId)
+        : await getPagosProvider().consultarEstadoOrdenQr(orderId)
+    if (!ordenPerteneceAOrganizacion(estado.externalReference, session.user.organizationId)) {
+      return { ok: false, error: "No autorizado" }
+    }
+
     if (tipo === "posnet") {
       await getPagosProvider().cancelarOrdenPosnet(orderId)
     } else {
