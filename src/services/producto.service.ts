@@ -696,60 +696,72 @@ export const productoService = {
           continue
         }
 
-        const category = await prisma.category.upsert({
-          where: { nombre_organizationId: { nombre: row.categoria, organizationId } },
-          create: { nombre: row.categoria, markupDefaultBp: 5000, organizationId },
-          update: {},
-        })
-
-        const provider = row.proveedor
-          ? await prisma.provider.upsert({
-              where: { nombre_organizationId: { nombre: row.proveedor, organizationId } },
-              create: { nombre: row.proveedor, organizationId },
-              update: {},
-            })
-          : null
-
-        const location = row.heladera
-          ? await prisma.location.upsert({
-              where: { nombre_organizationId: { nombre: row.heladera, organizationId } },
-              create: { nombre: row.heladera, organizationId },
-              update: {},
-            })
-          : null
-
-        const costoCentavos = row.costo ? Math.round(parseFloat(row.costo) * 100) : undefined
-        const precioCentavos = row.precio ? Math.round(parseFloat(row.precio) * 100) : undefined
-
-        const triangulo = resolverTriangulo({
-          costoCentavos,
-          precioCentavos,
-          markupDefaultBp: category.markupDefaultBp,
-          markupDefaultTipo: (category.markupDefaultTipo as "PORCENTUAL" | "FIJO"),
-          markupDefaultFijoCentavos: category.markupDefaultFijoCentavos,
-        })
-
-        const existing = await prisma.product.findFirst({
-          where: { sku: row.sku, organizationId },
-        })
-
-        if (existing) {
-          await prisma.product.update({
-            where: { id: existing.id },
-            data: {
-              nombre: row.nombre,
-              barcode: row.barcode ?? null,
-              costoCentavos: triangulo.costoCentavos,
-              precioCentavos: triangulo.precioCentavos,
-              costoEsProvisional: triangulo.costoEsProvisional,
-              categoryId: category.id,
-              providerId: provider?.id ?? null,
-              locationId: location?.id ?? null,
-            },
+        // Cada fila en su propia transacción: category/provider/location upsert +
+        // create/update del producto son todo-o-nada para ESTA fila. Antes, un
+        // crash (o una excepción de resolverTriangulo) a mitad de fila podía
+        // dejar, por ejemplo, una categoría nueva ya creada sin ningún producto
+        // usándola. No se envuelve el CSV entero en una sola transacción a
+        // propósito: filas son independientes por diseño (best-effort, ver
+        // errores[] más abajo) y una transacción de hasta 5000 filas retendría
+        // el lock/conexión demasiado tiempo, además de que un error real de DB
+        // en la fila N dejaría la transacción "abortada" para las filas N+1..
+        // (ver docs/REPORTE-NUCLEO.md, hallazgo M5).
+        const resultado = await prisma.$transaction(async (tx) => {
+          const category = await tx.category.upsert({
+            where: { nombre_organizationId: { nombre: row.categoria, organizationId } },
+            create: { nombre: row.categoria, markupDefaultBp: 5000, organizationId },
+            update: {},
           })
-          actualizados++
-        } else {
-          await prisma.product.create({
+
+          const provider = row.proveedor
+            ? await tx.provider.upsert({
+                where: { nombre_organizationId: { nombre: row.proveedor, organizationId } },
+                create: { nombre: row.proveedor, organizationId },
+                update: {},
+              })
+            : null
+
+          const location = row.heladera
+            ? await tx.location.upsert({
+                where: { nombre_organizationId: { nombre: row.heladera, organizationId } },
+                create: { nombre: row.heladera, organizationId },
+                update: {},
+              })
+            : null
+
+          const costoCentavos = row.costo ? Math.round(parseFloat(row.costo) * 100) : undefined
+          const precioCentavos = row.precio ? Math.round(parseFloat(row.precio) * 100) : undefined
+
+          const triangulo = resolverTriangulo({
+            costoCentavos,
+            precioCentavos,
+            markupDefaultBp: category.markupDefaultBp,
+            markupDefaultTipo: (category.markupDefaultTipo as "PORCENTUAL" | "FIJO"),
+            markupDefaultFijoCentavos: category.markupDefaultFijoCentavos,
+          })
+
+          const existing = await tx.product.findFirst({
+            where: { sku: row.sku, organizationId },
+          })
+
+          if (existing) {
+            await tx.product.update({
+              where: { id: existing.id },
+              data: {
+                nombre: row.nombre,
+                barcode: row.barcode ?? null,
+                costoCentavos: triangulo.costoCentavos,
+                precioCentavos: triangulo.precioCentavos,
+                costoEsProvisional: triangulo.costoEsProvisional,
+                categoryId: category.id,
+                providerId: provider?.id ?? null,
+                locationId: location?.id ?? null,
+              },
+            })
+            return "actualizado" as const
+          }
+
+          await tx.product.create({
             data: {
               sku: row.sku,
               barcode: row.barcode ?? null,
@@ -763,8 +775,11 @@ export const productoService = {
               organizationId,
             },
           })
-          creados++
-        }
+          return "creado" as const
+        })
+
+        if (resultado === "actualizado") actualizados++
+        else creados++
       } catch (e) {
         errores.push({ fila, error: e instanceof Error ? e.message : String(e) })
       }
