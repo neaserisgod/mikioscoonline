@@ -132,9 +132,38 @@ export const facturacionService = {
         logError("facturacion.generarPdf", error, { saleId: sale.id })
       }
     } catch (e) {
-      await guardarError(sale.id, organizationId, sale, e instanceof Error ? e.message : "Error desconocido al facturar")
+      const mensaje = mensajeDeErrorAfip(e)
+      logError("facturacion.emitir", e, { saleId: sale.id, organizationId })
+      await guardarError(sale.id, organizationId, sale, mensaje)
     }
   },
+}
+
+/**
+ * El detalle real de un error de AfipSDK (app.afipsdk.com) vive en
+ * error.data.message (más status/statusText), adjuntados por afip.ts al
+ * relanzar — e.message por sí solo, para un error HTTP, es el genérico de
+ * axios ("Request failed with status code 400"), no la causa. Sin esto,
+ * guardarError() solo tenía el genérico y se perdía por qué AFIP rechazaba
+ * cada comprobante.
+ *
+ * Exportada solo para test (tests/unit/facturacion-error-afip.test.ts).
+ */
+export function mensajeDeErrorAfip(e: unknown): string {
+  if (!(e instanceof Error)) return "Error desconocido al facturar"
+
+  const err = e as Error & { status?: number; statusText?: string; data?: unknown }
+  const partes = [err.message]
+
+  const dataMessage =
+    typeof err.data === "string" ? err.data : (err.data as { message?: string } | undefined)?.message
+  if (dataMessage && dataMessage !== err.message) partes.push(dataMessage)
+
+  if (err.status !== undefined) {
+    partes.push(`HTTP ${err.status}${err.statusText ? ` ${err.statusText}` : ""}`)
+  }
+
+  return partes.join(" — ")
 }
 
 async function guardarError(

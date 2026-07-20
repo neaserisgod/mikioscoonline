@@ -115,12 +115,31 @@ export class AfipFacturacionProvider implements FacturacionProvider {
     // createNextVoucher pide a AFIP el próximo número de comprobante y lo crea en el
     // mismo paso — evita el riesgo de dos ventas concurrentes pisándose el número
     // (que sí existiría si calculáramos "el número siguiente" nosotros a mano).
-    const res = await afip.ElectronicBilling.createNextVoucher(data)
+    try {
+      const res = await afip.ElectronicBilling.createNextVoucher(data)
 
-    return {
-      cae: res.CAE,
-      caeFechaVencimiento: new Date(res.CAEFchVto),
-      numeroComprobante: res.voucherNumber,
+      return {
+        cae: res.CAE,
+        caeFechaVencimiento: new Date(res.CAEFchVto),
+        numeroComprobante: res.voucherNumber,
+      }
+    } catch (e) {
+      // AfipSDK (app.afipsdk.com, no AFIP directo) adjunta el detalle real de
+      // un error HTTP al Error que tira axios: status/statusText/data — para
+      // un 400, error.message queda en el genérico de axios ("Request failed
+      // with status code 400"), la razón real vive en error.data.message. Se
+      // relanza con esas propiedades explícitas (no solo confiar en que el
+      // SDK las siga adjuntando en versiones futuras) para que
+      // facturacionService las pueda persistir/loguear — antes se perdían
+      // porque nada las leía más allá de e.message.
+      const original = e as { message?: string; status?: number; statusText?: string; data?: unknown }
+      const error = new Error(original?.message ?? "Error desconocido al llamar a AFIP") as Error & {
+        status?: number; statusText?: string; data?: unknown
+      }
+      if (original?.status !== undefined) error.status = original.status
+      if (original?.statusText !== undefined) error.statusText = original.statusText
+      if (original?.data !== undefined) error.data = original.data
+      throw error
     }
   }
 }
