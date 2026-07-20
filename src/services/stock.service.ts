@@ -64,13 +64,23 @@ export const stockService = {
 
       // AJUSTE: es un conteo físico — el nuevo valor absoluto debe pisar cualquier
       // cambio concurrente (es la fuente de verdad más reciente), no sumarse/restarse.
-      const gramosAnterior = producto.stockGramos ?? 0
+      // gramosAnterior se relee DENTRO de la transacción (no del `producto` de
+      // arriba, leído antes de siquiera entrar acá) — una venta concurrente entre
+      // esa lectura inicial y este punto dejaba un gramosAnterior/delta incorrecto
+      // en el StockMovement, y ese mismo movimiento concurrente quedaba pisado por
+      // el SET absoluto (ver docs/REPORTE-NUCLEO.md, hallazgo A7).
       const gramosPosterior = input.cantidad
       if (gramosPosterior < 0) {
         throw new Error(`Stock resultante no puede ser negativo: ${gramosPosterior}g`)
       }
 
       return prisma.$transaction(async (tx) => {
+        const actual = await tx.product.findUniqueOrThrow({
+          where: { id: input.productId },
+          select: { stockGramos: true },
+        })
+        const gramosAnterior = actual.stockGramos ?? 0
+
         await tx.product.update({
           where: { id: input.productId },
           data: { stockGramos: gramosPosterior },
