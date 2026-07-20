@@ -84,6 +84,19 @@ function sinCostoSiNoEsAdmin<T extends { costoCentavos?: number; costoPorKgCenta
   return { ...data, costoCentavos: undefined, costoPorKgCentavos: undefined, markupBp: undefined }
 }
 
+// Mismo criterio que sinCostoSiNoEsAdmin: VENDEDOR nunca debe poder ajustar el
+// stock actual desde "Editar producto" (eso es lo que exige el flujo dedicado
+// de ajuste de stock, ver ajusteStockAction) — el form ya lo deshabilita para
+// VENDEDOR, pero esto es la defensa real. stockMinimo/stockMinimoGramos no son
+// la cantidad real (solo un umbral de alerta) así que se dejan pasar igual.
+function sinStockSiNoEsAdmin<T extends { stock?: number; stockGramos?: number }>(
+  data: T,
+  role: "ADMIN" | "VENDEDOR"
+): T {
+  if (role === "ADMIN") return data
+  return { ...data, stock: undefined, stockGramos: undefined }
+}
+
 export async function crearProductoAction(input: unknown): Promise<GuardarProductoResult> {
   try {
     const session = await auth()
@@ -100,10 +113,16 @@ export async function crearProductoAction(input: unknown): Promise<GuardarProduc
 export async function editarProductoAction(id: string, input: unknown): Promise<GuardarProductoResult> {
   try {
     const session = await auth()
-    if (!session?.user?.organizationId) return { ok: false, error: "No autorizado" }
+    if (!session?.user?.organizationId || !session.user.id) return { ok: false, error: "No autorizado" }
 
-    const parsed = sinCostoSiNoEsAdmin(EditarProductoSchema.parse(input), session.user.role)
-    await productoService.editar({ id, organizationId: session.user.organizationId, ...parsed })
+    const sinCosto = sinCostoSiNoEsAdmin(EditarProductoSchema.parse(input), session.user.role)
+    const parsed = sinStockSiNoEsAdmin(sinCosto, session.user.role)
+    await productoService.editar({
+      id,
+      organizationId: session.user.organizationId,
+      userId: session.user.id,
+      ...parsed,
+    })
     return { ok: true }
   } catch (e) {
     return { ok: false, error: mensajeError(e) }

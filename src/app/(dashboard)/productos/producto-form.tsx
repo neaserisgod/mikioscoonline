@@ -106,7 +106,7 @@ export default function ProductoForm({ producto, barcodePreset, defaultsNuevo, o
     handleSubmit,
     setValue,
     watch,
-    formState: { errors, isSubmitting },
+    formState: { errors, isSubmitting, dirtyFields },
   } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: {
@@ -217,19 +217,26 @@ export default function ProductoForm({ producto, barcodePreset, defaultsNuevo, o
       esPesable: data.esPesable,
     }
 
+    // Al editar, solo mandamos el stock si el usuario lo tocó de verdad — si no,
+    // el campo queda precargado con el valor que tenía al abrir el diálogo y
+    // mandarlo siempre pisaría (con ese valor viejo) cualquier venta que haya
+    // descontado stock mientras el formulario estaba abierto. Al crear no aplica
+    // (no hay stock previo que pueda quedar stale). Ver docs/REPORTE-NUCLEO.md, C2.
+    const incluirStock = !isEditing || dirtyFields.stock === true
+
     const payload = data.esPesable
       ? {
           ...base,
           precioPorKgCentavos: centavos(data.precioCentavos),
           costoPorKgCentavos: centavos(data.costoCentavos),
-          stockGramos: Math.round(data.stock * 1000),
+          ...(incluirStock && { stockGramos: Math.round(data.stock * 1000) }),
           stockMinimoGramos: Math.round(data.stockMinimo * 1000),
         }
       : {
           ...base,
           precioCentavos: centavos(data.precioCentavos),
           costoCentavos: centavos(data.costoCentavos),
-          stock: data.stock,
+          ...(incluirStock && { stock: data.stock }),
           stockMinimo: data.stockMinimo,
         }
 
@@ -530,9 +537,16 @@ export default function ProductoForm({ producto, barcodePreset, defaultsNuevo, o
             type="number"
             step={esPesable ? "0.001" : "1"}
             min="0"
+            disabled={isEditing && !esAdmin}
             {...register("stock", { setValueAs: (v) => (v === "" || v == null ? 0 : Number(v)) })}
-            className="rounded-xl tabular-nums"
+            className="rounded-xl tabular-nums disabled:opacity-60"
           />
+          {isEditing && !esAdmin && (
+            <p className="text-[11px] text-muted-foreground">Solo un administrador puede ajustar el stock</p>
+          )}
+          {isEditing && esAdmin && (
+            <p className="text-[11px] text-muted-foreground">Se guarda como ajuste auditado solo si lo modificás</p>
+          )}
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="stockMinimo">{esPesable ? "Stock mínimo (kg)" : "Stock mínimo"}</Label>

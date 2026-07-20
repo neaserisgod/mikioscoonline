@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma"
+import { stockService } from "@/services/stock.service"
 import { resolverTriangulo } from "@/domain/markup"
 import { gananciaPotencial, resumenInventario } from "@/domain/pesables"
 import { normalizarTexto } from "@/lib/utils"
@@ -34,6 +35,9 @@ export interface CrearProductoInput {
 export interface EditarProductoInput {
   id: string
   organizationId: string
+  /** Requerido solo si se manda `stock`/`stockGramos` (ver más abajo) — el
+   * ajuste de stock queda auditado en StockMovement con este userId. */
+  userId?: string
   sku?: string
   barcode?: string
   nombre?: string
@@ -258,7 +262,7 @@ export const productoService = {
       }
     }
 
-    return prisma.product.update({
+    const actualizado = await prisma.product.update({
       where: { id: input.id },
       data: {
         ...(input.sku !== undefined && { sku: input.sku }),
@@ -270,9 +274,12 @@ export const productoService = {
         ...(input.esPesable !== undefined && { esPesable: input.esPesable }),
         ...(input.variantOfId !== undefined && { variantOfId: input.variantOfId }),
         ...(input.unidadesPorVenta !== undefined && { unidadesPorVenta: input.unidadesPorVenta }),
+        // NOTA: stock/stockGramos (cantidad actual) NUNCA se setean acá — ver
+        // más abajo. stockMinimo/stockMinimoGramos son solo un umbral de
+        // alerta, no la cantidad real, así que no tienen el mismo riesgo de
+        // pisar una venta concurrente y se mantienen editables acá.
         ...(esPesable
           ? {
-              ...(input.stockGramos !== undefined && { stockGramos: input.stockGramos }),
               ...(input.stockMinimoGramos !== undefined && { stockMinimoGramos: input.stockMinimoGramos }),
               ...(triangulo && {
                 costoPorKgCentavos: triangulo.costoCentavos,
@@ -281,7 +288,6 @@ export const productoService = {
               }),
             }
           : {
-              ...(input.stock !== undefined && { stock: input.stock }),
               ...(input.stockMinimo !== undefined && { stockMinimo: input.stockMinimo }),
               ...(triangulo && {
                 costoCentavos: triangulo.costoCentavos,
@@ -292,6 +298,39 @@ export const productoService = {
       },
       // Sin include: el resultado no se usa (las actions devuelven solo {ok, error})
     })
+
+    // Cambio explícito de stock actual (conteo físico): en vez de un SET directo
+    // acá (que pisaba con el valor que tenía el formulario cuando se abrió,
+    // revirtiendo silenciosamente cualquier venta ocurrida mientras tanto — ver
+    // docs/REPORTE-NUCLEO.md, hallazgo C2), se enruta por
+    // stockService.registrarMovimiento (AJUSTE): relee el stock actual DENTRO
+    // de su propia transacción y deja un StockMovement auditado, igual que el
+    // flujo dedicado de ajuste de stock. La action que llama a este service
+    // (editarProductoAction) es quien exige rol ADMIN antes de dejar pasar
+    // input.stock/stockGramos.
+    if (esPesable && input.stockGramos !== undefined) {
+      if (!input.userId) throw new Error("Falta userId para auditar el ajuste de stock")
+      await stockService.registrarMovimiento({
+        productId: input.id,
+        userId: input.userId,
+        organizationId: input.organizationId,
+        tipo: "AJUSTE",
+        cantidad: input.stockGramos,
+        motivo: "Ajuste desde edición de producto",
+      })
+    } else if (!esPesable && input.stock !== undefined) {
+      if (!input.userId) throw new Error("Falta userId para auditar el ajuste de stock")
+      await stockService.registrarMovimiento({
+        productId: input.id,
+        userId: input.userId,
+        organizationId: input.organizationId,
+        tipo: "AJUSTE",
+        cantidad: input.stock,
+        motivo: "Ajuste desde edición de producto",
+      })
+    }
+
+    return actualizado
   },
 
   async actualizarCosto(id: string, organizationId: string, costoCentavos: number) {
