@@ -60,6 +60,61 @@ function fechaWSFE(fecha: Date): number {
   return Number(`${y}${m}${d}`)
 }
 
+// Código WSFE de AFIP para "el número de comprobante que se pidió ya fue
+// autorizado" (dos facturaciones concurrentes pidieron el mismo "próximo
+// número" con getLastVoucher y la segunda en llegar pierde la carrera). El
+// texto del mensaje puede variar entre versiones de WSFE, así que también se
+// matchea por palabras clave estables como respaldo del código numérico.
+const CODIGO_NUMERO_YA_AUTORIZADO = 10016
+
+// Exportada solo para test (tests/unit/afip-numeracion.test.ts).
+export function esRechazoPorNumeroYaUsado(e: unknown): boolean {
+  const err = e as { code?: number | string; message?: string }
+  if (err?.code === CODIGO_NUMERO_YA_AUTORIZADO || err?.code === String(CODIGO_NUMERO_YA_AUTORIZADO)) return true
+  const msg = (err?.message ?? "").toLowerCase()
+  return msg.includes("comprobante") && msg.includes("autorizado")
+}
+
+const MAX_INTENTOS_NUMERACION = 3
+
+/**
+ * Reemplaza a Afip.ElectronicBilling.createNextVoucher — que internamente
+ * hace getLastVoucher + createVoucher en dos pasos separados (no atómico:
+ * dos facturaciones concurrentes para el mismo PtoVta/tipo pueden leer el
+ * mismo "último número" y competir por el mismo CbteDesde). AFIP rechaza a
+ * quien pierde la carrera en vez de emitir un CAE inválido, pero antes ese
+ * rechazo quedaba como un ERROR evitable hasta el próximo ciclo del cron de
+ * reintento. Ahora, si el rechazo es específicamente "número ya autorizado",
+ * se vuelve a pedir el último número (que ya refleja el que acaba de ganar
+ * la carrera) y se reintenta, en vez de propagar el error (ver
+ * docs/REPORTE-NUCLEO.md, hallazgo A5).
+ *
+ * Exportada solo para test — recibe `afip` como parámetro (en vez de
+ * construirlo con afipClient()) justamente para poder inyectar un fake en
+ * el test sin tocar la red real.
+ */
+export async function crearProximoComprobanteConReintento(
+  afip: Afip,
+  data: Record<string, unknown>
+): Promise<{ CAE: string; CAEFchVto: string; voucherNumber: number }> {
+  let ultimoError: unknown
+  for (let intento = 1; intento <= MAX_INTENTOS_NUMERACION; intento++) {
+    const lastVoucher: number = await afip.ElectronicBilling.getLastVoucher(data.PtoVta, data.CbteTipo)
+    const voucherNumber = lastVoucher + 1
+
+    try {
+      const res = await afip.ElectronicBilling.createVoucher({ ...data, CbteDesde: voucherNumber, CbteHasta: voucherNumber })
+      return { ...res, voucherNumber }
+    } catch (e) {
+      ultimoError = e
+      if (!esRechazoPorNumeroYaUsado(e)) throw e
+      // Otra facturación concurrente ya tomó este número — el próximo
+      // getLastVoucher del siguiente intento ya lo va a reflejar.
+    }
+  }
+  throw ultimoError
+}
+
 export class AfipFacturacionProvider implements FacturacionProvider {
   async emitir(datos: DatosFactura): Promise<ResultadoFacturacion> {
     const afip = afipClient(datos.modoProduccion)
@@ -112,11 +167,8 @@ export class AfipFacturacionProvider implements FacturacionProvider {
       ...(ivaItems.length > 0 ? { Iva: ivaItems } : {}),
     }
 
-    // createNextVoucher pide a AFIP el próximo número de comprobante y lo crea en el
-    // mismo paso — evita el riesgo de dos ventas concurrentes pisándose el número
-    // (que sí existiría si calculáramos "el número siguiente" nosotros a mano).
     try {
-      const res = await afip.ElectronicBilling.createNextVoucher(data)
+      const res = await crearProximoComprobanteConReintento(afip, data)
 
       return {
         cae: res.CAE,
