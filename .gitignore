@@ -53,3 +53,6 @@ next-env.d.ts
 /src/generated/prisma
 
 .vercel
+
+# tooling local del agente (Claude Code) — no va al repo
+.claude/
