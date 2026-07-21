@@ -17,6 +17,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
 import { formatearARS } from "@/domain/dinero"
+import { calcularTotalesCaja } from "@/domain/caja"
 import { cn } from "@/lib/utils"
 import { cerrarCajaAction, registrarMovimientoAction, registrarArqueoParcialAction } from "@/app/actions/cajaSesion.actions"
 import { retirarGananciaAction } from "@/app/actions/config.actions"
@@ -158,21 +159,15 @@ interface SesionZResult {
   movimientos: CajaMovimiento[]
 }
 
+// Delega en el dominio (ver src/domain/caja.ts) — única fuente de la fórmula,
+// compartida con cajaSesion.service.ts. manejaEfectivo=false a propósito:
+// este panel siempre suma ventas digitales además de las de efectivo, porque
+// una caja 100% no-efectivo (ej. "Ventas QR/Posnet") si no, siempre quedaría
+// en $0 pese a tener ventas reales — ver calcEfectivoEnCaja más abajo, que
+// tiene la misma razón de ser para el prellenado del cierre.
 function computeSessionTotals(movimientos: CajaMovimiento[], fondoInicialCentavos: number) {
-  const ventasEfectivo = movimientos.filter((m) => m.tipo === "VENTA" && m.medioPago?.esEfectivo).reduce((s, m) => s + m.montoCentavos, 0)
-  const ventasDigital = movimientos.filter((m) => m.tipo === "VENTA" && !m.medioPago?.esEfectivo).reduce((s, m) => s + m.montoCentavos, 0)
-  const recargo = movimientos.filter((m) => m.tipo === "VENTA").reduce((s, m) => s + m.recargoCentavos, 0)
-  const ingresos = movimientos.filter((m) => m.tipo === "INGRESO").reduce((s, m) => s + m.montoCentavos, 0)
-  const egresos = movimientos.filter((m) => m.tipo === "EGRESO").reduce((s, m) => s + m.montoCentavos, 0)
-  const nVentas = movimientos.filter((m) => m.tipo === "VENTA").length
-  // Incluye ventas digitales — ver el comentario de calcEfectivoEnCaja: una caja
-  // 100% no-efectivo (ej. "Ventas QR/Posnet") si no, siempre quedaría en $0.
-  // Incluye el recargo: llega junto con el resto del pago a la misma cuenta de
-  // MercadoPago, no es una transacción aparte — omitirlo dejaba el esperado
-  // sistemáticamente por debajo de lo que realmente entra (ver revisión de la
-  // caja QR/Posnet).
-  const efectivoEnCaja = fondoInicialCentavos + ventasEfectivo + ventasDigital + recargo + ingresos - egresos
-  return { ventasEfectivo, ventasDigital, recargo, ingresos, egresos, nVentas, efectivoEnCaja }
+  const t = calcularTotalesCaja(movimientos, fondoInicialCentavos, false)
+  return { ...t, efectivoEnCaja: t.total }
 }
 interface CajaSesionPanel {
   id: string

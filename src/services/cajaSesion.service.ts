@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client"
 import { prisma } from "@/lib/prisma"
+import { calcularTotalesCaja, type MovimientoParaTotales } from "@/domain/caja"
 
 export interface AbrirCajaInput {
   fondoInicialCentavos: number
@@ -49,43 +50,14 @@ function horariosDeHoy(horariosStr: string | null): Date[] {
     .sort((a, b) => a.getTime() - b.getTime())
 }
 
-/**
- * `cajaManejaEfectivo` decide qué ventas cuentan como "esperado":
- * - Caja física (manejaEfectivo=true): solo lo pagado en efectivo — es lo único
- *   que se puede contar en billetes al cerrar. Una venta con QR/Posnet que cayó
- *   acá por atribución de categoría no puso plata física en la caja.
- * - Caja digital (manejaEfectivo=false, ej. MercadoPago): TODA venta atribuida
- *   cuenta, sin filtrar por medio — acá no hay nada que contar en billetes, el
- *   campo "contado" es el saldo declarado de la cuenta digital, así que
- *   filtrar por esEfectivo (que para MP siempre es false) dejaba el esperado
- *   pegado al fondo inicial e ignoraba todas las ventas reales.
- *
- * Exportada solo para test (tests/unit/caja-sesion.test.ts) — el comportamiento
- * para quien la llama vía cerrarCaja/registrarArqueoParcial no cambia.
- */
-export function calcEfectivoEsperado(fondoInicialCentavos: number, movimientos: Array<{
-  tipo: string
-  montoCentavos: number
-  recargoCentavos: number
-  medioPago: { esEfectivo: boolean } | null
-}>, cajaManejaEfectivo: boolean): number {
-  let total = fondoInicialCentavos
-  for (const mov of movimientos) {
-    if (mov.tipo === "INGRESO") {
-      total += mov.montoCentavos
-    } else if (mov.tipo === "EGRESO") {
-      total -= mov.montoCentavos
-    } else if (mov.tipo === "VENTA" && (!cajaManejaEfectivo || mov.medioPago?.esEfectivo)) {
-      // El recargo por cigarrillos (solo QR/Posnet) llega junto con el resto del
-      // pago a la MISMA cuenta de MercadoPago, no es una transacción aparte — si
-      // no se suma acá, el "esperado" de la caja digital queda sistemáticamente
-      // por debajo de lo que realmente entra, y cada cierre muestra una
-      // "diferencia" fantasma del tamaño del recargo acumulado (nunca es un
-      // error real, ver revisión de la caja QR/Posnet).
-      total += mov.montoCentavos + mov.recargoCentavos
-    }
-  }
-  return total
+/** Atajo local: delega el cálculo en el dominio (ver src/domain/caja.ts) —
+ * única fuente de la fórmula, compartida con el panel de Inicio. */
+function calcEfectivoEsperado(
+  fondoInicialCentavos: number,
+  movimientos: MovimientoParaTotales[],
+  cajaManejaEfectivo: boolean
+): number {
+  return calcularTotalesCaja(movimientos, fondoInicialCentavos, cajaManejaEfectivo).total
 }
 
 export const cajaSesionService = {
