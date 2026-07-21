@@ -197,6 +197,14 @@
   }
   html {
     @apply font-sans;
+    /* Densidad base del sistema. Tailwind v4 expresa spacing, tipografía y
+       radios en `rem`, así que subir el tamaño de fuente del root escala TODA
+       la interfaz de forma proporcional — no hace falta tocar clase por clase.
+       125% (= 20px con el default de 16px del navegador) es la densidad
+       elegida como la correcta: antes había que poner el zoom de Chrome en
+       125% para que se viera así. Se usa % y no px a propósito, para respetar
+       a quien tenga configurado otro tamaño de fuente base en el navegador. */
+    font-size: 125%;
   }
   /* Títulos estilo Apple: sans (Inter) con tracking ajustado y balance de línea.
      Reemplaza el look condensado de Oswald en todos los h1–h3 y card titles. */
