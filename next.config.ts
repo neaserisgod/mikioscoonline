@@ -51,6 +51,15 @@ const nextConfig: NextConfig = {
   experimental: {
     staleTimes: { dynamic: 15, static: 180 },
   },
+  // Sin esto, next dev bloquea el socket de HMR cuando se accede por una URL
+  // que no sea exactamente "localhost" (ej. 127.0.0.1, o la IP de red que el
+  // propio `next dev` imprime al arrancar) — la página carga pero queda sin
+  // hidratar del todo: los inputs controlados por React siguen "funcionando"
+  // (son nativos del navegador) pero el submit del form cae al comportamiento
+  // nativo de HTML (GET con los campos como query string) en vez de ejecutar
+  // el handler de React. Sin efecto en producción (allowedDevOrigins es
+  // exclusivo de `next dev`).
+  allowedDevOrigins: ["127.0.0.1"],
 };
 
 // IMPORTANTE: el build standalone para uso local/Tauri se hace con
