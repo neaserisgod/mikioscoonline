@@ -4,7 +4,7 @@ import { useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { AlertTriangle, Loader2, Receipt, RotateCw } from "lucide-react"
+import { AlertTriangle, Loader2, Printer, Receipt, RotateCw } from "lucide-react"
 import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -18,6 +18,7 @@ import { formatearARS } from "@/domain/dinero"
 import { cn } from "@/lib/utils"
 import { DateRangeShortcuts } from "@/components/date-range-shortcuts"
 import { facturarVentaAction } from "@/app/actions/facturacion.actions"
+import { reimprimirTicketAction } from "@/app/actions/impresion.actions"
 
 interface MedioPago {
   id: string
@@ -101,6 +102,7 @@ export default function HistorialVentasClient() {
   const [soloProblemas, setSoloProblemas] = useState(false)
   const [page, setPage] = useState(1)
   const [facturandoId, setFacturandoId] = useState<string | null>(null)
+  const [reimprimiendoId, setReimprimiendoId] = useState<string | null>(null)
   const queryClient = useQueryClient()
 
   const { data: medios } = useQuery<MedioPago[]>({
@@ -127,10 +129,27 @@ export default function HistorialVentasClient() {
       return facturarVentaAction(saleId)
     },
     onSuccess: (res) => {
-      if (!res.ok) toast.error(res.error)
+      if (!res.ok) { toast.error(res.error); return }
+      if (res.posnetEstado === "enviado") toast.success("Factura emitida y ticket reimpreso")
+      else if (res.posnetEstado === "error") toast.success("Factura emitida, pero no se pudo reimprimir el ticket")
+      else if (res.posnetEstado === "sin_terminal") toast.success("Factura emitida")
       queryClient.invalidateQueries({ queryKey: ["historial-ventas"] })
     },
     onSettled: () => setFacturandoId(null),
+  })
+
+  const reimprimir = useMutation({
+    mutationFn: async (saleId: string) => {
+      setReimprimiendoId(saleId)
+      return reimprimirTicketAction(saleId)
+    },
+    onSuccess: (res) => {
+      if (!res.ok) { toast.error(res.error); return }
+      if (res.posnetEstado === "enviado") toast.success("Ticket enviado a la impresora")
+      else if (res.posnetEstado === "sin_terminal") toast.info("No hay terminal configurada")
+      else toast.error("No se pudo imprimir")
+    },
+    onSettled: () => setReimprimiendoId(null),
   })
 
   const ventas = data?.ventas ?? []
@@ -291,33 +310,45 @@ export default function HistorialVentasClient() {
                   </TableCell>
                   <TableCell>{v.cantidadLineas}</TableCell>
                   <TableCell>
-                    {v.comprobante?.estado === "EMITIDO" ? (
-                      <Badge variant="outline">{v.comprobante.tipo.replace("FACTURA_", "")} Nº{v.comprobante.numero}</Badge>
-                    ) : v.esConsumoInterno || esVenta100PorCientoEfectivo(v) ? (
-                      <span className="text-xs text-muted-foreground">—</span>
-                    ) : v.comprobante?.estado === "ERROR" ? (
+                    <div className="flex items-center gap-1">
+                      {v.comprobante?.estado === "EMITIDO" ? (
+                        <Badge variant="outline">{v.comprobante.tipo.replace("FACTURA_", "")} Nº{v.comprobante.numero}</Badge>
+                      ) : v.esConsumoInterno || esVenta100PorCientoEfectivo(v) ? (
+                        <span className="text-xs text-muted-foreground">—</span>
+                      ) : v.comprobante?.estado === "ERROR" ? (
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          className="h-6 px-2 text-xs"
+                          disabled={facturandoId === v.id}
+                          onClick={(e) => { e.stopPropagation(); facturar.mutate(v.id) }}
+                        >
+                          {facturandoId === v.id ? <Loader2 className="size-3 animate-spin" /> : <RotateCw className="size-3" />}
+                          Reintentar
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-6 px-2 text-xs"
+                          disabled={facturandoId === v.id}
+                          onClick={(e) => { e.stopPropagation(); facturar.mutate(v.id) }}
+                        >
+                          {facturandoId === v.id ? <Loader2 className="size-3 animate-spin" /> : null}
+                          Facturar
+                        </Button>
+                      )}
                       <Button
-                        variant="destructive"
+                        variant="ghost"
                         size="sm"
-                        className="h-6 px-2 text-xs"
-                        disabled={facturandoId === v.id}
-                        onClick={(e) => { e.stopPropagation(); facturar.mutate(v.id) }}
+                        className="h-6 w-6 p-0"
+                        title="Reimprimir ticket"
+                        disabled={reimprimiendoId === v.id}
+                        onClick={(e) => { e.stopPropagation(); reimprimir.mutate(v.id) }}
                       >
-                        {facturandoId === v.id ? <Loader2 className="size-3 animate-spin" /> : <RotateCw className="size-3" />}
-                        Reintentar
+                        {reimprimiendoId === v.id ? <Loader2 className="size-3 animate-spin" /> : <Printer className="size-3" />}
                       </Button>
-                    ) : (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-6 px-2 text-xs"
-                        disabled={facturandoId === v.id}
-                        onClick={(e) => { e.stopPropagation(); facturar.mutate(v.id) }}
-                      >
-                        {facturandoId === v.id ? <Loader2 className="size-3 animate-spin" /> : null}
-                        Facturar
-                      </Button>
-                    )}
+                    </div>
                   </TableCell>
                   <TableCell>
                     {v.tieneProblema ? (

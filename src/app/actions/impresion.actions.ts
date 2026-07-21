@@ -7,6 +7,10 @@ type DescargarTicketPruebaResult =
   | { ok: true; pdfBase64: string; posnetEstado: "enviado" | "sin_terminal" | "error" }
   | { ok: false; error: string }
 
+type ReimprimirTicketResult =
+  | { ok: true; posnetEstado: "enviado" | "sin_terminal" | "error" }
+  | { ok: false; error: string }
+
 /**
  * Botón de prueba en Configuración — arma un ticket NO fiscal con datos
  * REALES del negocio (nombre/CUIT/condición IVA) pero ítems inventados. No
@@ -26,5 +30,24 @@ export async function descargarTicketPruebaAction(): Promise<DescargarTicketPrue
     return { ok: true, pdfBase64, posnetEstado }
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "No se pudo generar el ticket de prueba" }
+  }
+}
+
+/**
+ * Reimprime el ticket no fiscal de una venta ya confirmada, desde
+ * /historial-ventas — tarea normal de cajero, NO exclusiva de ADMIN (a
+ * diferencia de descargarTicketPruebaAction y facturarVentaAction). Solo
+ * exige sesión + que la venta sea de la organización del usuario (scope que
+ * ya aplica impresionService.reimprimirTicket vía cargarVentaParaTicket).
+ */
+export async function reimprimirTicketAction(saleId: string): Promise<ReimprimirTicketResult> {
+  try {
+    const session = await auth()
+    if (!session?.user?.organizationId) return { ok: false, error: "No autorizado" }
+
+    const { posnetEstado } = await impresionService.reimprimirTicket(saleId, session.user.organizationId)
+    return { ok: true, posnetEstado }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "No se pudo reimprimir el ticket" }
   }
 }

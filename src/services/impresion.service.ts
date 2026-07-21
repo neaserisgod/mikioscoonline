@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma"
 import { getImpresionProvider } from "@/lib/providers/impresion"
-import { construirTicket, type LineaTicketInput } from "@/domain/ticket"
+import { construirTicket, type LineaTicketInput, type TicketModel } from "@/domain/ticket"
 import { generarPdfTicket } from "@/lib/pdf-ticket"
 import { logError } from "@/lib/log"
 
@@ -32,6 +32,31 @@ function lineasTicket(sale: NonNullable<Awaited<ReturnType<typeof cargarVentaPar
     gramos: l.gramos,
     precioUnitarioCentavos: l.precioUnitarioCentavos,
   }))
+}
+
+/** Busca la terminal Point activa de la organización e imprime ahí — usado
+ * tanto por el auto-print de una venta real como por los dos botones
+ * manuales (ticket de prueba y reimprimir). Nunca lanza: un fallo de
+ * impresión se traduce a "error", no hay terminal configurada da
+ * "sin_terminal". */
+async function imprimirEnPosnet(
+  organizationId: string,
+  ticket: TicketModel,
+  logScope: string,
+  logMeta: Record<string, unknown>
+): Promise<"enviado" | "sin_terminal" | "error"> {
+  const posnet = await prisma.paymentMethod.findFirst({
+    where: { organizationId, mpTerminalId: { not: null }, activo: true },
+  })
+  if (!posnet?.mpTerminalId) return "sin_terminal"
+
+  try {
+    await getImpresionProvider().imprimir(posnet.mpTerminalId, ticket)
+    return "enviado"
+  } catch (error) {
+    logError(logScope, error, logMeta)
+    return "error"
+  }
 }
 
 export const impresionService = {
@@ -72,16 +97,36 @@ export const impresionService = {
     }
 
     if (!sale.organization.imprimirTicketPosnet) return
-    const posnet = await prisma.paymentMethod.findFirst({
-      where: { organizationId, mpTerminalId: { not: null }, activo: true },
-    })
-    if (!posnet?.mpTerminalId) return
+    await imprimirEnPosnet(organizationId, ticket, "impresion.procesarTicketVenta", { saleId })
+  },
 
-    try {
-      await getImpresionProvider().imprimir(posnet.mpTerminalId, ticket)
-    } catch (error) {
-      logError("impresion.procesarTicketVenta", error, { saleId })
-    }
+  /**
+   * Reimpresión manual del ticket no fiscal de una venta ya confirmada,
+   * disparada desde /historial-ventas (botón "Reimprimir" o, tras un
+   * "Facturar" exitoso, desde facturarVentaAction). A diferencia de
+   * procesarTicketVenta, es una acción a demanda del cajero: SIEMPRE intenta
+   * la terminal si hay una configurada, sin mirar
+   * Organization.imprimirTicketPosnet (mismo criterio que
+   * generarTicketPrueba). No genera ni toca el PDF guardado en
+   * Sale.ticketPdf — eso ya se hizo (best-effort) en procesarTicketVenta.
+   */
+  async reimprimirTicket(saleId: string, organizationId: string): Promise<{
+    posnetEstado: "enviado" | "sin_terminal" | "error"
+  }> {
+    const sale = await cargarVentaParaTicket(saleId, organizationId)
+    if (!sale) throw new Error("Venta no encontrada")
+
+    const ticket = construirTicket({
+      organization: sale.organization,
+      fecha: sale.fecha,
+      lines: lineasTicket(sale),
+      recargoCentavos: sale.recargoCentavos,
+      comprobante: null,
+      fiscal: false,
+    })
+
+    const posnetEstado = await imprimirEnPosnet(organizationId, ticket, "impresion.reimprimirTicket", { saleId })
+    return { posnetEstado }
   },
 
   /**
@@ -118,19 +163,7 @@ export const impresionService = {
 
     const pdf = await generarPdfTicket(ticket)
 
-    const posnet = await prisma.paymentMethod.findFirst({
-      where: { organizationId, mpTerminalId: { not: null }, activo: true },
-    })
-    let posnetEstado: "enviado" | "sin_terminal" | "error" = "sin_terminal"
-    if (posnet?.mpTerminalId) {
-      try {
-        await getImpresionProvider().imprimir(posnet.mpTerminalId, ticket)
-        posnetEstado = "enviado"
-      } catch (error) {
-        posnetEstado = "error"
-        logError("impresion.generarTicketPrueba", error, { organizationId })
-      }
-    }
+    const posnetEstado = await imprimirEnPosnet(organizationId, ticket, "impresion.generarTicketPrueba", { organizationId })
 
     return { pdfBase64: Buffer.from(pdf).toString("base64"), posnetEstado }
   },
