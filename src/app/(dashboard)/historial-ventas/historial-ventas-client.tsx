@@ -175,14 +175,14 @@ export default function HistorialVentasClient() {
         onSelect={({ desde: d, hasta: h }) => actualizarFiltro(() => { setDesde(d); setHasta(h) })}
       />
 
-      <div className="flex flex-wrap items-end gap-2">
+      <div className="flex flex-wrap items-end gap-3 rounded-2xl bg-card shadow-[var(--shadow-card)] ring-1 ring-foreground/[0.04] p-4">
         <div className="space-y-1">
           <label className="text-xs text-muted-foreground">Desde</label>
           <Input
             type="date"
             value={desde}
             onChange={(e) => actualizarFiltro(() => setDesde(e.target.value))}
-            className="w-36"
+            className="w-36 [color-scheme:light] dark:[color-scheme:dark]"
           />
         </div>
         <div className="space-y-1">
@@ -191,7 +191,7 @@ export default function HistorialVentasClient() {
             type="date"
             value={hasta}
             onChange={(e) => actualizarFiltro(() => setHasta(e.target.value))}
-            className="w-36"
+            className="w-36 [color-scheme:light] dark:[color-scheme:dark]"
           />
         </div>
         <div className="space-y-1">
@@ -224,7 +224,7 @@ export default function HistorialVentasClient() {
             </SelectContent>
           </Select>
         </div>
-        <label className="flex items-center gap-2 pb-2 text-sm">
+        <label className="flex items-center gap-2 pb-2.5 text-sm">
           <Checkbox
             checked={soloProblemas}
             onCheckedChange={(v) => actualizarFiltro(() => setSoloProblemas(v === true))}
@@ -264,6 +264,7 @@ export default function HistorialVentasClient() {
         />
       ) : (
         <>
+          <div className="rounded-2xl bg-card shadow-[var(--shadow-card)] ring-1 ring-foreground/[0.04] overflow-hidden">
           <Table>
             <TableHeader>
               <TableRow>
@@ -370,6 +371,7 @@ export default function HistorialVentasClient() {
               ))}
             </TableBody>
           </Table>
+          </div>
 
           <div className="flex items-center justify-between pt-2">
             <p className="text-xs text-muted-foreground">Página {page} de {totalPaginas}</p>

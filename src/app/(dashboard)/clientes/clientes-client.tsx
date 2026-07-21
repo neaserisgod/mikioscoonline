@@ -70,7 +70,11 @@ export function ClientesClient() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-end">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h1 className="font-heading text-2xl font-medium">Clientes</h1>
+          <p className="text-sm text-muted-foreground">Gestioná tus clientes y sus cuentas corrientes.</p>
+        </div>
         <Button size="sm" onClick={abrirCrear} className="gap-1.5"><Plus className="size-3.5" /> Nuevo</Button>
       </div>
 
