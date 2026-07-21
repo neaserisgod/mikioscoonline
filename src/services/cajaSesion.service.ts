@@ -59,10 +59,14 @@ function horariosDeHoy(horariosStr: string | null): Date[] {
  *   campo "contado" es el saldo declarado de la cuenta digital, así que
  *   filtrar por esEfectivo (que para MP siempre es false) dejaba el esperado
  *   pegado al fondo inicial e ignoraba todas las ventas reales.
+ *
+ * Exportada solo para test (tests/unit/caja-sesion.test.ts) — el comportamiento
+ * para quien la llama vía cerrarCaja/registrarArqueoParcial no cambia.
  */
-function calcEfectivoEsperado(fondoInicialCentavos: number, movimientos: Array<{
+export function calcEfectivoEsperado(fondoInicialCentavos: number, movimientos: Array<{
   tipo: string
   montoCentavos: number
+  recargoCentavos: number
   medioPago: { esEfectivo: boolean } | null
 }>, cajaManejaEfectivo: boolean): number {
   let total = fondoInicialCentavos
@@ -72,7 +76,13 @@ function calcEfectivoEsperado(fondoInicialCentavos: number, movimientos: Array<{
     } else if (mov.tipo === "EGRESO") {
       total -= mov.montoCentavos
     } else if (mov.tipo === "VENTA" && (!cajaManejaEfectivo || mov.medioPago?.esEfectivo)) {
-      total += mov.montoCentavos
+      // El recargo por cigarrillos (solo QR/Posnet) llega junto con el resto del
+      // pago a la MISMA cuenta de MercadoPago, no es una transacción aparte — si
+      // no se suma acá, el "esperado" de la caja digital queda sistemáticamente
+      // por debajo de lo que realmente entra, y cada cierre muestra una
+      // "diferencia" fantasma del tamaño del recargo acumulado (nunca es un
+      // error real, ver revisión de la caja QR/Posnet).
+      total += mov.montoCentavos + mov.recargoCentavos
     }
   }
   return total
@@ -403,7 +413,7 @@ export const cajaSesionService = {
           where: { id: sesionId },
           select: {
             fondoInicialCentavos: true,
-            movimientos: { select: { tipo: true, montoCentavos: true, medioPago: { select: { esEfectivo: true } } } },
+            movimientos: { select: { tipo: true, montoCentavos: true, recargoCentavos: true, medioPago: { select: { esEfectivo: true } } } },
           },
         })
         // `cajas` ya viene filtrado por manejaEfectivo: true (ver arriba).

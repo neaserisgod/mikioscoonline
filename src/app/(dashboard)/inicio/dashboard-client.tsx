@@ -167,7 +167,11 @@ function computeSessionTotals(movimientos: CajaMovimiento[], fondoInicialCentavo
   const nVentas = movimientos.filter((m) => m.tipo === "VENTA").length
   // Incluye ventas digitales — ver el comentario de calcEfectivoEnCaja: una caja
   // 100% no-efectivo (ej. "Ventas QR/Posnet") si no, siempre quedaría en $0.
-  const efectivoEnCaja = fondoInicialCentavos + ventasEfectivo + ventasDigital + ingresos - egresos
+  // Incluye el recargo: llega junto con el resto del pago a la misma cuenta de
+  // MercadoPago, no es una transacción aparte — omitirlo dejaba el esperado
+  // sistemáticamente por debajo de lo que realmente entra (ver revisión de la
+  // caja QR/Posnet).
+  const efectivoEnCaja = fondoInicialCentavos + ventasEfectivo + ventasDigital + recargo + ingresos - egresos
   return { ventasEfectivo, ventasDigital, recargo, ingresos, egresos, nVentas, efectivoEnCaja }
 }
 interface CajaSesionPanel {

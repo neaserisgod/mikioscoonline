@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest"
 import { Prisma } from "@prisma/client"
+import { calcEfectivoEsperado } from "@/services/cajaSesion.service"
 
 // ─── Test del patrón de idempotencia por id (replay ante carrera P2002) ──────
 // cajaSesionService.abrirCaja/registrarMovimiento interactúan con Prisma (DB
@@ -115,5 +116,62 @@ describe("Idempotencia por id — replay ante carrera (abrirCaja / registrarMovi
     await expect(
       crearIdempotente(tabla, "mov-4", () => ({ id: "mov-4" }))
     ).rejects.toThrow("ya tiene una sesión abierta")
+  })
+})
+
+// ─── calcEfectivoEsperado — el recargo de QR/Posnet suma al esperado ─────────
+// El recargo por cigarrillos llega junto con el resto del pago a la MISMA
+// cuenta de MercadoPago (no es una transacción aparte) — antes del fix quedaba
+// afuera del "esperado" y cada cierre de la caja digital mostraba una
+// diferencia fantasma del tamaño del recargo acumulado (ver revisión de la
+// caja QR/Posnet). Estos tests cubren que el fix suma bien y que el
+// comportamiento sin recargo (el caso de siempre) no cambió.
+describe("calcEfectivoEsperado — recargo de QR/Posnet en el esperado", () => {
+  const medioMp = { esEfectivo: false }
+  const medioEfectivo = { esEfectivo: true }
+
+  it("una VENTA con recargoCentavos > 0 suma monto + recargo al esperado (caja digital)", () => {
+    const esperado = calcEfectivoEsperado(
+      0,
+      [{ tipo: "VENTA", montoCentavos: 30000, recargoCentavos: 5000, medioPago: medioMp }],
+      false // caja 100% digital (ej. MercadoPago) — manejaEfectivo: false
+    )
+    expect(esperado).toBe(35000)
+  })
+
+  it("una VENTA con recargo 0 se comporta igual que antes del fix (sin regresión)", () => {
+    const esperado = calcEfectivoEsperado(
+      100000, // fondo inicial
+      [
+        { tipo: "VENTA", montoCentavos: 46000, recargoCentavos: 0, medioPago: medioEfectivo },
+        { tipo: "INGRESO", montoCentavos: 10000, recargoCentavos: 0, medioPago: null },
+        { tipo: "EGRESO", montoCentavos: 5000, recargoCentavos: 0, medioPago: null },
+      ],
+      true // caja de efectivo
+    )
+    // 100000 (fondo) + 46000 (venta efectivo) + 10000 (ingreso) - 5000 (egreso)
+    expect(esperado).toBe(151000)
+  })
+
+  it("caja de efectivo: una VENTA no-efectivo con recargo no cuenta ni por el monto ni por el recargo", () => {
+    const esperado = calcEfectivoEsperado(
+      0,
+      [{ tipo: "VENTA", montoCentavos: 30000, recargoCentavos: 5000, medioPago: medioMp }],
+      true // caja de efectivo (manejaEfectivo: true) — solo cuenta lo pagado en efectivo
+    )
+    expect(esperado).toBe(0)
+  })
+
+  it("caja que NO maneja efectivo (manejaEfectivo: false) sigue sumando ventas mixtas + recargo correctamente", () => {
+    const esperado = calcEfectivoEsperado(
+      20000, // fondo inicial (saldo arrastrado del último cierre)
+      [
+        { tipo: "VENTA", montoCentavos: 30000, recargoCentavos: 3000, medioPago: medioMp },
+        { tipo: "VENTA", montoCentavos: 12000, recargoCentavos: 0, medioPago: medioMp },
+      ],
+      false
+    )
+    // 20000 + (30000 + 3000) + (12000 + 0)
+    expect(esperado).toBe(65000)
   })
 })
