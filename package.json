@@ -22,7 +22,8 @@
     "db:seed:local": "cross-env LOCAL_DEV=1 tsx prisma/seed.ts",
     "db:push:kiosco": "cross-env LOCAL_DEV=1 DATABASE_URL=file:./kiosco.db prisma db push",
     "kiosco:download-data": "tsx scripts/kiosco-download-data.ts",
-    "kiosco:backup-once": "tsx scripts/kiosco-backup-once.ts"
+    "kiosco:backup-once": "tsx scripts/kiosco-backup-once.ts",
+    "kiosco:empaquetar": "powershell -ExecutionPolicy Bypass -File scripts/windows/empaquetar-kiosco.ps1"
   },
   "dependencies": {
     "@afipsdk/afip.js": "^1.2.3",

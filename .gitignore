@@ -20,6 +20,9 @@
 # production
 /build
 
+# paquete instalable del kiosco (contiene .env.local con secretos reales)
+/dist
+
 # misc
 .DS_Store
 *.pem

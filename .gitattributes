@@ -1,1 +1,5 @@
 * text=auto eol=lf
+
+# Tauri fue abandonado (ver memoria kiosco-lanzador-edge) — no hace falta en
+# el paquete instalable del kiosco (scripts/windows/empaquetar-kiosco.ps1).
+/src-tauri export-ignore
