@@ -4,7 +4,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 // verificaban que hubiera sesión, no que el orderId perteneciera a la
 // organización de esa sesión. Cualquier usuario autenticado que conociera
 // (o filtrara) el orderId de otra organización podía consultar o cancelar su
-// orden. El external_reference (organizationId:uuid, ver pagos.actions.ts)
+// orden. El external_reference (organizationId_uuid, ver pagos.actions.ts)
 // es lo que ahora se usa para confirmar la pertenencia.
 
 const authMock = vi.fn()
@@ -53,7 +53,7 @@ describe("consultarEstadoOrdenMpAction — scoping por organización (A1)", () =
     consultarEstadoOrdenQrMock.mockResolvedValue({
       pagado: true,
       finalizadoSinPago: false,
-      externalReference: `${ORG_AJENA}:algun-uuid`,
+      externalReference: `${ORG_AJENA}_algun-uuid`,
     })
 
     const result = await consultarEstadoOrdenMpAction("orden-ajena", "qr")
@@ -65,7 +65,7 @@ describe("consultarEstadoOrdenMpAction — scoping por organización (A1)", () =
     consultarEstadoOrdenQrMock.mockResolvedValue({
       pagado: true,
       finalizadoSinPago: false,
-      externalReference: `${ORG_PROPIA}:algun-uuid`,
+      externalReference: `${ORG_PROPIA}_algun-uuid`,
     })
 
     const result = await consultarEstadoOrdenMpAction("orden-propia", "qr")
@@ -78,7 +78,7 @@ describe("consultarEstadoOrdenMpAction — scoping por organización (A1)", () =
       pagado: false,
       finalizadoSinPago: false,
       rechazado: true,
-      externalReference: `${ORG_PROPIA}:algun-uuid`,
+      externalReference: `${ORG_PROPIA}_algun-uuid`,
     })
 
     const result = await consultarEstadoOrdenMpAction("orden-propia", "qr")
@@ -100,7 +100,7 @@ describe("cancelarOrdenMpAction — scoping por organización (A1)", () => {
     consultarEstadoOrdenQrMock.mockResolvedValue({
       pagado: false,
       finalizadoSinPago: false,
-      externalReference: `${ORG_AJENA}:algun-uuid`,
+      externalReference: `${ORG_AJENA}_algun-uuid`,
     })
 
     const result = await cancelarOrdenMpAction("orden-ajena", "qr")
@@ -113,7 +113,7 @@ describe("cancelarOrdenMpAction — scoping por organización (A1)", () => {
     consultarEstadoOrdenQrMock.mockResolvedValue({
       pagado: false,
       finalizadoSinPago: true,
-      externalReference: `${ORG_PROPIA}:algun-uuid`,
+      externalReference: `${ORG_PROPIA}_algun-uuid`,
     })
     cancelarOrdenQrMock.mockResolvedValue(undefined)
 

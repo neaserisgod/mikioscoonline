@@ -26,13 +26,18 @@ function mensajeError(e: unknown): string {
 }
 
 /** El external_reference de toda orden creada por enviarMontoMpAction es
- * "organizationId:uuid" (ver ahí) — permite confirmar que el orderId que
+ * "organizationId_uuid" (ver ahí) — permite confirmar que el orderId que
  * manda el cliente en consultarEstadoOrdenMpAction/cancelarOrdenMpAction
  * pertenece de verdad a su organización, sin lo cual cualquier usuario
  * autenticado podía consultar o cancelar la orden de otra organización
- * (ver docs/REPORTE-NUCLEO.md, hallazgo A1). */
+ * (ver docs/REPORTE-NUCLEO.md, hallazgo A1).
+ *
+ * Separador "_", no ":" — la API de Orders de MercadoPago valida
+ * external_reference contra un patrón que rechaza ":" con
+ * `'$.external_reference' - does not match pattern` (400 en TODA orden QR/
+ * posnet, verificado contra la API real). "_" sí matchea. */
 function ordenPerteneceAOrganizacion(externalReference: string | undefined, organizationId: string): boolean {
-  return !!externalReference && externalReference.startsWith(`${organizationId}:`)
+  return !!externalReference && externalReference.startsWith(`${organizationId}_`)
 }
 
 export async function enviarMontoMpAction(
@@ -60,7 +65,7 @@ export async function enviarMontoMpAction(
   // para nada más) — le da contexto real al backstop de completarComisionReal
   // cuando detecta una orden paga sin ninguna venta local asociada (ver
   // mercadopago-comisiones.ts, docs/REPORTE-NUCLEO.md hallazgo C1).
-  const externalReference = `${session.user.organizationId}:${crypto.randomUUID()}`
+  const externalReference = `${session.user.organizationId}_${crypto.randomUUID()}`
 
   async function guardarSnapshot(orderId: string, tipo: TipoDispositivoMp) {
     if (lineas.length === 0) return // nada que snapshotear (llamador viejo, o carrito vacío)
