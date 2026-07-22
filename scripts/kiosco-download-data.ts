@@ -13,7 +13,7 @@ import path from "node:path"
 import { createPrismaClient } from "../src/lib/prisma-client-factory"
 import { ORDEN_TABLAS, whereOrg, copiarTabla } from "./lib/kiosco-sync"
 
-const OWNER_EMAIL = process.env.KIOSCO_OWNER_EMAIL ?? "gtalovergamer@gmail.com"
+const OWNER_EMAIL = process.env.KIOSCO_OWNER_EMAIL ?? "churritocreisi@gmail.com"
 const dbPath = path.resolve(process.cwd(), process.env.KIOSCO_DB_PATH ?? "kiosco.db")
 
 async function main() {
