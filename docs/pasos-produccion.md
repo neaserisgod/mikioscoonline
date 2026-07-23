@@ -36,9 +36,13 @@ sección "Backup automático de ventas".
 
 1. ~~**[BLOQUEANTE] Backup automático para la app Tauri.**~~ **RESUELTO
    2026-07-23**, ver arriba.
-2. **Cerrar el pendiente de seguridad de `NEON_DATABASE_URL`** (rol de Neon acotado
-   + RLS, `docs/seguridad-neon-database-url-kiosco.md`). Hoy cualquier `config.env`
-   filtrado da lectura/escritura total a producción.
+2. **A2 — Cerrar el pendiente de seguridad de `NEON_DATABASE_URL`** (rol de Neon
+   acotado + RLS). Plan concreto YA armado en `scripts/sql/kiosco-rls.sql`
+   (permisos exactos por tabla + policies RLS, derivados de `whereOrg()`) y
+   `docs/seguridad-neon-database-url-kiosco.md` — falta correrlo contra la Neon
+   real (trabajo de infraestructura, no de código) y actualizar `config.env` en
+   las dos cajas. Hoy cualquier `config.env` filtrado da lectura/escritura total
+   a producción.
 3. **Confirmar que las cajas físicas ya instaladas corren la versión actual** del
    código (con el fix de auth y el sync manual). Si están en una versión vieja,
    actualizarlas a mano antes de que dependan del auto-updater.

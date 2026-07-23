@@ -47,52 +47,56 @@ como usuario en Neon, así que nunca pasa por esta rama.
 
 ## (b) ¿Conviene acotar `NEON_DATABASE_URL` a un rol de Neon de menor privilegio?
 
-**Sí, es la mitigación de fondo — pero no la implementé, porque tocar roles y
-permisos en la Neon de producción es una acción sobre infraestructura
-compartida que preferí no hacer sin tu confirmación explícita.** Análisis:
+**Sí — plan concreto listo en `scripts/sql/kiosco-rls.sql`, NO corrido
+todavía.** Acotar por tabla no alcanza (el sync necesita lectura/escritura real
+en casi todas las tablas de negocio); lo que sí cambia el panorama es **Row-Level
+Security fijada a tu organización**, sobre un rol nuevo separado del que usa el
+resto de la app. Permisos exactos, derivados 1:1 de `ORDEN_TABLAS`/`whereOrg()`
+en `scripts/lib/kiosco-sync.ts` (la misma fuente de verdad que ya usa el código
+para decidir "esta fila es de mi organización"):
 
-- Acotar por TABLA no ayuda mucho acá: el sync manual (tarea 1, ver
-  `docs/actualizaciones-app.md`) necesita lectura/escritura real en
-  prácticamente todas las tablas con datos de negocio — no hay forma de
-  recortar por tabla sin romper la funcionalidad legítima.
-- Lo que sí cambia el panorama es **Row-Level Security (RLS) de Postgres,
-  fijada a la organización real de Bruno**, sobre un rol nuevo y separado del
-  que usa el resto de la app:
-  ```sql
-  -- Una vez, en la Neon real:
-  CREATE ROLE kiosco_role WITH LOGIN PASSWORD '...';
-  GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO kiosco_role;
+- **SELECT + INSERT + UPDATE** en las 19 tablas que tocan `subirCambiosLocales`
+  / `bajarCambiosDeNeon` / login (`Organization`, `User`, `Caja`, `Category`,
+  `Provider`, `MovimientoCuentaCorrienteProveedor`, `Location`, `Customer`,
+  `PaymentMethod`, `FixedExpense`, `FixedExpenseMonto`, `CajaSesion`,
+  `ArqueoParcial`, `Product`, `Sale`, `SaleLine`, `Payment`, `Comprobante`,
+  `StockMovement`, `MovimientoCaja`).
+- **DELETE** solo en `Category`/`Provider`/`Location` (borrado espejo,
+  `MODELOS_CON_BORRADO`).
+- **RLS por fila**, fijada a `'ORG_ID_REAL_DE_BRUNO'` (constante, no una
+  sesión/variable — no hace falta, el rol es de UNA sola organización) —
+  directa donde hay columna `organizationId`, vía subquery a la tabla padre
+  donde no la hay (`FixedExpenseMonto`→`FixedExpense`, `SaleLine`/`Payment`→
+  `Sale`, `StockMovement`→`Product`).
+- **Ninguna tabla fuera de esta lista queda accesible** — en particular
+  `OrdenMpPendiente` y todo lo de suscripción/paywall del SaaS quedan
+  completamente fuera del alcance del rol de la caja.
 
-  -- Por cada tabla con organizationId directo (Organization, User, Caja,
-  -- Category, Provider, Location, Customer, PaymentMethod, FixedExpense,
-  -- Product, Sale, MovimientoCaja, etc.):
-  ALTER TABLE "Sale" ENABLE ROW LEVEL SECURITY;
-  CREATE POLICY kiosco_solo_su_org ON "Sale"
-    USING ("organizationId" = 'ORG_ID_REAL_DE_BRUNO')
-    WITH CHECK ("organizationId" = 'ORG_ID_REAL_DE_BRUNO');
-  -- Para las tablas sin organizationId directo (SaleLine, Payment,
-  -- StockMovement, FixedExpenseMonto) la policy va vía join/subquery a su
-  -- tabla padre, mismo patrón que whereOrg() en scripts/lib/kiosco-sync.ts.
-  ```
-  Con esto, aunque el fix de (a) fallara o el código de la app tuviera un bug
-  de scoping en algún query, **la base misma** impediría que esa conexión
-  toque una fila de otra organización — el ataque quedaría acotado a "puede
-  romper/leer su propia organización nueva", no a "puede tocar la de Bruno".
-  Cada caja pasaría a usar `NEON_DATABASE_URL` con `kiosco_role` en vez del rol
-  actual (probablemente el owner de la DB).
+Con esto, aunque el fix de (a) fallara o el código de la app tuviera un bug de
+scoping en algún query, la base misma impide tocar una fila de otra
+organización.
 
-- **No lo apliqué** porque: (1) es un cambio de permisos sobre la base de
-  producción real, (2) requiere generar y distribuir una connection string
-  nueva a `config.env` en cada caja física, y (3) conviene probarlo primero
-  (confirmar que ninguna query legítima del kiosco depende de leer/escribir
-  fuera de esas policies, ej. si alguna vez necesita crear una Organization
-  nueva — que con el fix de (a) ya no debería pasar). Si querés, lo armo como
-  un script SQL versionado (`scripts/sql/kiosco-rls.sql` o similar) para que lo
-  corras vos mismo contra Neon cuando estés listo, en vez de ejecutarlo yo
-  directamente.
+**Antes de correr `scripts/sql/kiosco-rls.sql` en producción:**
+1. Reemplazar los placeholders (`ORG_ID_REAL_AQUI`, la password) en el script.
+2. Confirmar que no hay OTRO rol/servicio que dependa de leer estas tablas SIN
+   ser el owner de la DB — activar RLS en una tabla no afecta al owner (lo
+   bypassea por default) pero sí a cualquier otro rol no-owner que ya exista.
+   No tengo visibilidad completa de qué roles están configurados hoy en tu
+   proyecto de Neon — confirmalo vos antes de correr esto.
+3. Generar la connection string nueva (`postgresql://kiosco_role:...@...`) y
+   probarla primero en UNA caja de prueba (o local, apuntando `NEON_DATABASE_URL`
+   a esa connection string) — confirmar login, `/vincular-caja` y "Sincronizar
+   ahora" antes de rolarla a las cajas reales.
+4. Recién ahí, actualizar `config.env` en cada caja física con la connection
+   string nueva.
+
+Rollback si algo rompe: restaurar el `NEON_DATABASE_URL` viejo en `config.env`
+de la caja afectada (vuelve a andar al toque); deshacer el rol/RLS en Neon es
+opcional y está documentado al final del script.
 
 ## Conclusión
 
 - (a) Estaba mal — corregido, verificado con `tsc` limpio.
-- (b) Recomendado (RLS + rol dedicado), no aplicado — requiere tu ok explícito
-  para tocar la Neon de producción y actualizar `config.env` en las dos cajas.
+- (b) Plan concreto en `scripts/sql/kiosco-rls.sql`, no corrido — requiere que
+  vos lo ejecutes contra la Neon de producción (o me confirmes que lo haga yo)
+  y actualices `config.env` en las cajas físicas.
