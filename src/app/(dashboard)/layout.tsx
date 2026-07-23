@@ -1,6 +1,7 @@
 import { auth } from "@/auth"
 import { cookies } from "next/headers"
 import { redirect } from "next/navigation"
+import { prisma } from "@/lib/prisma"
 import { organizacionService } from "@/services/config.service"
 import { accesoBloqueado } from "@/lib/suscripcion"
 import { TopBar } from "@/components/layout/top-bar"
@@ -17,6 +18,20 @@ import { QueryWarmup } from "@/components/providers/query-warmup"
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const session = await auth()
   if (!session) redirect("/login")
+
+  // Caja que nunca vendió nada todavía, en una instalación con conexión a
+  // producción configurada (ver src/lib/prisma-auth.ts + NEON_DATABASE_URL en
+  // config.env del kiosco): puede ser una cuenta de Google con negocio real ya
+  // existente en Neon — ofrecer vincularlo ANTES de seguir a onboarding/dashboard.
+  // No se puede distinguir "esta caja" de "la organización real" comparando
+  // `organizationId` (el id de la plantilla local y el de la organización real
+  // de Bruno en Neon son el MISMO, `org_principal` — este código nació
+  // single-tenant), así que la señal es "0 ventas locales" en vez de identidad
+  // — ver el comentario largo en vincular-caja.actions.ts.
+  if (process.env.NEON_DATABASE_URL) {
+    const ventasLocales = await prisma.sale.count({ where: { organizationId: session.user.organizationId } })
+    if (ventasLocales === 0) redirect("/vincular-caja")
+  }
 
   let org
   try {
