@@ -46,6 +46,7 @@ import {
 } from "@/app/actions/caja.actions"
 import { resetearOnboardingAction } from "@/app/actions/onboarding.actions"
 import { descargarTicketPruebaAction } from "@/app/actions/impresion.actions"
+import { sincronizarCajaAction } from "@/app/actions/sincronizar-caja.actions"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -148,7 +149,7 @@ function useConfig<T>(endpoint: string) {
 
 // ─── Página principal ─────────────────────────────────────────────────────────
 
-export function ConfigClient() {
+export function ConfigClient({ esCajaKiosco }: { esCajaKiosco: boolean }) {
   // React Compiler memoiza mal el bloque de AnimatePresence + secciones
   // condicionales: el nav cambiaba de estado pero el panel quedaba pegado
   // en la sección anterior (o en blanco). Sin esto, cambiar de sección acá
@@ -238,7 +239,7 @@ export function ConfigClient() {
               {seccion === "gastos-fijos"&& <GastosFijosSection onMutate={() => invalidate("gastos-fijos")} />}
               {seccion === "operacion"   && <OperacionSection />}
               {seccion === "usuarios"    && <UsuariosSection    onMutate={() => invalidate("usuarios")} />}
-              {seccion === "datos"       && <DatosSection />}
+              {seccion === "datos"       && <DatosSection esCajaKiosco={esCajaKiosco} />}
             </motion.div>
           </AnimatePresence>
         </div>
@@ -2375,10 +2376,50 @@ function ResetearPinForm({ usuario, onSuccess }: { usuario: Usuario; onSuccess: 
 // DATOS
 // ═══════════════════════════════════════════════════════════════════════════════
 
-function DatosSection() {
+function DatosSection({ esCajaKiosco }: { esCajaKiosco: boolean }) {
+  const [sincronizando, setSincronizando] = useState(false)
+
+  async function sincronizar() {
+    setSincronizando(true)
+    try {
+      const res = await sincronizarCajaAction()
+      if (!res.ok) {
+        toast.error(res.error)
+        return
+      }
+      const totalSubido = Object.values(res.subidos).reduce((a, b) => a + b, 0)
+      toast.success(
+        `Sincronizado: ${res.bajados.product} producto(s) en el catálogo, ${totalSubido} fila(s) subida(s) a la nube`
+      )
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "No se pudo sincronizar")
+    } finally {
+      setSincronizando(false)
+    }
+  }
+
   return (
     <SectionShell title="Datos">
       <div className="space-y-6 max-w-md">
+        {esCajaKiosco && (
+          <div className="rounded-2xl border border-border/60 bg-card p-4 space-y-3">
+            <div>
+              <p className="text-sm font-medium">Sincronizar con la nube</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Sube las ventas y cambios locales, y trae el catálogo actualizado desde
+                la nube (productos, precios, categorías, proveedores, etc.) — sin
+                borrar nada ni pisar el stock de productos que ya existen acá. Útil
+                si cargaste productos nuevos en otra caja y querés verlos ahora
+                mismo, sin esperar al backup automático de la noche.
+              </p>
+            </div>
+            <Button variant="outline" size="sm" className="gap-1.5" disabled={sincronizando} onClick={sincronizar}>
+              {sincronizando ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
+              {sincronizando ? "Sincronizando..." : "Sincronizar ahora"}
+            </Button>
+          </div>
+        )}
+
         <div className="rounded-2xl border border-border/60 bg-card p-4 space-y-3">
           <div>
             <p className="text-sm font-medium">Respaldo de configuración</p>

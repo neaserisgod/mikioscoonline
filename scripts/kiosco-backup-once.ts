@@ -7,7 +7,7 @@ config({ path: ".env.local", override: true })
 
 import path from "node:path"
 import { createPrismaClient } from "../src/lib/prisma-client-factory"
-import { ORDEN_TABLAS, MODELOS_CON_BORRADO, whereOrg, copiarTabla, borrarHuerfanos } from "./lib/kiosco-sync"
+import { subirCambiosLocales } from "./lib/kiosco-sync"
 
 const dbPath = path.resolve(process.cwd(), process.env.KIOSCO_DB_PATH ?? "kiosco.db")
 
@@ -32,24 +32,8 @@ async function main() {
   const organizationId = orgs[0].id
   console.log(`Backup: ${dbPath} → Neon (organización ${organizationId})\n`)
 
-  const idsPorTabla: Record<string, string[]> = {}
-  for (const modelo of ORDEN_TABLAS) {
-    const where = whereOrg(modelo, organizationId)
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { count, ids } = await copiarTabla(modelo, (local as any)[modelo], (neon as any)[modelo], where)
-    idsPorTabla[modelo] = ids
-    void count
-  }
-
-  // Fase 2: borrado espejo, solo para los modelos con hard-delete real en la
-  // app, y solo DESPUÉS de sincronizar Product (mismo guard de FK que ya
-  // impidió el borrado local si hubiera productos asociados).
-  console.log("\n── Borrado espejo ──")
-  for (const modelo of MODELOS_CON_BORRADO) {
-    const where = whereOrg(modelo, organizationId)
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await borrarHuerfanos(modelo, (neon as any)[modelo], where, idsPorTabla[modelo])
-  }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await subirCambiosLocales(local as any, neon as any, organizationId)
 
   await local.$disconnect()
   await neon.$disconnect()

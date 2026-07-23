@@ -3,5 +3,5 @@ import { ConfigClient } from "./config-client"
 
 export default async function ConfigPage() {
   await requireAdminSession()
-  return <ConfigClient />
+  return <ConfigClient esCajaKiosco={!!process.env.NEON_DATABASE_URL} />
 }
