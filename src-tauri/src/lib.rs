@@ -13,6 +13,14 @@ const PORT: u16 = 3210;
 
 struct ServerProcess(Mutex<Option<Child>>);
 
+// Token compartido con /api/kiosco-backup-automatico (ver esa ruta): lo
+// generamos una vez en config.env (load_or_init_config_env) y lo mandamos
+// como env var al server Node al spawnear, así el propio server valida que
+// el POST vino de esta misma app y no de cualquier otro proceso local.
+struct BackupConfig {
+    token: String,
+}
+
 // `resource_dir()`/`app_data_dir()` en Windows pueden venir con el prefijo verbatim
 // `\\?\` (paths extendidos) — Node.js no lo resuelve bien en su módulo de resolución
 // (rompe con EISDIR al hacer lstat de solo la letra de unidad). Se lo sacamos antes
@@ -105,8 +113,22 @@ fn load_or_init_config_env(path: &std::path::Path) -> HashMap<String, String> {
         }
     }
 
+    // AUTH_SECRET (sesión) y KIOSCO_BACKUP_TOKEN (autoriza el POST interno de
+    // backup automático que hace esta misma app, ver post_local/spawn_backup_uploader
+    // más abajo) se generan una sola vez cada uno, independientemente — una
+    // caja que ya tenía AUTH_SECRET de una versión anterior recién ahora
+    // recibe también el token, sin regenerar el secret de sesión existente.
+    let mut cambio = false;
     if !vars.contains_key("AUTH_SECRET") {
         vars.insert("AUTH_SECRET".to_string(), generate_secret());
+        cambio = true;
+    }
+    if !vars.contains_key("KIOSCO_BACKUP_TOKEN") {
+        vars.insert("KIOSCO_BACKUP_TOKEN".to_string(), generate_secret());
+        cambio = true;
+    }
+
+    if cambio {
         let mut out = String::new();
         for (k, v) in &vars {
             out.push_str(&format!("{k}=\"{v}\"\n"));
@@ -290,6 +312,59 @@ fn wait_for_server(port: u16, timeout: Duration) -> bool {
     false
 }
 
+// POST mínimo hecho a mano por TcpStream (sin sumar un crate de HTTP client
+// solo para esto — mismo criterio que generate_secret con `node`): pega
+// contra /api/kiosco-backup-automatico en 127.0.0.1, nunca sale a la red.
+// Devuelve true solo si el server respondió 200. `timeout` acota tanto la
+// conexión como la espera de respuesta — importante para el intento al
+// cerrar la ventana, que no debe trabar el cierre si Neon está lento/caído.
+fn post_local(port: u16, path: &str, token: &str, timeout: Duration) -> bool {
+    let Ok(stream) = TcpStream::connect(("127.0.0.1", port)) else { return false };
+    stream.set_write_timeout(Some(timeout)).ok();
+    stream.set_read_timeout(Some(timeout)).ok();
+    let mut stream = stream;
+
+    let request = format!(
+        "POST {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nAuthorization: Bearer {token}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n"
+    );
+    if stream.write_all(request.as_bytes()).is_err() {
+        return false;
+    }
+
+    let mut respuesta = String::new();
+    if stream.read_to_string(&mut respuesta).is_err() {
+        return false;
+    }
+    respuesta.starts_with("HTTP/1.1 200") || respuesta.starts_with("HTTP/1.0 200")
+}
+
+// Timer propio del backup automático (reemplaza, para la app Tauri, al
+// scheduler nocturno fijo de scripts/kiosco-backup-scheduler.mjs — ese sigue
+// existiendo tal cual para el lanzador Edge viejo, que arranca aparte). A
+// diferencia de un backup diario a hora fija, correr cada N minutos MIENTRAS
+// la caja está abierta cubre el caso real de un comercio que cierra antes de
+// cualquier hora fija — y el intento en on_window_event (más abajo) cubre el
+// momento del cierre mismo. subirCambiosLocales es upsert idempotente
+// (nunca borra/pisa nada local), así que llamarlo seguido es seguro y barato
+// cuando no hay nada nuevo.
+fn spawn_backup_uploader(token: String, data_dir: std::path::PathBuf, intervalo_min: u64) {
+    std::thread::spawn(move || {
+        if !wait_for_server(PORT, Duration::from_secs(30)) {
+            return;
+        }
+        let mut log = abrir_log(&data_dir, "backup-automatico.log").ok();
+        let intervalo = Duration::from_secs(intervalo_min.max(1) * 60);
+        loop {
+            let ok = post_local(PORT, "/api/kiosco-backup-automatico", &token, Duration::from_secs(30));
+            if let Some(f) = log.as_mut() {
+                let linea = if ok { "OK\n" } else { "FALLÓ (sin respuesta / sin conexión)\n" };
+                let _ = f.write_all(linea.as_bytes());
+            }
+            std::thread::sleep(intervalo);
+        }
+    });
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -320,11 +395,24 @@ pub fn run() {
             apply_pending_migrations(&resource_dir, &data_dir);
             let env = load_or_init_config_env(&data_dir.join("config.env"));
 
+            let backup_token = env.get("KIOSCO_BACKUP_TOKEN").cloned().unwrap_or_default();
+            let intervalo_min: u64 = env
+                .get("KIOSCO_BACKUP_INTERVALO_MIN")
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(10);
+            app.manage(BackupConfig { token: backup_token.clone() });
+
             let child = spawn_node_server(&resource_dir, &data_dir, &env)
                 .expect("no se pudo iniciar el servidor local — ¿Node.js está instalado?");
 
             let state: State<ServerProcess> = app.state();
             *state.0.lock().unwrap() = Some(child);
+
+            // Solo tiene sentido si esta caja está vinculada a producción — sin
+            // NEON_DATABASE_URL en config.env no hay a dónde subir nada.
+            if env.contains_key("NEON_DATABASE_URL") {
+                spawn_backup_uploader(backup_token, data_dir.clone(), intervalo_min);
+            }
 
             let window = app.get_webview_window("main").unwrap();
             let handle = app.handle().clone();
@@ -348,6 +436,15 @@ pub fn run() {
         })
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { .. } = event {
+                // Último intento de subir lo que haya quedado, con timeout corto
+                // a propósito: si Neon está lento/caído no debe trabar el cierre
+                // de la app — el próximo arranque (o el timer mientras corría)
+                // ya lo va a reintentar.
+                let backup: State<BackupConfig> = window.state();
+                if !backup.token.is_empty() {
+                    post_local(PORT, "/api/kiosco-backup-automatico", &backup.token, Duration::from_secs(5));
+                }
+
                 let state: State<ServerProcess> = window.state();
                 let taken = state.0.lock().unwrap().take();
                 if let Some(mut child) = taken {

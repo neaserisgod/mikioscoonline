@@ -212,6 +212,40 @@ Archivos: `src/app/actions/vincular-caja.actions.ts`,
 
 ---
 
+## Backup automático de ventas (sin tocar nada)
+
+Antes, una caja Tauri **solo** subía sus ventas a Neon si alguien apretaba
+"Sincronizar ahora" a mano — sin eso, perder la PC significaba perder todas
+las ventas no sincronizadas. Ahora es automático, sin depender del operador:
+
+- `src-tauri/src/lib.rs` levanta un timer propio (`spawn_backup_uploader`) que,
+  mientras la caja está abierta, pega cada `KIOSCO_BACKUP_INTERVALO_MIN`
+  minutos (default 10, configurable en `config.env`) contra un endpoint interno
+  del propio server: `POST /api/kiosco-backup-automatico`
+  (`src/app/api/kiosco-backup-automatico/route.ts`).
+- Ese endpoint corre `subirCambiosLocales` (la misma función que ya usa el
+  backup nocturno del lanzador viejo y el botón "Sincronizar ahora") — **solo
+  sube, nunca baja ni borra nada local**. Correrlo seguido es seguro y barato:
+  si no hay nada nuevo, no hace nada.
+- Al cerrar la ventana (`on_window_event` / `CloseRequested`), antes de matar
+  el proceso del server se hace un último intento de subida con timeout corto
+  (5s) — cubre el caso real de un comercio que cierra la caja antes de
+  cualquier hora fija de backup.
+- El endpoint está protegido con `KIOSCO_BACKUP_TOKEN` (`Authorization: Bearer
+  ...`, mismo patrón que ya usan las rutas `/api/cron/*`) — se genera una sola
+  vez en `config.env`, igual que `AUTH_SECRET`, y nunca sale de la caja. El
+  server solo escucha en `127.0.0.1`, así que ya de por sí no es alcanzable
+  desde la red — el token es una segunda capa contra otros procesos locales.
+- Log de cada intento (solo OK/FALLÓ, el detalle completo por tabla ya queda
+  en `server.log` vía el propio endpoint) en `logs/backup-automatico.log`,
+  truncado en cada arranque de la app (mismo criterio que `server.log`).
+- No corre si la caja no tiene `NEON_DATABASE_URL` configurada (no hay a dónde
+  subir nada), y el lanzador Edge viejo (`start-kiosco.ps1`) no se ve afectado
+  — sigue usando su propio `kiosco-backup-scheduler.mjs` como proceso aparte,
+  sin relación con este mecanismo.
+
+---
+
 ## Verificado (2026-07-22)
 
 Se probó el flujo completo en Windows con un endpoint local simulando GitHub
