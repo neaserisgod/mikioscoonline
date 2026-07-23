@@ -7,6 +7,7 @@ use std::sync::Mutex;
 use std::time::Duration;
 
 use tauri::{Manager, State};
+use tauri_plugin_updater::UpdaterExt;
 
 const PORT: u16 = 3210;
 
@@ -27,11 +28,28 @@ fn strip_verbatim_prefix(path: &std::path::Path) -> std::path::PathBuf {
 // El server Next.js standalone corre siempre en la misma PC (ver Fase 2 del plan),
 // así que no necesita ser un "sidecar" empaquetado por Tauri — se invoca el `node`
 // del sistema (requisito documentado de esta v1) sobre el recurso bundleado.
+// La app es `windows_subsystem = "windows"` (sin consola) en release, así que
+// `Stdio::inherit()` no va a ningún lado — cualquier `console.error`/`logError`
+// del server Next se perdía en el aire. Se redirige a archivos en la carpeta de
+// datos del usuario, mismo nombre/convención que usaba el lanzador Edge viejo
+// (`scripts/windows/start-kiosco.ps1` → `logs/server.log`/`server-error.log`),
+// para poder diagnosticar sin tener que reabrir la app con una consola pegada.
+// Se trunca en cada arranque (no se acumula sin límite): alcanza con la corrida
+// más reciente para depurar "por qué no arrancó"/"qué pasó en esta sesión".
+fn abrir_log(data_dir: &std::path::Path, nombre: &str) -> std::io::Result<std::fs::File> {
+    let logs_dir = data_dir.join("logs");
+    fs::create_dir_all(&logs_dir)?;
+    fs::File::create(logs_dir.join(nombre))
+}
+
 fn spawn_node_server(resource_dir: &std::path::Path, data_dir: &std::path::Path, env: &HashMap<String, String>) -> std::io::Result<Child> {
     let resource_dir = strip_verbatim_prefix(resource_dir);
     let data_dir = strip_verbatim_prefix(data_dir);
     let db_path = data_dir.join("dev.db");
     let db_url = format!("file:{}", db_path.to_string_lossy().replace('\\', "/"));
+
+    let stdout_log = abrir_log(&data_dir, "server.log")?;
+    let stderr_log = abrir_log(&data_dir, "server-error.log")?;
 
     let mut cmd = Command::new("node");
     cmd.arg("server.js")
@@ -42,8 +60,8 @@ fn spawn_node_server(resource_dir: &std::path::Path, data_dir: &std::path::Path,
         .env("HOSTNAME", "127.0.0.1")
         .env("AUTH_TRUST_HOST", "true")
         .env("DATABASE_URL", db_url)
-        .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit());
+        .stdout(Stdio::from(stdout_log))
+        .stderr(Stdio::from(stderr_log));
 
     for (k, v) in env {
         cmd.env(k, v);
@@ -109,6 +127,51 @@ fn ensure_local_db(resource_dir: &std::path::Path, data_dir: &std::path::Path) {
     fs::copy(&template, &db_path).expect("no se pudo inicializar la base local desde la plantilla");
 }
 
+// Chequea GitHub Releases al arrancar y, si hay una versión más nueva, la
+// descarga e instala ANTES de levantar el server Node. Se hace acá (y no en un
+// hilo aparte) a propósito: si primero spawneáramos el server y después
+// reiniciáramos por un update, el proceso `node` quedaría huérfano ocupando el
+// puerto 3210 y la nueva instancia no podría bindear. Al chequear primero, o
+// bien reiniciamos limpio (nunca llegamos a spawnear node), o bien seguimos el
+// arranque normal. La ventana ya muestra la loading-page mientras tanto.
+//
+// El timeout corto evita que una PC sin internet (o con red lenta) trabe la
+// apertura de la caja: si el chequeo no responde, se ignora y la app abre igual.
+fn apply_update_if_available(handle: &tauri::AppHandle) {
+    let updater = match handle
+        .updater_builder()
+        .timeout(Duration::from_secs(15))
+        .build()
+    {
+        Ok(u) => u,
+        Err(e) => {
+            log::warn!("Updater no disponible ({e}); se abre sin chequear updates.");
+            return;
+        }
+    };
+
+    let result = tauri::async_runtime::block_on(async move { updater.check().await });
+
+    match result {
+        Ok(Some(update)) => {
+            let version = update.version.clone();
+            log::info!("Actualización {version} disponible — descargando…");
+            let install = tauri::async_runtime::block_on(async move {
+                update.download_and_install(|_downloaded, _total| {}, || {}).await
+            });
+            match install {
+                Ok(_) => {
+                    log::info!("Actualización {version} instalada — reiniciando la app.");
+                    handle.restart();
+                }
+                Err(e) => log::error!("Falló la instalación de la actualización: {e}"),
+            }
+        }
+        Ok(None) => log::info!("La app ya está en la última versión."),
+        Err(e) => log::warn!("No se pudo chequear actualizaciones ({e}); se abre igual."),
+    }
+}
+
 fn wait_for_server(port: u16, timeout: Duration) -> bool {
     let start = std::time::Instant::now();
     while start.elapsed() < timeout {
@@ -123,6 +186,7 @@ fn wait_for_server(port: u16, timeout: Duration) -> bool {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(ServerProcess(Mutex::new(None)))
         .setup(|app| {
             if cfg!(debug_assertions) {
@@ -132,6 +196,11 @@ pub fn run() {
                         .build(),
                 )?;
             }
+
+            // Chequeo de actualizaciones ANTES de levantar el server local.
+            // Si hay update, esta llamada instala y reinicia (no vuelve).
+            // En release el updater usa el endpoint/pubkey de tauri.conf.json.
+            apply_update_if_available(app.handle());
 
             let resource_dir = app.path().resource_dir()?;
             let data_dir = app.path().app_data_dir()?;
