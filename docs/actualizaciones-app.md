@@ -50,6 +50,28 @@ Commiteá este cambio (la pública sí puede ir al repo; la privada no).
 
 ## Publicar una actualización (cada release)
 
+### 0. ¿Cambiaste `prisma/schema.dev.prisma`? Generá la migración ANTES que nada
+
+El auto-updater reemplaza el bundle pero nunca toca `dev.db` de las cajas ya
+instaladas. Si el schema cambió, hay que generar el SQL que las pone al día —
+**antes** de actualizar `src-tauri/resources/dev-template.db` al nuevo schema
+(el diff necesita comparar contra la plantilla VIEJA):
+
+```powershell
+node scripts/gen-migracion-sqlite.mjs nombre-corto-del-cambio
+```
+
+Esto deja un `.sql` nuevo en `src-tauri/resources/migraciones-sqlite/`.
+Revisalo, y recién después actualizá `dev-template.db` al schema nuevo (mismo
+`prisma db push` de siempre). Commiteá los dos juntos. Al abrir la app
+actualizada, `apply_pending_migrations` (`src-tauri/src/lib.rs`) aplica
+cualquier `.sql` pendiente contra `dev.db` antes de levantar el server —
+instalaciones nuevas no re-ejecutan nada (la plantilla ya viene con el schema
+horneado). Ver detalle técnico y por qué no se usa `prisma migrate deploy`
+directamente en el comentario de `apply_pending_migrations`.
+
+Si NO tocaste el schema, saltá directo al paso 1.
+
 ### 1. Subir el número de versión
 
 En `src-tauri/tauri.conf.json`, subí `"version"` (ej. `0.1.0` → `0.1.1`). Ese
@@ -135,6 +157,47 @@ comparar organizationId/email contra la plantilla (eso se rompía: hasta el
 email admin por default puede coincidir con un usuario real, y un upsert
 directo hubiera chocado contra `User.email @unique`).
 
+---
+
+## Sincronizar una caja YA en uso (botón "Sincronizar ahora", Config → Datos)
+
+`/vincular-caja` (arriba) solo sirve una vez, en una caja virgen: borra todo lo
+local y reimporta. Para una caja que ya tiene ventas, ese borrado es peligroso
+(pisaría ventas offline que todavía no subieron a Neon). Para eso existe el
+botón **"Sincronizar ahora"** en Config → Datos (solo visible si la caja tiene
+`NEON_DATABASE_URL` configurada) — `sincronizarCajaAction` en
+`src/app/actions/sincronizar-caja.actions.ts`, solo ADMIN.
+
+Hace dos pasadas, ninguna de las dos borra nada:
+
+1. **Sube** lo local a Neon — la misma lógica que ya usaba el backup nocturno
+   (`subirCambiosLocales`, extraída a `scripts/lib/kiosco-sync.ts` para que la
+   compartan el cron de las 21:55 y este botón).
+2. **Baja** el catálogo de Neon (organización, usuarios, cajas, categorías,
+   proveedores, ubicaciones, clientes, medios de pago, gastos fijos,
+   productos — `TABLAS_DESCARGA`) por upsert idempotente por id, sin borrar
+   nada. Ventas/pagos/movimientos de caja nunca bajan (se suben nomás, para no
+   arriesgar nada).
+
+**Protección de campos operativos** (`CAMPOS_SOLO_EN_CREACION` en
+`kiosco-sync.ts`): si un producto/proveedor/cliente/caja/usuario YA existe
+localmente, la bajada actualiza sus datos de catálogo (precio, nombre,
+categoría, etc.) pero **nunca pisa** `stock`, saldos de cuenta corriente,
+saldo manual de caja ni contadores de login — esos solo se traen completos si
+la fila es NUEVA localmente. Así, dos cajas que venden por separado y cargan
+productos distintos pueden sincronizar sin perder ventas ni resetear stock del
+día. `Organization` es conservadora a propósito: solo baja identidad fiscal
+(nombre/cuit/condicionIva/puntoDeVenta); los toggles de facturación,
+montos del modelo financiero y el estado de suscripción del SaaS se preservan
+locales si la organización ya existe.
+
+Caso de uso real: cargaste un producto nuevo en la Caja B, la Caja A no lo ve
+todavía. En la Caja A, apretás "Sincronizar ahora" — sube lo de A (por si
+había algo pendiente) y baja el catálogo de Neon, incluido el producto nuevo
+de B (asumiendo que B ya subió, por su propio backup nocturno o su propio
+"Sincronizar ahora"). Es idempotente: correrlo de nuevo sin cambios de por
+medio no reporta diferencias.
+
 **Si se corta a mitad de camino** (wifi, cierre de la app): la action
 devuelve un error sin redirigir, así que se puede reintentar tocando el botón
 de nuevo. La única situación que requiere intervención manual es si el corte
@@ -175,25 +238,21 @@ committeado):
   + `.pub`) y la pública ya está pegada en `tauri.conf.json`. La privada nunca
   salió de esta PC ni se subió al repo.
 
-### ⚠️ Gotcha importante: las actualizaciones NO corren migraciones de Prisma
+### ✅ RESUELTO: migraciones de schema en las actualizaciones
 
 El updater reemplaza el bundle (Rust + Next standalone), pero **`dev.db` del
-usuario no se toca** — que es justamente lo que se busca para no perder datos.
-El problema: si una actualización incluye un cambio de schema de Prisma
-(nueva columna, tabla, etc.), la app nueva va a intentar consultar contra la
-`dev.db` vieja y va a romper con errores tipo
-`PrismaClientKnownRequestError: la columna X no existe` (se reprodujo en la
-prueba con una `dev.db` de un test anterior que no tenía la columna
+usuario no se toca** — correcto para no perder datos, pero significaba que un
+cambio de schema rompía las cajas ya instaladas (`PrismaClientKnownRequestError:
+la columna X no existe`, se reprodujo con una `dev.db` de prueba sin
 `facturacionModoProduccion`).
 
-**Antes de publicar cualquier release que incluya una migración de Prisma**,
-hay que resolver cómo se aplica esa migración a las `dev.db` ya instaladas en
-las cajas (por ejemplo, corriendo `prisma migrate deploy` contra la
-`DATABASE_URL` local al arrancar, antes de `spawn_node_server`, en
-`src-tauri/src/lib.rs`). Mientras eso no exista, publicar un release con
-cambios de schema **rompe las cajas que ya están instaladas**. No es parte de
-este alcance (auto-update en sí funciona perfecto), pero es un bloqueante real
-para el próximo release que toque el schema.
+Resuelto sin bundlear el CLI de Prisma (no viaja en el standalone build, y
+`prisma/migrations/` es SQL de Postgres — no corre en SQLite): el diff se
+genera en build-time con `prisma migrate diff` (ver paso 0 de "Publicar una
+actualización", arriba) y se aplica en runtime con `rusqlite`
+(`apply_pending_migrations` en `src-tauri/src/lib.rs`) antes de
+`spawn_node_server`. Ver esa sección para el flujo completo cada vez que
+cambie `prisma/schema.dev.prisma`.
 
 ## Notas técnicas
 

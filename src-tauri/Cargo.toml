@@ -24,3 +24,7 @@ log = "0.4"
 tauri = { version = "2.11.3", features = [] }
 tauri-plugin-log = "2"
 tauri-plugin-updater = "2"
+# "bundled": trae su propio SQLite compilado (sin depender de una lib del
+# sistema) — mismo criterio que ya usa better-sqlite3 del lado Node. Se usa
+# solo para aplicar migraciones de schema a dev.db al arrancar, ver lib.rs.
+rusqlite = { version = "0.32", features = ["bundled"] }

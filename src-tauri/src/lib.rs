@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::fs;
-use std::io::Read;
+use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
@@ -118,13 +118,120 @@ fn load_or_init_config_env(path: &std::path::Path) -> HashMap<String, String> {
     vars
 }
 
-fn ensure_local_db(resource_dir: &std::path::Path, data_dir: &std::path::Path) {
+// Devuelve true si tuvo que copiar la plantilla ahora mismo (instalación
+// nueva) — lo usa `run()` para sembrar la tabla de control de migraciones
+// (ver `seed_migraciones_aplicadas`) y no reintentar de más.
+fn ensure_local_db(resource_dir: &std::path::Path, data_dir: &std::path::Path) -> bool {
     let db_path = data_dir.join("dev.db");
     if db_path.exists() {
-        return;
+        return false;
     }
     let template = resource_dir.join("dev-template.db");
     fs::copy(&template, &db_path).expect("no se pudo inicializar la base local desde la plantilla");
+    true
+}
+
+const TABLA_MIGRACIONES: &str = r#"
+CREATE TABLE IF NOT EXISTS "_kiosco_schema_migrations" (
+    "nombre" TEXT PRIMARY KEY NOT NULL,
+    "aplicada_en" TEXT NOT NULL DEFAULT (datetime('now'))
+)
+"#;
+
+fn nombres_migraciones_bundleadas(resource_dir: &std::path::Path) -> Vec<String> {
+    let dir = resource_dir.join("migraciones-sqlite");
+    let Ok(entries) = fs::read_dir(&dir) else { return Vec::new() };
+    let mut nombres: Vec<String> = entries
+        .filter_map(|e| e.ok())
+        .map(|e| e.file_name().to_string_lossy().to_string())
+        .filter(|n| n.ends_with(".sql"))
+        .collect();
+    nombres.sort();
+    nombres
+}
+
+// Instalación NUEVA: la plantilla recién copiada ya tiene horneado el schema
+// de esta release, así que los .sql bundleados no hay que ejecutarlos — solo
+// registrarlos como aplicados para que `apply_pending_migrations` no intente
+// correrlos (fallarían, ej. "table already exists").
+fn seed_migraciones_aplicadas(data_dir: &std::path::Path, resource_dir: &std::path::Path) {
+    let db_path = data_dir.join("dev.db");
+    let conn = match rusqlite::Connection::open(&db_path) {
+        Ok(c) => c,
+        Err(e) => {
+            log::error!("No se pudo abrir dev.db para sembrar la tabla de migraciones: {e}");
+            return;
+        }
+    };
+    if let Err(e) = conn.execute_batch(TABLA_MIGRACIONES) {
+        log::error!("No se pudo crear _kiosco_schema_migrations: {e}");
+        return;
+    }
+    for nombre in nombres_migraciones_bundleadas(resource_dir) {
+        let _ = conn.execute(
+            r#"INSERT OR IGNORE INTO "_kiosco_schema_migrations" (nombre) VALUES (?1)"#,
+            [nombre],
+        );
+    }
+}
+
+// Aplica, en orden, los .sql de `migraciones-sqlite/` que todavía no estén
+// registrados en `_kiosco_schema_migrations` — para cajas que venían de una
+// instalación anterior (no nueva, ver `seed_migraciones_aplicadas`). Cada
+// migración corre en su propia transacción junto con el registro de que se
+// aplicó: si falla, no queda rastro y se reintenta sola en el próximo
+// arranque. Si falla, se aborta el arranque (mejor eso que abrir la app
+// contra un schema a medio migrar).
+fn apply_pending_migrations(resource_dir: &std::path::Path, data_dir: &std::path::Path) {
+    let dir = resource_dir.join("migraciones-sqlite");
+    let db_path = data_dir.join("dev.db");
+
+    let mut conn = rusqlite::Connection::open(&db_path)
+        .expect("no se pudo abrir dev.db para aplicar migraciones de schema");
+    conn.execute_batch(TABLA_MIGRACIONES)
+        .expect("no se pudo crear la tabla de control de migraciones");
+
+    let ya_aplicadas: std::collections::HashSet<String> = conn
+        .prepare(r#"SELECT nombre FROM "_kiosco_schema_migrations""#)
+        .and_then(|mut stmt| {
+            let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
+            rows.collect::<Result<Vec<_>, _>>()
+        })
+        .map(|v| v.into_iter().collect())
+        .unwrap_or_default();
+
+    let mut log_lines = String::new();
+    let mut aplicadas_ahora = 0;
+
+    for nombre in nombres_migraciones_bundleadas(resource_dir) {
+        if ya_aplicadas.contains(&nombre) {
+            continue;
+        }
+        let sql = fs::read_to_string(dir.join(&nombre))
+            .unwrap_or_else(|e| panic!("no se pudo leer la migración {nombre}: {e}"));
+
+        let tx = conn
+            .transaction()
+            .expect("no se pudo abrir una transacción para migrar dev.db");
+        tx.execute_batch(&sql)
+            .unwrap_or_else(|e| panic!("la migración {nombre} falló contra dev.db: {e}"));
+        tx.execute(
+            r#"INSERT INTO "_kiosco_schema_migrations" (nombre) VALUES (?1)"#,
+            [&nombre],
+        )
+        .expect("no se pudo registrar la migración aplicada");
+        tx.commit().expect("no se pudo confirmar la migración");
+
+        log_lines.push_str(&format!("Aplicada: {nombre}\n"));
+        aplicadas_ahora += 1;
+    }
+
+    if aplicadas_ahora == 0 {
+        log_lines.push_str("Sin migraciones pendientes.\n");
+    }
+    if let Ok(mut f) = abrir_log(data_dir, "migraciones.log") {
+        let _ = f.write_all(log_lines.as_bytes());
+    }
 }
 
 // Chequea GitHub Releases al arrancar y, si hay una versión más nueva, la
@@ -206,7 +313,11 @@ pub fn run() {
             let data_dir = app.path().app_data_dir()?;
             fs::create_dir_all(&data_dir)?;
 
-            ensure_local_db(&resource_dir, &data_dir);
+            let instalacion_nueva = ensure_local_db(&resource_dir, &data_dir);
+            if instalacion_nueva {
+                seed_migraciones_aplicadas(&data_dir, &resource_dir);
+            }
+            apply_pending_migrations(&resource_dir, &data_dir);
             let env = load_or_init_config_env(&data_dir.join("config.env"));
 
             let child = spawn_node_server(&resource_dir, &data_dir, &env)
