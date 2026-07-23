@@ -4,6 +4,7 @@ import { auth } from "@/auth"
 import { ventaService } from "@/services/venta.service"
 import { Prisma } from "@prisma/client"
 import { z, ZodError } from "zod"
+import { logError } from "@/lib/log"
 
 const LineaSchema = z.object({
   productId: z.string().cuid(),
@@ -24,7 +25,13 @@ const CrearVentaSchema = z.object({
   // mercadopago-comisiones.ts, hallazgo C1 residual): si dos caminos piden
   // crear la "misma" venta con el mismo id, ventaService.crear es idempotente
   // (P2002) y devuelve la ya creada en vez de duplicar.
-  id: z.string().min(8).max(64).optional(),
+  // 128, no 64: el orderId real de MercadoPago es corto, pero MockPagosProvider
+  // (ver src/lib/providers/pagos/mock.ts) codifica a propósito el
+  // externalReference + timestamp DENTRO del orderId (no tiene estado compartido
+  // entre llamadas), y con eso "mp-<orderId>" supera los 64 — rechazaba con
+  // "Invalid input" toda venta simulada por QR/posnet en dev/testing sin
+  // credenciales reales de MP cargadas.
+  id: z.string().min(8).max(128).optional(),
   lineas: z.array(LineaSchema).min(1, "La venta debe tener al menos una línea"),
   // min(0), no min(1): una venta 100% fiada a un cliente (ver fiadoCentavos)
   // puede no tener ningún pago real.
@@ -76,6 +83,13 @@ export async function crearVentaAction(input: unknown): Promise<CrearVentaResult
     })
     return { ok: true, id: venta.id }
   } catch (e) {
+    // Un ZodError acá casi siempre significa un pago de MercadoPago ya
+    // confirmado que no se pudo convertir en venta (ver use-pago-mp-polling.ts)
+    // — el mensaje que ve el cajero es genérico ("Invalid input"), así que sin
+    // esto no queda ningún rastro de qué campo/valor exacto rechazó el schema.
+    if (e instanceof ZodError) {
+      logError("crearVentaAction", e, { issues: e.issues, input })
+    }
     return { ok: false, error: mensajeError(e) }
   }
 }
