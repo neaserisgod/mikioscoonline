@@ -270,10 +270,23 @@ const NegocioSchema = z.object({
   monotributoCentavos: z.number().int().min(0).optional(),
 })
 
-export async function actualizarNegocioAction(input: unknown) {
+export async function actualizarNegocioAction(
+  input: unknown
+): Promise<{ ok: true } | { ok: false; error: string }> {
   const user = await requireAdmin()
   const data = NegocioSchema.parse(input)
-  return organizacionService.actualizar(user.organizationId, data)
+  // Atrapado acá (no se deja tirar hacia el cliente) a propósito: Next.js
+  // reemplaza el mensaje real de cualquier excepción sin atrapar que cruce el
+  // límite de un Server Action en build de producción por un genérico sin
+  // detalle ("An error occurred in the Server Components render..."), así que
+  // un error esperable como el del CUIT inválido (ver organizacionService.actualizar)
+  // le llegaba al usuario como pantalla en blanco en vez del mensaje concreto.
+  try {
+    await organizacionService.actualizar(user.organizationId, data)
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "No se pudo guardar" }
+  }
 }
 
 // ─── Usuarios ─────────────────────────────────────────────────────────────────

@@ -64,11 +64,21 @@ const DatosFiscalesSchema = z.object({
   stockMinimoDefault: z.number().int().min(0).optional(),
 })
 
-export async function guardarDatosFiscalesAction(input: unknown) {
+export async function guardarDatosFiscalesAction(
+  input: unknown
+): Promise<{ ok: true } | { ok: false; error: string }> {
   const user = await requireAuth()
   const data = DatosFiscalesSchema.parse(input)
-  await organizacionService.actualizar(user.organizationId, data)
+  // Atrapado acá a propósito — ver el mismo comentario en actualizarNegocioAction
+  // (config.actions.ts): sin esto, un CUIT inválido tira un error sin atrapar
+  // que Next.js reemplaza por un mensaje genérico sin detalle en producción.
+  try {
+    await organizacionService.actualizar(user.organizationId, data)
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "No se pudo guardar" }
+  }
   revalidatePath("/onboarding")
+  return { ok: true }
 }
 
 // ─── Categorías (salteable) ───────────────────────────────────────────────────

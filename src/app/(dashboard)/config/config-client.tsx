@@ -1975,7 +1975,7 @@ function NegocioForm({ data, onMutate }: { data: Organizacion; onMutate: () => v
       return
     }
     try {
-      await actualizarNegocioAction({
+      const result = await actualizarNegocioAction({
         nombre: formData.nombre,
         cuit: formData.cuit || null,
         condicionIva: formData.condicionIva || null,
@@ -1987,6 +1987,10 @@ function NegocioForm({ data, onMutate }: { data: Organizacion; onMutate: () => v
         sueldoObjetivoCentavos: Math.round(formData.sueldoObjetivoPesos * 100),
         monotributoCentavos: Math.round(formData.monotributoPesos * 100),
       })
+      if (!result.ok) {
+        toast.error(result.error)
+        return
+      }
       toast.success("Datos del negocio actualizados")
       onMutate()
     } catch (e) {

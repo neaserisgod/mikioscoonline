@@ -122,12 +122,16 @@ export function OnboardingWizard({ orgNombre }: { orgNombre: string }) {
 
   function handleFiscal() {
     run(async () => {
-      await guardarDatosFiscalesAction({
+      const result = await guardarDatosFiscalesAction({
         cuit: cuit || null,
         condicionIva: (condicionIva || null) as CondicionIva | null,
         puntoDeVenta: puntoVenta ? Number(puntoVenta) : null,
         stockMinimoDefault: Number(stockMinimo),
       })
+      if (!result.ok) {
+        setError(result.error)
+        return
+      }
       setStep(2)
     })
   }

@@ -146,12 +146,34 @@ fn load_or_init_config_env(path: &std::path::Path, node_bin: &std::path::Path) -
         cambio = true;
     }
 
+    // AUTH_GOOGLE_ID/SECRET: mismas credenciales OAuth para todas las cajas
+    // (ver build.rs) — se hornean en el binario en build-time, así que no hay
+    // ningún paso manual pendiente para que "Continuar con Google" funcione,
+    // ni siquiera en una instalación de cero (reinstalación con borrado de
+    // datos incluido). Si esta build se compiló sin .env.local (dev local sin
+    // el archivo), el valor horneado queda vacío y no se pisa nada — sigue
+    // aceptando que alguien lo complete a mano como antes.
+    if !vars.contains_key("AUTH_GOOGLE_ID") {
+        let horneado = env!("BAKED_AUTH_GOOGLE_ID");
+        if !horneado.is_empty() {
+            vars.insert("AUTH_GOOGLE_ID".to_string(), horneado.to_string());
+            cambio = true;
+        }
+    }
+    if !vars.contains_key("AUTH_GOOGLE_SECRET") {
+        let horneado = env!("BAKED_AUTH_GOOGLE_SECRET");
+        if !horneado.is_empty() {
+            vars.insert("AUTH_GOOGLE_SECRET".to_string(), horneado.to_string());
+            cambio = true;
+        }
+    }
+
     if cambio {
         let mut out = String::new();
         for (k, v) in &vars {
             out.push_str(&format!("{k}=\"{v}\"\n"));
         }
-        out.push_str("\n# Completar acá MP_ACCESS_TOKEN / MP_PUBLIC_KEY / MP_WEBHOOK_SECRET / PAGOS_PROVIDER\n# cuando corresponda cobrar con MercadoPago desde esta PC.\n# Completar también AUTH_GOOGLE_ID / AUTH_GOOGLE_SECRET (mismos valores que\n# en .env.local del proyecto) para habilitar \"Continuar con Google\" acá.\n");
+        out.push_str("\n# Completar acá MP_ACCESS_TOKEN / MP_PUBLIC_KEY / MP_WEBHOOK_SECRET / PAGOS_PROVIDER\n# cuando corresponda cobrar con MercadoPago desde esta PC.\n# NEON_DATABASE_URL: a mano a propósito (ver comentario de hornear_env_var\n# en build.rs) — es la credencial con acceso de escritura completo a Neon,\n# no se hornea en el instalador.\n");
         fs::write(path, out).ok();
     }
 
