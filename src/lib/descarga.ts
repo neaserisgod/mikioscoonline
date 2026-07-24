@@ -5,7 +5,7 @@
  * la web cada vez que se publica una versión.
  *
  * El instalador NSIS sale con el número de versión en el nombre
- * (`Kiosco El Barrio_1.0.3_x64-setup.exe`), así que no existe una URL fija por
+ * (`La Plazoleta Soft_1.0.5_x64-setup.exe`), así que no existe una URL fija por
  * nombre. En vez de eso consultamos la API de GitHub para resolver, en cada
  * momento, cuál es el asset `-setup.exe` de la última release publicada.
  */
