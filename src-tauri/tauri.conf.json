@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Kiosco El Barrio",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "identifier": "ar.kioscoelbarrio.pos",
   "build": {
     "frontendDist": "loading-page"
@@ -9,7 +9,7 @@
   "app": {
     "windows": [
       {
-        "title": "Kiosco El Barrio",
+        "title": "Kiosco El Barrio ✨",
         "width": 1280,
         "height": 800,
         "minWidth": 1024,
