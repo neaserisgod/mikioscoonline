@@ -105,6 +105,8 @@ if (SKIP_BUILD) {
 } else {
   console.log("\n🔨 Buildeando el server standalone…")
   run("npm run build:standalone")
+  console.log("\n⬇️  Verificando node.exe bundleado…")
+  run("node scripts/fetch-node.mjs")
   console.log("\n🔨 Buildeando el bundle Tauri (firmado)…")
   run("npx tauri build")
 }

@@ -9,6 +9,11 @@ tocan** al actualizar — se conservan intactas.
 Servidor de actualizaciones: la propia **Release "latest" del repo**
 `github.com/neaserisgod/mikioscoonline` (gratis, no hace falta infra extra).
 
+El instalador trae su propio `node.exe` bundleado (~100 MB en vez de ~20 MB) —
+la PC del comercio **no necesita tener Node.js instalado**. Se descarga y
+verifica solo en build-time, ver "Buildear firmado" más abajo y
+`scripts/fetch-node.mjs`.
+
 ---
 
 ## Preparación por única vez
@@ -128,6 +133,11 @@ npx tauri build
 
 `npx tauri build` deja el instalador y su firma en
 `src-tauri/target/release/bundle/nsis/` (`*-setup.exe` y `*-setup.exe.sig`).
+
+> Antes de este paso, `node scripts/fetch-node.mjs` baja (o reusa si ya está
+> con la versión correcta) el `node.exe` que se bundlea como resource — así el
+> instalador no depende de tener Node instalado en la PC destino.
+> `npm run release` lo corre solo; a mano, ejecutalo antes de `npx tauri build`.
 
 ### 3. Generar `latest.json`
 

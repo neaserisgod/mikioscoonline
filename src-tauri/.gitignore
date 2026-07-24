@@ -2,3 +2,7 @@
 # will have compiled files and executables
 /target/
 /gen/schemas
+
+# node.exe bundleado en el instalador — lo baja scripts/fetch-node.mjs antes
+# del build (~90 MB, no se commitea). Ver node_binario() en src/lib.rs.
+/resources/node/

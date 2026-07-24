@@ -47,7 +47,8 @@
     "resources": {
       "../.next/standalone/": "next-standalone/",
       "resources/dev-template.db": "dev-template.db",
-      "resources/migraciones-sqlite/": "migraciones-sqlite/"
+      "resources/migraciones-sqlite/": "migraciones-sqlite/",
+      "resources/node/node.exe": "node/node.exe"
     }
   }
 }

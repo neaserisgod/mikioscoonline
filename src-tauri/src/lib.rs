@@ -33,10 +33,27 @@ fn strip_verbatim_prefix(path: &std::path::Path) -> std::path::PathBuf {
     }
 }
 
+// Node.js bundleado en el instalador (ver scripts/fetch-node.mjs, que lo baja
+// antes de `tauri build`, y el resource "node/node.exe" en tauri.conf.json) —
+// así la app no depende de tener Node instalado en la PC del comercio.
+// `resource_dir` debe venir ya pasado por `strip_verbatim_prefix`. En
+// `tauri dev` los resources no se copian (no existe node/node.exe bajo
+// resource_dir), así que cae al "node" del PATH del sistema para no romper el
+// flujo de desarrollo.
+fn node_binario(resource_dir: &std::path::Path) -> std::path::PathBuf {
+    let bundleado = resource_dir.join("node").join("node.exe");
+    if bundleado.exists() {
+        bundleado
+    } else {
+        std::path::PathBuf::from("node")
+    }
+}
+
 // El server Next.js standalone corre siempre en la misma PC (ver Fase 2 del plan),
-// así que no necesita ser un "sidecar" empaquetado por Tauri — se invoca el `node`
-// del sistema (requisito documentado de esta v1) sobre el recurso bundleado.
-// La app es `windows_subsystem = "windows"` (sin consola) en release, así que
+// así que no necesita ser un "sidecar" empaquetado por Tauri — se invoca sobre el
+// recurso bundleado con el node.exe que también viaja en el instalador (ver
+// node_binario arriba). La app es `windows_subsystem = "windows"` (sin consola)
+// en release, así que
 // `Stdio::inherit()` no va a ningún lado — cualquier `console.error`/`logError`
 // del server Next se perdía en el aire. Se redirige a archivos en la carpeta de
 // datos del usuario, mismo nombre/convención que usaba el lanzador Edge viejo
@@ -55,11 +72,12 @@ fn spawn_node_server(resource_dir: &std::path::Path, data_dir: &std::path::Path,
     let data_dir = strip_verbatim_prefix(data_dir);
     let db_path = data_dir.join("dev.db");
     let db_url = format!("file:{}", db_path.to_string_lossy().replace('\\', "/"));
+    let node_bin = node_binario(&resource_dir);
 
     let stdout_log = abrir_log(&data_dir, "server.log")?;
     let stderr_log = abrir_log(&data_dir, "server-error.log")?;
 
-    let mut cmd = Command::new("node");
+    let mut cmd = Command::new(&node_bin);
     cmd.arg("server.js")
         .current_dir(resource_dir.join("next-standalone"))
         .env("NODE_ENV", "production")
@@ -85,19 +103,19 @@ fn spawn_node_server(resource_dir: &std::path::Path, data_dir: &std::path::Path,
     cmd.spawn()
 }
 
-// Genera el secret una sola vez con el mismo Node del sistema (ya es una dependencia
-// obligatoria de esta v1, evita sumar un crate de Rust solo para esto).
-fn generate_secret() -> String {
-    let output = Command::new("node")
+// Genera el secret una sola vez con el mismo node.exe bundleado que levanta el
+// server (node_binario) — evita sumar un crate de Rust solo para esto.
+fn generate_secret(node_bin: &std::path::Path) -> String {
+    let output = Command::new(node_bin)
         .args(["-e", "console.log(require('crypto').randomBytes(32).toString('hex'))"])
         .output()
-        .expect("no se pudo generar AUTH_SECRET (¿Node.js está instalado?)");
+        .expect("no se pudo generar AUTH_SECRET (falló al invocar node.exe)");
     String::from_utf8_lossy(&output.stdout).trim().to_string()
 }
 
 // Formato simple KEY=VALUE por línea, un archivo editable a mano para cargar
 // secretos de MercadoPago/AFIP sin tener que recompilar la app.
-fn load_or_init_config_env(path: &std::path::Path) -> HashMap<String, String> {
+fn load_or_init_config_env(path: &std::path::Path, node_bin: &std::path::Path) -> HashMap<String, String> {
     let mut vars = HashMap::new();
     if let Ok(mut file) = fs::File::open(path) {
         let mut contents = String::new();
@@ -120,11 +138,11 @@ fn load_or_init_config_env(path: &std::path::Path) -> HashMap<String, String> {
     // recibe también el token, sin regenerar el secret de sesión existente.
     let mut cambio = false;
     if !vars.contains_key("AUTH_SECRET") {
-        vars.insert("AUTH_SECRET".to_string(), generate_secret());
+        vars.insert("AUTH_SECRET".to_string(), generate_secret(node_bin));
         cambio = true;
     }
     if !vars.contains_key("KIOSCO_BACKUP_TOKEN") {
-        vars.insert("KIOSCO_BACKUP_TOKEN".to_string(), generate_secret());
+        vars.insert("KIOSCO_BACKUP_TOKEN".to_string(), generate_secret(node_bin));
         cambio = true;
     }
 
@@ -393,7 +411,8 @@ pub fn run() {
                 seed_migraciones_aplicadas(&data_dir, &resource_dir);
             }
             apply_pending_migrations(&resource_dir, &data_dir);
-            let env = load_or_init_config_env(&data_dir.join("config.env"));
+            let node_bin = node_binario(&strip_verbatim_prefix(&resource_dir));
+            let env = load_or_init_config_env(&data_dir.join("config.env"), &node_bin);
 
             let backup_token = env.get("KIOSCO_BACKUP_TOKEN").cloned().unwrap_or_default();
             let intervalo_min: u64 = env
@@ -403,7 +422,7 @@ pub fn run() {
             app.manage(BackupConfig { token: backup_token.clone() });
 
             let child = spawn_node_server(&resource_dir, &data_dir, &env)
-                .expect("no se pudo iniciar el servidor local — ¿Node.js está instalado?");
+                .expect("no se pudo iniciar el servidor local (node.exe bundleado o del sistema en dev)");
 
             let state: State<ServerProcess> = app.state();
             *state.0.lock().unwrap() = Some(child);

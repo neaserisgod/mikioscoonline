@@ -24,6 +24,8 @@
     "kiosco:download-data": "tsx scripts/kiosco-download-data.ts",
     "kiosco:backup-once": "tsx scripts/kiosco-backup-once.ts",
     "kiosco:empaquetar": "powershell -ExecutionPolicy Bypass -File scripts/windows/empaquetar-kiosco.ps1",
+    "prebuild:tauri": "node scripts/fetch-node.mjs",
+    "build:tauri": "tauri build",
     "release": "node scripts/release.mjs"
   },
   "dependencies": {

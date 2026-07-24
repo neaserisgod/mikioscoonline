@@ -13,6 +13,10 @@ sin internet y **se actualiza sola** al abrir.
 - **Descarga (usuario final):** página pública en `/descargar` de la web, con
   link estable `/descargar/exe` que siempre baja la última versión (se puede
   compartir por mail/WhatsApp/QR). Ver `src/lib/descarga.ts`.
+- **Sin requisitos previos:** el instalador trae su propio `node.exe`
+  bundleado (~100 MB en vez de ~20 MB) — no hace falta tener Node.js instalado
+  en la PC del comercio. Se descarga y verifica solo en cada build, ver
+  `scripts/fetch-node.mjs`.
 - **Publicar una versión nueva:** un solo comando —
   `npm run release <X.Y.Z> "notas"` (sube versión en `package.json` +
   `src-tauri/tauri.conf.json`, buildea firmado, genera `latest.json` y crea la
