@@ -45,6 +45,20 @@ function formatearCantidad(valor: number, esPesable: boolean): string {
   return esPesable ? `${(valor / 1000).toFixed(3)}kg` : `${valor}`
 }
 
+/** Sanitiza a mano en vez de confiar en `<input type="number">`: en varios
+ * navegadores/teclados móviles ese input nativo puede dejar `.value` vacío
+ * cuando lo tipeado no matchea exactamente su parser interno (ej. coma
+ * decimal, ciertos IME de Android) aunque en pantalla se vea el número — con
+ * type="text" + sanitización manual el valor siempre es el que se ve. */
+function sanitizarNumero(valor: string, esPesable: boolean): string {
+  if (!esPesable) return valor.replace(/\D/g, "")
+  const limpio = valor.replace(/[^\d.,]/g, "")
+  // Solo el primer separador decimal cuenta — el resto de comas/puntos se descartan.
+  const i = limpio.search(/[.,]/)
+  if (i === -1) return limpio
+  return limpio.slice(0, i + 1) + limpio.slice(i + 1).replace(/[.,]/g, "")
+}
+
 export function RecuentoClient({ proveedores, esAdmin }: { proveedores: Proveedor[]; esAdmin: boolean }) {
   const [proveedorActivo, setProveedorActivo] = useState<Proveedor | null>(null)
   const [productos, setProductos] = useState<Producto[] | null>(null)
@@ -236,12 +250,10 @@ export function RecuentoClient({ proveedores, esAdmin }: { proveedores: Proveedo
                       </div>
                     </div>
                     <input
-                      type="number"
-                      step={p.esPesable ? "0.001" : "1"}
-                      min="0"
-                      inputMode="decimal"
+                      type="text"
+                      inputMode={p.esPesable ? "decimal" : "numeric"}
                       value={fila?.valor ?? ""}
-                      onChange={(e) => setValor(p.id, e.target.value)}
+                      onChange={(e) => setValor(p.id, sanitizarNumero(e.target.value, p.esPesable))}
                       onFocus={(e) => e.currentTarget.select()}
                       placeholder={p.esPesable ? "kg" : "unid."}
                       className="w-24 h-10 shrink-0 rounded-xl border border-border/60 bg-background px-2.5 text-base text-right focus:outline-none focus:ring-1 focus:ring-ring"
