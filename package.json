@@ -1,6 +1,6 @@
 {
   "name": "pyme-ventas",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -23,7 +23,8 @@
     "db:push:kiosco": "cross-env LOCAL_DEV=1 DATABASE_URL=file:./kiosco.db prisma db push",
     "kiosco:download-data": "tsx scripts/kiosco-download-data.ts",
     "kiosco:backup-once": "tsx scripts/kiosco-backup-once.ts",
-    "kiosco:empaquetar": "powershell -ExecutionPolicy Bypass -File scripts/windows/empaquetar-kiosco.ps1"
+    "kiosco:empaquetar": "powershell -ExecutionPolicy Bypass -File scripts/windows/empaquetar-kiosco.ps1",
+    "release": "node scripts/release.mjs"
   },
   "dependencies": {
     "@afipsdk/afip.js": "^1.2.3",
