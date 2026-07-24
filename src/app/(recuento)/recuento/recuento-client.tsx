@@ -107,6 +107,10 @@ export function RecuentoClient({ proveedores, esAdmin }: { proveedores: Proveedo
       }
       const cantidadContada = p.esPesable ? Math.round(numero * 1000) : Math.round(numero)
       const sistemaValor = p.esPesable ? (p.stockGramos ?? 0) : p.stock
+      if (cantidadContada < sistemaValor && !fila.motivo) {
+        toast.error(`"${p.nombre}": elegí Consumo o Venta para el faltante`)
+        return
+      }
       items.push({ productId: p.id, cantidadContada, motivo: fila.motivo ?? undefined, producto: p, sistemaValor })
     }
 
