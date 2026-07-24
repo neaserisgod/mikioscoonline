@@ -525,3 +525,19 @@ model Comprobante {
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 }
+
+// ─── Recuento de stock por celular (online) ─────────────────────────────────
+// Ver el comentario completo en schema.prisma — mismo modelo, campos
+// escalares sin @relation.
+model RecuentoPendiente {
+  id              String    @id @default(cuid())
+  organizationId  String
+  productId       String
+  cantidadContada Int
+  nota            String?
+  creadoPorUserId String?
+  creadoEnEl      DateTime  @default(now())
+  aplicadoEnEl    DateTime?
+
+  @@index([organizationId, aplicadoEnEl])
+}

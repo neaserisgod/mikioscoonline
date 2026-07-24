@@ -617,3 +617,31 @@ model Comprobante {
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 }
+
+// ─── Recuento de stock por celular (online) ─────────────────────────────────
+
+/**
+ * Nota de recuento cargada desde /recuento (celular, contra esta misma DB).
+ * Campos escalares sin @relation a propósito — no se agrega a Product/
+ * Organization para no tocarlos, el sync de la caja ya copia por id (ver
+ * ORDEN_TABLAS en scripts/lib/kiosco-sync.ts).
+ *
+ * `aplicadoEnEl` es el invariante clave: la caja SIEMPRE aplica estas notas a
+ * su stock local ANTES de subir sus propios cambios (aplicarRecuentosPendientes
+ * en kiosco-sync.ts, enganchado como primer paso en el backup automático y en
+ * "Sincronizar con la nube") — si no, la próxima subida de la caja pisaría el
+ * conteo con el stock local viejo. Nunca se escribe stock acá directo desde la
+ * caja; solo se marca aplicadoEnEl al terminar de aplicar.
+ */
+model RecuentoPendiente {
+  id              String    @id @default(cuid())
+  organizationId  String
+  productId       String
+  cantidadContada Int // unidades, o gramos si el producto es pesable (ver domain/pesables)
+  nota            String?
+  creadoPorUserId String?
+  creadoEnEl      DateTime  @default(now())
+  aplicadoEnEl    DateTime?
+
+  @@index([organizationId, aplicadoEnEl])
+}

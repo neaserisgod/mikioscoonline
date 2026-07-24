@@ -1,3 +1,5 @@
+import { stockService } from "@/services/stock.service"
+
 // Helper compartido por la descarga inicial (Neon → kiosco.db) y el backup
 // nocturno (kiosco.db → Neon). El orden de tablas está validado contra las FK
 // reales del schema — Category.cajaId y PaymentMethod.cajaId referencian Caja,
@@ -249,4 +251,88 @@ export async function bajarCambiosDeNeon(
     resumen[modelo] = count
   }
   return resumen
+}
+
+/**
+ * Aplica al stock LOCAL las notas de recuento cargadas desde /recuento (el
+ * celular escribe directo en Neon — ver guardarRecuentoAction). Se llama como
+ * PRIMER paso de todo sync hacia Neon (antes de subirCambiosLocales, tanto en
+ * el backup automático como en "Sincronizar con la nube") — `product.stock`
+ * SÍ viaja en ORDEN_TABLAS, así que si no se aplicara el recuento antes, la
+ * próxima subida de la caja pisaría el conteo con el stock local viejo. Con
+ * este orden la caja corrige local primero y recién después sube ya con el
+ * valor correcto — RecuentoPendiente no es parte de ORDEN_TABLAS/TABLAS_DESCARGA
+ * a propósito, es un canal aparte.
+ *
+ * Reusa stockService.registrarMovimiento (mismo AJUSTE — set absoluto,
+ * atómico — que usa el resto de la app) contra el prisma global de la caja
+ * (`@/lib/prisma`), que en el proceso donde corre esto (el server Next de la
+ * propia caja) ya apunta a la SQLite local — por eso `local` acá solo se usa
+ * para resolver el admin de fallback, no para escribir el stock.
+ *
+ * Idempotente: solo trae `aplicadoEnEl: null`. Si el AJUSTE se aplicó pero
+ * después falló el `update` que lo marca aplicado, el próximo sync la vuelve a
+ * traer y la reaplica — como es un set absoluto (no un delta) no corrompe el
+ * stock, a lo sumo deja un StockMovement de más con el mismo valor final.
+ */
+export async function aplicarRecuentosPendientes(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  local: any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  neon: any,
+  organizationId: string
+): Promise<{ aplicados: number; saltados: number }> {
+  const pendientes = await neon.recuentoPendiente.findMany({
+    where: { organizationId, aplicadoEnEl: null },
+    orderBy: { creadoEnEl: "asc" },
+  })
+
+  if (pendientes.length === 0) return { aplicados: 0, saltados: 0 }
+
+  // Admin de fallback: se resuelve una sola vez, y solo si hace falta (una
+  // nota sin creadoPorUserId — no debería pasar en el flujo normal, pero
+  // StockMovement.userId es obligatorio).
+  let adminId: string | null | undefined
+  async function resolverAdminId(): Promise<string> {
+    if (adminId === undefined) {
+      const admin = await local.user.findFirst({ where: { organizationId, role: "ADMIN" } })
+      adminId = admin?.id ?? null
+    }
+    if (!adminId) {
+      throw new Error(
+        `recuentoPendiente sin creadoPorUserId y sin ningún ADMIN local en la organización ${organizationId} para atribuírselo`
+      )
+    }
+    return adminId
+  }
+
+  let aplicados = 0
+  let saltados = 0
+
+  for (const nota of pendientes) {
+    try {
+      const userId = nota.creadoPorUserId ?? (await resolverAdminId())
+      await stockService.registrarMovimiento({
+        productId: nota.productId,
+        userId,
+        organizationId,
+        tipo: "AJUSTE",
+        cantidad: nota.cantidadContada,
+        motivo: "Recuento online",
+      })
+    } catch (e) {
+      console.log(`  recuentoPendiente ${nota.id}: saltado (${e instanceof Error ? e.message : "error"})`)
+      saltados++
+      continue
+    }
+
+    await neon.recuentoPendiente.update({
+      where: { id: nota.id },
+      data: { aplicadoEnEl: new Date() },
+    })
+    aplicados++
+  }
+
+  console.log(`  recuentoPendiente: ${aplicados} aplicado(s), ${saltados} salteado(s)`)
+  return { aplicados, saltados }
 }

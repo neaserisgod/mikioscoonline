@@ -3,7 +3,7 @@
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
 import { createPrismaClient } from "@/lib/prisma-client-factory"
-import { subirCambiosLocales, bajarCambiosDeNeon } from "../../../scripts/lib/kiosco-sync"
+import { subirCambiosLocales, bajarCambiosDeNeon, aplicarRecuentosPendientes } from "../../../scripts/lib/kiosco-sync"
 
 type SincronizarResult =
   | { ok: true; subidos: Record<string, number>; bajados: Record<string, number> }
@@ -14,14 +14,17 @@ type SincronizarResult =
  * caja kiosco con NEON_DATABASE_URL configurada. A diferencia de
  * `vincularCajaAction` (que borra todo lo local y reimporta, solo seguro con 0
  * ventas), esta action es no destructiva y pensada para re-correr en una caja
- * ya en uso: primero sube lo local a Neon (mismo upsert idempotente + borrado
- * espejo que ya usa el backup nocturno) y después baja de Neon el catálogo
- * (organización/usuarios/cajas/categorías/proveedores/ubicaciones/clientes/
- * medios de pago/gastos fijos/productos), sin borrar nada y sin pisar en
- * filas ya existentes los campos operativos que cambian localmente (stock,
- * saldos de cuenta corriente, contadores de login, etc. — ver
- * CAMPOS_SOLO_EN_CREACION en scripts/lib/kiosco-sync.ts). Ventas, pagos y
- * movimientos de caja nunca se tocan en la bajada.
+ * ya en uso: primero aplica al stock local las notas de /recuento pendientes
+ * (aplicarRecuentosPendientes — invariante: SIEMPRE antes de subir, si no la
+ * subida de abajo pisaría el conteo con el stock local viejo), después sube lo
+ * local a Neon (mismo upsert idempotente + borrado espejo que ya usa el
+ * backup nocturno) y por último baja de Neon el catálogo (organización/
+ * usuarios/cajas/categorías/proveedores/ubicaciones/clientes/medios de pago/
+ * gastos fijos/productos), sin borrar nada y sin pisar en filas ya existentes
+ * los campos operativos que cambian localmente (stock, saldos de cuenta
+ * corriente, contadores de login, etc. — ver CAMPOS_SOLO_EN_CREACION en
+ * scripts/lib/kiosco-sync.ts). Ventas, pagos y movimientos de caja nunca se
+ * tocan en la bajada.
  */
 export async function sincronizarCajaAction(): Promise<SincronizarResult> {
   const session = await auth()
@@ -37,6 +40,16 @@ export async function sincronizarCajaAction(): Promise<SincronizarResult> {
 
   const neon = createPrismaClient(neonUrl)
   try {
+    // Try/catch propio: si aplicarRecuentosPendientes falla (ej. la
+    // migración de RecuentoPendiente todavía no está en Neon), no debe
+    // frenar la sincronización de ventas/catálogo de abajo — mismo criterio
+    // que /api/kiosco-backup-automatico.
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await aplicarRecuentosPendientes(prisma as any, neon as any, organizationId)
+    } catch (e) {
+      console.error("sincronizarCajaAction: aplicarRecuentosPendientes falló, se sigue igual con el sync:", e)
+    }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const subidos = await subirCambiosLocales(prisma as any, neon as any, organizationId)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
