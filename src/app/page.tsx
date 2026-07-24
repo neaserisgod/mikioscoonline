@@ -13,6 +13,7 @@ import {
   Zap,
   ArrowRight,
   Check,
+  Download,
 } from "lucide-react"
 
 const PRECIO_DE_LISTA_CENTAVOS = 24_900_00
@@ -55,9 +56,15 @@ export default async function LandingPage() {
       <header className="border-b border-border/60">
         <div className="max-w-5xl mx-auto px-4 lg:px-8 h-16 flex items-center justify-between">
           <span className="font-heading text-lg font-semibold tracking-tight">Mi Kiosco</span>
-          <Button render={<Link href="/login" />} variant="outline" size="sm">
-            Iniciar sesión
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button render={<Link href="/descargar" />} variant="ghost" size="sm" className="gap-1.5">
+              <Download className="size-4" />
+              Descargar app
+            </Button>
+            <Button render={<Link href="/login" />} variant="outline" size="sm">
+              Iniciar sesión
+            </Button>
+          </div>
         </div>
       </header>
 
@@ -79,6 +86,15 @@ export default async function LandingPage() {
             <Button render={<Link href="/login" />} size="lg" className="gap-1.5 h-11 px-6 text-base">
               Empezar gratis
               <ArrowRight className="size-4" />
+            </Button>
+            <Button
+              render={<Link href="/descargar" />}
+              variant="outline"
+              size="lg"
+              className="gap-1.5 h-11 px-6 text-base"
+            >
+              <Download className="size-4" />
+              Descargar app
             </Button>
           </div>
           <p className="mt-3 text-xs text-muted-foreground">

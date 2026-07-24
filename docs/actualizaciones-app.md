@@ -48,7 +48,38 @@ Commiteá este cambio (la pública sí puede ir al repo; la privada no).
 
 ---
 
-## Publicar una actualización (cada release)
+## Publicar una actualización — la forma corta (un comando)
+
+Si **no** tocaste el schema (el caso normal), publicar una versión nueva es un
+solo comando:
+
+```powershell
+# Cargar la clave privada de firma (solo para esta terminal)
+$env:TAURI_SIGNING_PRIVATE_KEY = Get-Content $env:USERPROFILE\.tauri\kiosco.key -Raw
+$env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = "tu-password-o-vacio"
+
+npm run release 1.0.3 "Arreglo de impresión de tickets"
+```
+
+`scripts/release.mjs` hace todo el flujo de abajo de una: sube la versión en
+`package.json` **y** `src-tauri/tauri.conf.json` (siempre en sync — antes se
+desincronizaban a mano), buildea firmado, genera `latest.json`, commitea el
+bump, y —si tenés [GitHub CLI](https://cli.github.com) (`gh`) con sesión
+iniciada— crea la Release `v1.0.3` y sube el instalador + `latest.json` solo.
+Si no tenés `gh`, te imprime exactamente qué dos archivos subir a mano.
+
+Flags: `--skip-build` (reintentar solo la publicación sin rebuildear) y
+`--no-publish` (dejar todo listo pero sin crear la release).
+
+> Si **cambiaste el schema**, hacé primero el paso 0 de abajo (generar la
+> migración SQLite) y después corré `npm run release`.
+
+El resto de esta sección explica los mismos pasos uno por uno, por si querés
+correrlos a mano o entender qué hace el script.
+
+---
+
+## Publicar una actualización — paso a paso (manual)
 
 ### 0. ¿Cambiaste `prisma/schema.dev.prisma`? Generá la migración ANTES que nada
 
@@ -74,8 +105,14 @@ Si NO tocaste el schema, saltá directo al paso 1.
 
 ### 1. Subir el número de versión
 
-En `src-tauri/tauri.conf.json`, subí `"version"` (ej. `0.1.0` → `0.1.1`). Ese
-número es el que el updater compara. Usá el mismo para el tag de GitHub (`v0.1.1`).
+Subí `"version"` en **los dos** archivos, siempre al mismo número (ej. `1.0.2`
+→ `1.0.3`):
+
+- `src-tauri/tauri.conf.json` → es el que el updater compara.
+- `package.json` → tiene que quedar igual para no desincronizarse.
+
+Usá el mismo número para el tag de GitHub (`v1.0.3`). `npm run release` hace
+este paso solo; a mano, no te olvides de ningún archivo.
 
 ### 2. Buildear firmado
 
@@ -114,6 +151,24 @@ baja e instala sola, y arranca actualizada.
 
 > El endpoint usa `/releases/latest/`, así que **siempre gana la última release
 > publicada**. No hace falta tocar nada más.
+
+---
+
+## Descarga (primera instalación) — página web y link estable
+
+La web (Vercel) tiene una página pública de descarga en **`/descargar`** (link
+en el header y el hero de la landing). Muestra la versión actual, el botón de
+descarga y las instrucciones de instalación.
+
+El botón apunta a **`/descargar/exe`** — un link **estable** que se puede
+compartir tal cual (mail, WhatsApp, QR): resuelve en el momento el instalador
+`-setup.exe` de la **última** release y redirige ahí, así que siempre baja la
+versión más nueva sin tener que tocar la web al publicar. La lógica vive en
+`src/lib/descarga.ts` (consulta la API de GitHub Releases, cacheada 5 min),
+`src/app/descargar/page.tsx` y `src/app/descargar/exe/route.ts`.
+
+> No hace falta subir el instalador a Vercel ni a ningún lado: la fuente única
+> es la Release de GitHub, la misma que usa el updater.
 
 ---
 

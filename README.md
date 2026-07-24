@@ -5,6 +5,22 @@ Stack: Next.js 16 · Prisma 7 · PostgreSQL · TypeScript · Zod 4 · Vitest
 
 ---
 
+## App de escritorio (Windows)
+
+La caja corre como app de escritorio (Tauri) que se instala en un click, funciona
+sin internet y **se actualiza sola** al abrir.
+
+- **Descarga (usuario final):** página pública en `/descargar` de la web, con
+  link estable `/descargar/exe` que siempre baja la última versión (se puede
+  compartir por mail/WhatsApp/QR). Ver `src/lib/descarga.ts`.
+- **Publicar una versión nueva:** un solo comando —
+  `npm run release <X.Y.Z> "notas"` (sube versión en `package.json` +
+  `src-tauri/tauri.conf.json`, buildea firmado, genera `latest.json` y crea la
+  Release en GitHub). Detalle completo en
+  [`docs/actualizaciones-app.md`](docs/actualizaciones-app.md).
+
+---
+
 ## Setup
 
 ### 1. Variables de entorno
