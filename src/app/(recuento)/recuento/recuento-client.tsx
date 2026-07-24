@@ -4,8 +4,8 @@ import { useState } from "react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-import { ArrowLeft, ChevronRight, Package, ClipboardList, Loader2 } from "lucide-react"
-import { listarProductosRecuentoAction, guardarRecuentoAction } from "@/app/actions/recuento.actions"
+import { ArrowLeft, ChevronRight, Package, ClipboardList, Loader2, Send } from "lucide-react"
+import { listarProductosRecuentoAction, guardarRecuentoLoteAction } from "@/app/actions/recuento.actions"
 
 interface Proveedor {
   id: string
@@ -20,6 +20,15 @@ interface Producto {
   esPesable: boolean
   stock: number
   stockGramos: number | null
+}
+
+type Motivo = "CONSUMO" | "VENTA"
+
+/** Estado de conteo en curso para un producto — vive mientras no se mandó (o
+ * se está por re-mandar) ese proveedor. */
+interface FilaEnCurso {
+  valor: string
+  motivo: Motivo | null
 }
 
 /** Entrada de la lista corrida — sistemaValor/contadoValor en la misma unidad
@@ -40,13 +49,15 @@ export function RecuentoClient({ proveedores, esAdmin }: { proveedores: Proveedo
   const [proveedorActivo, setProveedorActivo] = useState<Proveedor | null>(null)
   const [productos, setProductos] = useState<Producto[] | null>(null)
   const [cargando, setCargando] = useState(false)
-  const [expandidoId, setExpandidoId] = useState<string | null>(null)
+  const [enCurso, setEnCurso] = useState<Map<string, FilaEnCurso>>(new Map())
+  const [enviando, setEnviando] = useState(false)
   const [contados, setContados] = useState<Map<string, Contado>>(new Map())
   const [mostrarResumen, setMostrarResumen] = useState(false)
 
   async function abrirProveedor(p: Proveedor) {
     setProveedorActivo(p)
     setProductos(null)
+    setEnCurso(new Map())
     setCargando(true)
     try {
       const lista = await listarProductosRecuentoAction(p.id)
@@ -62,34 +73,83 @@ export function RecuentoClient({ proveedores, esAdmin }: { proveedores: Proveedo
   function volver() {
     setProveedorActivo(null)
     setProductos(null)
-    setExpandidoId(null)
+    setEnCurso(new Map())
   }
 
-  async function guardarConteo(producto: Producto, valorIngresado: string) {
-    const numero = Number(valorIngresado.replace(",", "."))
-    if (!Number.isFinite(numero) || numero < 0) {
-      toast.error("Ingresá un valor válido")
+  function setValor(productId: string, valor: string) {
+    setEnCurso((prev) => {
+      const copia = new Map(prev)
+      copia.set(productId, { valor, motivo: copia.get(productId)?.motivo ?? null })
+      return copia
+    })
+  }
+
+  function setMotivo(productId: string, motivo: Motivo) {
+    setEnCurso((prev) => {
+      const copia = new Map(prev)
+      const actual = copia.get(productId)
+      copia.set(productId, { valor: actual?.valor ?? "", motivo: actual?.motivo === motivo ? null : motivo })
+      return copia
+    })
+  }
+
+  async function enviarTodo() {
+    if (!productos) return
+    const items: { productId: string; cantidadContada: number; motivo?: Motivo; producto: Producto; sistemaValor: number }[] = []
+
+    for (const p of productos) {
+      const fila = enCurso.get(p.id)
+      if (!fila || fila.valor.trim() === "") continue
+      const numero = Number(fila.valor.replace(",", "."))
+      if (!Number.isFinite(numero) || numero < 0) {
+        toast.error(`"${p.nombre}": valor inválido`)
+        return
+      }
+      const cantidadContada = p.esPesable ? Math.round(numero * 1000) : Math.round(numero)
+      const sistemaValor = p.esPesable ? (p.stockGramos ?? 0) : p.stock
+      items.push({ productId: p.id, cantidadContada, motivo: fila.motivo ?? undefined, producto: p, sistemaValor })
+    }
+
+    if (items.length === 0) {
+      toast.error("No cargaste ningún conteo")
       return
     }
-    const cantidadContada = producto.esPesable ? Math.round(numero * 1000) : Math.round(numero)
 
+    setEnviando(true)
     try {
-      await guardarRecuentoAction({ productId: producto.id, cantidadContada })
-      toast.success(`${producto.nombre}: guardado`)
-      setContados((prev) => {
-        const copia = new Map(prev)
-        copia.set(producto.id, {
-          productId: producto.id,
-          nombreProducto: producto.nombre,
-          esPesable: producto.esPesable,
-          sistemaValor: producto.esPesable ? (producto.stockGramos ?? 0) : producto.stock,
-          contadoValor: cantidadContada,
-        })
-        return copia
+      const resultados = await guardarRecuentoLoteAction({
+        items: items.map(({ productId, cantidadContada, motivo }) => ({ productId, cantidadContada, motivo })),
       })
-      setExpandidoId(null)
+
+      const nuevosContados = new Map(contados)
+      const nuevoEnCurso = new Map(enCurso)
+      let ok = 0
+      let fallidos = 0
+      for (const r of resultados) {
+        const item = items.find((i) => i.productId === r.productId)!
+        if (r.ok) {
+          ok++
+          nuevosContados.set(r.productId, {
+            productId: r.productId,
+            nombreProducto: item.producto.nombre,
+            esPesable: item.producto.esPesable,
+            sistemaValor: item.sistemaValor,
+            contadoValor: item.cantidadContada,
+          })
+          nuevoEnCurso.delete(r.productId)
+        } else {
+          fallidos++
+          toast.error(`"${item.producto.nombre}": ${r.error ?? "no se pudo guardar"}`)
+        }
+      }
+      setContados(nuevosContados)
+      setEnCurso(nuevoEnCurso)
+      if (ok > 0) toast.success(`${ok} producto${ok === 1 ? "" : "s"} guardado${ok === 1 ? "" : "s"}`)
+      if (fallidos === 0 && ok > 0) volver()
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "No se pudo guardar el recuento")
+      toast.error(e instanceof Error ? e.message : "No se pudo enviar el recuento")
+    } finally {
+      setEnviando(false)
     }
   }
 
@@ -102,6 +162,7 @@ export function RecuentoClient({ proveedores, esAdmin }: { proveedores: Proveedo
   }
 
   const listaContados = Array.from(contados.values())
+  const cantidadCargada = Array.from(enCurso.values()).filter((f) => f.valor.trim() !== "").length
 
   return (
     <div className="max-w-md mx-auto min-h-dvh flex flex-col">
@@ -118,7 +179,7 @@ export function RecuentoClient({ proveedores, esAdmin }: { proveedores: Proveedo
         </h1>
       </header>
 
-      <main className="flex-1 overflow-y-auto px-4 py-4">
+      <main className="flex-1 overflow-y-auto px-4 py-4 pb-24">
         {!proveedorActivo && (
           <div className="space-y-2">
             <p className="text-sm text-muted-foreground mb-3">Elegí un proveedor para contar sus productos.</p>
@@ -151,15 +212,16 @@ export function RecuentoClient({ proveedores, esAdmin }: { proveedores: Proveedo
               <p className="text-sm text-muted-foreground text-center py-10">Este proveedor no tiene productos activos.</p>
             )}
             {productos.map((p) => {
+              const fila = enCurso.get(p.id)
               const yaContado = contados.get(p.id)
-              const abierto = expandidoId === p.id
               const sistemaValor = p.esPesable ? (p.stockGramos ?? 0) : p.stock
+              const numero = fila?.valor.trim() ? Number(fila.valor.replace(",", ".")) : null
+              const contadoUnidad = numero != null && Number.isFinite(numero) ? (p.esPesable ? Math.round(numero * 1000) : Math.round(numero)) : null
+              const hayFaltante = contadoUnidad != null && contadoUnidad < sistemaValor
+
               return (
-                <div key={p.id} className="rounded-2xl border border-border/60 bg-card overflow-hidden">
-                  <button
-                    onClick={() => setExpandidoId(abierto ? null : p.id)}
-                    className="w-full flex items-center justify-between gap-3 px-4 py-3.5 text-left active:bg-muted/60"
-                  >
+                <div key={p.id} className="rounded-2xl border border-border/60 bg-card px-4 py-3 space-y-2">
+                  <div className="flex items-center justify-between gap-3">
                     <div className="min-w-0">
                       <div className="font-medium truncate">{p.nombre}</div>
                       <div className="text-xs text-muted-foreground">
@@ -169,13 +231,45 @@ export function RecuentoClient({ proveedores, esAdmin }: { proveedores: Proveedo
                         )}
                       </div>
                     </div>
-                    <ChevronRight className={cn("size-4 text-muted-foreground shrink-0 transition-transform", abierto && "rotate-90")} />
-                  </button>
-                  {abierto && (
-                    <ContarProducto
-                      producto={p}
-                      onGuardar={(valor) => guardarConteo(p, valor)}
+                    <input
+                      type="number"
+                      step={p.esPesable ? "0.001" : "1"}
+                      min="0"
+                      inputMode="decimal"
+                      value={fila?.valor ?? ""}
+                      onChange={(e) => setValor(p.id, e.target.value)}
+                      onFocus={(e) => e.currentTarget.select()}
+                      placeholder={p.esPesable ? "kg" : "unid."}
+                      className="w-24 h-10 shrink-0 rounded-xl border border-border/60 bg-background px-2.5 text-base text-right focus:outline-none focus:ring-1 focus:ring-ring"
                     />
+                  </div>
+
+                  {hayFaltante && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-muted-foreground">Faltante:</span>
+                      <button
+                        onClick={() => setMotivo(p.id, "CONSUMO")}
+                        className={cn(
+                          "text-xs px-2.5 py-1 rounded-lg border font-medium",
+                          fila?.motivo === "CONSUMO"
+                            ? "bg-foreground text-background border-foreground"
+                            : "border-border/60 text-muted-foreground"
+                        )}
+                      >
+                        Consumo
+                      </button>
+                      <button
+                        onClick={() => setMotivo(p.id, "VENTA")}
+                        className={cn(
+                          "text-xs px-2.5 py-1 rounded-lg border font-medium",
+                          fila?.motivo === "VENTA"
+                            ? "bg-k-gain text-background border-k-gain"
+                            : "border-border/60 text-muted-foreground"
+                        )}
+                      >
+                        Venta
+                      </button>
+                    </div>
                   )}
                 </div>
               )
@@ -184,7 +278,16 @@ export function RecuentoClient({ proveedores, esAdmin }: { proveedores: Proveedo
         )}
       </main>
 
-      {listaContados.length > 0 && (
+      {proveedorActivo && productos && productos.length > 0 && (
+        <div className="fixed bottom-0 left-0 right-0 max-w-md mx-auto p-3 bg-background/95 backdrop-blur border-t border-border/60">
+          <Button className="w-full h-12 gap-2" onClick={enviarTodo} disabled={enviando || cantidadCargada === 0}>
+            {enviando ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
+            Enviar todo{cantidadCargada > 0 ? ` (${cantidadCargada})` : ""}
+          </Button>
+        </div>
+      )}
+
+      {!proveedorActivo && listaContados.length > 0 && (
         <div className="sticky bottom-0 border-t border-border/60 bg-background">
           <button
             onClick={() => setMostrarResumen((v) => !v)}
@@ -219,40 +322,6 @@ export function RecuentoClient({ proveedores, esAdmin }: { proveedores: Proveedo
           )}
         </div>
       )}
-    </div>
-  )
-}
-
-function ContarProducto({ producto, onGuardar }: { producto: Producto; onGuardar: (valor: string) => void | Promise<void> }) {
-  const [valor, setValor] = useState("")
-  const [guardando, setGuardando] = useState(false)
-
-  async function handleGuardar() {
-    setGuardando(true)
-    try {
-      await onGuardar(valor)
-    } finally {
-      setGuardando(false)
-    }
-  }
-
-  return (
-    <div className="px-4 pb-4 pt-1 border-t border-border/60 flex items-center gap-2">
-      <input
-        type="number"
-        step={producto.esPesable ? "0.001" : "1"}
-        min="0"
-        inputMode="decimal"
-        autoFocus
-        value={valor}
-        onChange={(e) => setValor(e.target.value)}
-        onFocus={(e) => e.currentTarget.select()}
-        placeholder={producto.esPesable ? "kg contados" : "unidades contadas"}
-        className="flex-1 h-11 rounded-xl border border-border/60 bg-background px-3 text-base focus:outline-none focus:ring-1 focus:ring-ring"
-      />
-      <Button onClick={handleGuardar} disabled={guardando || valor === ""} className="h-11">
-        {guardando ? <Loader2 className="size-4 animate-spin" /> : "Guardar"}
-      </Button>
     </div>
   )
 }
